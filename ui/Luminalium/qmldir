@@ -1,0 +1,2 @@
+module Luminalium
+singleton Lumi 1.0 Lumi.qml

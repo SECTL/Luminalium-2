@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "luminalium2"
+version = "1.6.666.1"
+description = ""
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    "PySide6>=6.9",
+    "RinUI>=0.4.4",
+    "pywin32>=308; sys_platform == 'win32'",
+]
+
+[project.scripts]
+luminalium2 = "app.application:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"ui" = "ui"
+"assets" = "assets"
+"config" = "config"

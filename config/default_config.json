@@ -1,0 +1,169 @@
+{
+  "app": {
+    "name": "Luminalium 2",
+    "theme": "dark",
+    "language": "zh_CN",
+    "log_level": "INFO",
+    "accent": "#4CC2FF",
+    "//backdrop": "窗口背景材质：none=实色主题背景。RinUI 默认在 Win11 用 Mica / Win10 用 Acrylic，窗口会变成透明靠 DWM 合成，不支持/异常的机器上就是一片怪材质。",
+    "backdrop": "none"
+  },
+  "tray": {
+    "enabled": true,
+    "tooltip": "Luminalium 2",
+    "show_on_click": true,
+    "notify_on_start": false
+  },
+  "quick_panel": {
+    "title": "快捷面板",
+    "width": 375,
+    "//height": "≈ 头部 32 + 网格 3 行 252 + 放映状态 56 + 留白；CW2 同款为 475（含课程表区块）",
+    "height": 440,
+    "//offset_y": "CW2 惯例：面板顶边 = 光标 y + 30；下方放不下时翻到光标上方",
+    "offset_y": 30,
+    "hide_on_deactivate": true,
+    "header": {
+      "logotext": "Luminalium 2"
+    },
+    "sections": {
+      "shortcuts": true,
+      "status": true,
+      "footer": true
+    },
+    "//shortcuts": "已启用的快捷方式 id，顺序即显示顺序；可选来源是 shortcut_catalog",
+    "shortcuts": [
+      "settings",
+      "presentation",
+      "update"
+    ],
+    "//shortcut_catalog": "全部可用快捷方式（设置页与「+」对话框从这里取）。Luminalium 是放映伴侣，不提供课表类功能",
+    "shortcut_catalog": [
+      { "id": "settings", "title": "设置", "icon": "ic_fluent_settings_20_regular", "action": "open_settings:settings/Home.qml" },
+      { "id": "presentation", "title": "放映控制", "icon": "ic_fluent_slide_play_20_regular", "action": "open_settings:settings/Presentation.qml" },
+      { "id": "update", "title": "检查更新", "icon": "ic_fluent_arrow_sync_20_regular", "action": "open_settings:settings/Update.qml" }
+    ],
+    "//shortcuts_locked": "true 时面板禁用编辑模式（策略锁定）",
+    "shortcuts_locked": false,
+    "footer": {
+      "//actions": "CW2 惯例：窗口右下角（卡片外）一排扁平图标按钮，各自带 ToolTip",
+      "actions": [
+        { "id": "reload", "icon": "ic_fluent_arrow_counterclockwise_20_regular", "tooltip": "重新加载" },
+        { "id": "exit", "icon": "ic_fluent_arrow_exit_20_regular", "tooltip": "退出 Luminalium 2" }
+      ]
+    }
+  },
+  "settings": {
+    "//": "设置窗口。CW2 惯例：FluentWindow + navigationItems 左侧导航 + FluentPage 内容页。",
+    "width_ratio": 0.5,
+    "height_ratio": 0.6,
+    "minimum_width": 680,
+    "minimum_height": 480,
+    "//navigation": "导航栏宽度由 NavigationBar 自己的动态逻辑决定（FluentWindow 没暴露）；但窗口宽度低于 900 会被自动收成图标条，所以 Settings.qml 里显式下调了 navMinimumExpandWidth。",
+    "default_page": "settings/Home.qml"
+  },
+  "presentation": {
+    "enabled": true,
+    "poll_interval_ms": 400,
+    "//window_classes": "放映窗口类名白名单（不区分大小写，另含 slideshow 子串的通配）。screenClass=PowerPoint；WPS 演示是 wppSlideShowWindowClass 等，只填 screenClass 会把 WPS 整个漏掉",
+    "window_classes": ["screenClass", "wppSlideShowWindowClass", "WPP SlideShow Window", "WPP SlideShow Window 8.0", "SDL_app"],
+    "//process_names": "类名不认识时的兜底：进程映像名命中 +（标题像放映 或 铺满整屏且不是编辑器主窗口）即判为放映。类名随版本变，进程名不会",
+    "process_names": ["POWERPNT.EXE", "PPTVIEW.EXE", "WPP.EXE", "KWPP.EXE", "WPS.EXE", "SOFFICE.BIN", "SOFFICE.EXE", "IMPRESS.EXE", "YOZO_IMPRESS.EXE", "YOZOPG.EXE", "YOZO_OFFICE.EXE"],
+    "//fullscreen_ratio": "进程名兜底判定「全屏」的阈值：窗口覆盖所在显示器面积的比例",
+    "fullscreen_ratio": 0.7,
+    "margin_x": 8,
+    "margin_y": 8,
+    "screen_index": -1,
+    "//pass_through": "除控制条以外的区域鼠标/触摸穿透。true=开启（推荐）；调试时设 false 可验证「是不是穿透代码把窗口弄没了」",
+    "pass_through": true,
+    "//region_padding": "区域塑形时给控制条表面留的余量（含投影）：区域外既不绘制也不参与命中测试，系统级穿透",
+    "region_padding": 20,
+    "//hit_poll_ms": "仅当区域塑形不可用时才启用的兜底轮询间隔",
+    "hit_poll_ms": 25,
+    "//topmost_interval_ms": "放映窗口本身也是 TOPMOST 并会重申 z 序；这里周期性把顶层窗口压回去。800ms 足够压过 PPT，代价可忽略",
+    "topmost_interval_ms": 800,
+    "//verify_after_ms": "显示后多久做一次自检（对照窗口真实位置 / DWM 是否被披风化）",
+    "verify_after_ms": 500,
+    "//bar_height": "参考稿实测条高 H=187px，本档按约 0.3 倍落地成 56",
+    "bar_height": 56,
+    "surface": {
+      "//radius": "实测 25/187 = 0.134H",
+      "radius": 8,
+      "opacity": 0.97,
+      "//padding": "实测 左右 50/187 = 0.267H、上下 33/187 = 0.176H，横竖不同档",
+      "padding_x": 14,
+      "padding_y": 10,
+      "shadow": {
+        "enabled": true,
+        "margin": 24,
+        "blur": 18,
+        "offset_y": 6
+      }
+    },
+    "segment": {
+      "//item_width": "缺省 = 内容高（正方形分段项，只放一枚图标）。要宽项才填这个键",
+      "//indicator": "实测下划线宽 = 圆(图标)直径 62/187、高 11/187",
+      "indicator_width": 18,
+      "indicator_height": 3
+    },
+    "buttons": {
+      "//icon_size": "实测圆圈(图标占位)直径 62/187 = 0.331H",
+      "icon_size": 18,
+      "//hit_size": "= 内容高 121/187 = 0.647H",
+      "hit_size": 36,
+      "spacing": 10
+    },
+    "divider": {
+      "enabled": true,
+      "width": 1,
+      "height": 20,
+      "gap": 14
+    },
+    "overflow": {
+      "enabled": true,
+      "icon": "ic_fluent_more_horizontal_20_regular",
+      "tooltip": "更多操作"
+    },
+    "tools": [
+      { "id": "pen", "label": "笔", "icon": "ic_fluent_pen_20_regular" },
+      { "id": "eraser", "label": "橡皮", "icon": "ic_fluent_eraser_20_regular" }
+    ],
+    "actions": [
+      {
+        "id": "clear_screen",
+        "label": "清屏",
+        "icon": "ic_fluent_broom_20_regular",
+        "tooltip": "清屏（擦除本页全部墨迹）"
+      }
+    ],
+    "pager": {
+      "enabled": true,
+      "width": 48,
+      "spacing": 14,
+      "//surface_padding_x": "参考稿页码 pill 左右留白 98/187 ≈ 0.52H，明显大于工具条",
+      "surface_padding_x": 26,
+      "icon_prev": "ic_fluent_chevron_left_20_regular",
+      "icon_next": "ic_fluent_chevron_right_20_regular"
+    },
+    "exit": {
+      "enabled": true,
+      "label": "退出放映",
+      "icon": "ic_fluent_power_20_regular",
+      "//accent": "缺省 = 跟随 app.accent（Lumi.accent）。只有想给退出键固定一个独立于强调色的颜色时才填"
+    },
+    "corners": {
+      "//": "控制条恒横向。工具栏是**独立的一套组**摆在下中部（tools/actions/exit）；翻页栏独立出来，左右各一只 pill。",
+      "bottom_center": {
+        "enabled": true,
+        "groups": ["tools", "actions", "exit"]
+      },
+      "bottom_left": {
+        "enabled": true,
+        "groups": ["pager"]
+      },
+      "bottom_right": {
+        "enabled": true,
+        "groups": ["pager"]
+      }
+    }
+  }
+}

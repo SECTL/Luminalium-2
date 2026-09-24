@@ -1,0 +1,45 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Qt / QML ----
+*.qmlc
+*.jsc
+
+# ---- Runtime data ----
+config/config.json
+config/*.local.json
+logs/
+*.log
+
+# 生成物
+preview/
+__pycache__/
+
+# 开发期临时输出（探测 / 编译 / 诊断脚本写的日志）
+_*.log
+_*.txt
+probe_result.txt
+
+# RinUI 会把自身主题配置写到 <cwd>/RinUI/config/
+/RinUI/
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# ---- 本地会话数据（WorkBuddy 工作记忆 / 会话产出）----
+.workbuddy/
+
+# ---- 开发期一次性脚本（探测 / 实验用，转正后再从 tools/ 里去掉 _tmp_ 前缀）----
+tools/_tmp_*.py

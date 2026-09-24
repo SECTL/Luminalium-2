@@ -60,7 +60,7 @@ Luminalium-2/
 │   ├── QuickPanel/             面板内的可复用组件
 │   │   ├── TrayShortcuts.qml     快捷方式区（3 列网格 + 编辑态 + 空状态）
 │   │   ├── ShortcutTile.qml      单个磁贴（圆角表面 + 图标 + 文字）
-│   │   ├── ScheduleClip.qml      课程表卡片（横向列表里的一项）
+│   │   ├── StatusCard.qml        放映状态卡（替代 CW2 的课程表区块）
 │   │   ├── SectionHeader.qml     小节标题行（标题 + 编辑 / 添加）
 │   │   ├── IconButton.qml        扁平图标按钮（带 ToolTip）
 │   │   └── EmptyState.qml        空状态（RinUI 没有，手绘）
@@ -75,12 +75,15 @@ Luminalium-2/
 │       ├── IconButton.qml         扁平图标按钮（动作 / 翻页 / 溢出）
 │       ├── SectionDivider.qml     分组间的竖分隔线
 │       └── ExitButton.qml         强调色实底按钮
-├── assets/icons/               应用图标
+├── resources/                  品牌资源：logo.svg / logo.ico / banner.png
+├── assets/icons/               图标回落资源
 ├── config/default_config.json  默认配置（唯一真相来源）
 ├── tools/
 │   ├── check_qml.py            ui/ 下全部 QML 的编译检查（不弹窗）
 │   ├── preview.py              离屏渲染界面截图（不打扰桌面）
 │   ├── smoke.py                端到端自检（无需真实 PowerPoint）
+│   ├── live_probe.py           真机自检：自己开一次 PowerPoint 放映跑通全链路
+│   ├── diag_overlay.py         真机诊断：放映中把叠加层与红测试块显示出来二分定位
 │   └── rinui_probe.py          探测当前 RinUI 版本里哪些组件真的可用
 └── logs/                       运行日志（自动创建）
 ```
@@ -174,6 +177,14 @@ RinUI 的默认取值方向与参考稿相反。
   所以滚动区一律不挂可见滚动条，靠滚轮 / 拖拽。
   `Rin.FluentPage` 自己挂了，会打印一条 `ScrollBar attached property must be attached to an object
   deriving from Flickable or ScrollView` —— RinUI 内部问题（它把 ScrollBar 的 `parent` 改成了 Page），**无害可忽略**。
+
+**窗口边框**：`Rin.FluentWindowBase` 在 Windows 上的 `Component.onCompleted` 里会
+**主动摘掉** `Qt.FramelessWindowHint`，并调 `WinEventManager.syncWindowFrame()`
+用 Win32 API 把 `WS_CAPTION | WS_THICKFRAME` 加回来（换系统阴影 / 贴边 / 最大化
+动画）。结果就是窗口外圈多一层系统画的边框，与 RinUI 自绘标题栏叠在一起。
+本项目统一用自绘边框：`ui/Settings.qml` 的 `Component.onCompleted` 里把
+`Qt.FramelessWindowHint` 加回去（**派生组件的 `onCompleted` 晚于基类**，顺序刚好）
+；`tools/smoke.py` 有回归断言盯着 `WS_CAPTION` / `WS_THICKFRAME`。
 
 **覆写样式时的连带契约**（违反会 `ReferenceError` 或构造期报错）
 
@@ -504,6 +515,25 @@ RinUI 的默认取值方向与参考稿相反。
 ```powershell
 $env:PYTHONUTF8="1"; $env:PYTHONIOENCODING="utf-8"
 .venv\Scripts\python.exe tools\preview.py
+```
+
+### 品牌资源
+
+`resources/` 放 logo 与 banner（`logo.svg` 矢量、`logo.ico` 多尺寸、`banner.png`）：
+
+- 托盘图标 / 任务栏图标取 `resources/logo.ico`，缺文件才回落到
+  `assets/icons/luminalium.svg`（`app/tray.py::build_app_icon`）；
+- QML 里用 `Backend.resourceFile("logo.svg")` 拿 `file:///`
+  绝对 URL —— `Image.source` 不吃相对路径（基准是 QML 文件所在目录）。
+  快捷面板头部与「关于」页的 logo、「关于」页顶部的 banner 都走这个入口。
+
+### Git
+
+本机 Git 默认的 `schannel` 后端连 GitHub 会握手失败
+（`SSL/TLS connection failed`），已把仓库级后端固定成 openssl：
+
+```bash
+git config http.sslBackend openssl   # 已设在 .git/config，仅本仓库
 ```
 
 ---

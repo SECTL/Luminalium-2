@@ -18,8 +18,17 @@
 
 控制操作（翻页 / 退出 / 笔 / 清屏）COM 失败时回退为向放映窗口发按键。
 
+**线程模型（务必遵守，这是一次真机事故换来的）**：窗口探测与 COM 是**两条独立线程**。
+:class:`_ProbeThread` 只做 Win32 枚举（毫秒级），:class:`_ComThread` 承担全部 COM 调用。
+原因：PowerPoint 是单套间（STA），它自己的主线程不抽消息时（放映中 / 弹模态框 /
+保存时）跨进程调用会**一直排队**；早前两者挤在一条线程里，一次 `GetActiveObject`
+卡住就把整条探测链路拖死 —— 日志静默、控制条永不出现。拆分后 COM 卡住只退化成
+「页码 0/0 + 键盘回退」，窗口探测照常。主线程另有看护定时器，两条线程静默超时
+就写「卡在哪个阶段、卡了多久」。
+
 所有状态变化都以 INFO 级写日志（``luminalium.ppt``），真机排查
-「顶层窗口为什么没出来」先看这里有没有 ``放映开始`` 一行。
+「顶层窗口为什么没出来」先看这里有没有 ``放映开始`` 一行，再看有没有
+``放映链路卡住`` 一行（后者会直接点名卡住的线程与阶段）。
 """
 
 from __future__ import annotations
@@ -33,7 +42,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, QTimer, Signal
 
 log = logging.getLogger("luminalium.ppt")
 
@@ -318,6 +327,33 @@ def _looks_like_slideshow(facts) -> bool:
     return not (
         ctypes.windll.user32.GetWindowLongW(wintypes.HWND(hwnd), GWL_STYLE) & WS_CAPTION
     )
+
+
+def _near_miss_reason(facts) -> Optional[str]:
+    """疑似放映却被拒时的**拒绝原因**；判定成功或离得远返回 ``None``。
+
+    只关心「进程命中白名单 +（标题像放映 或 铺满整屏）」的近失窗口：
+    再远（游戏 / 视频播放器这类全屏窗口）就与本工具无关，不该产生日志噪音。
+    """
+    hwnd, class_name, title, pid, visible, _rect = facts
+    if not hwnd or not visible:
+        return None
+    lowered = class_name.lower()
+    if lowered in SLIDESHOW_WINDOW_CLASSES or "slideshow" in lowered:
+        return None  # 判定成功
+    title_hint = _title_looks_like_slideshow(title)
+    fullscreen = True if title_hint else _covers_monitor(hwnd)
+    if not (title_hint or fullscreen):
+        return None  # 离得远
+    if _process_name(pid) not in SLIDESHOW_PROCESS_NAMES:
+        return None  # 不是演示软件，不关心
+    if title_hint:
+        return None  # 标题像放映的直接判成是，到这里说明已成功
+    if class_name.startswith(CONSOLE_WINDOW_CLASS_PREFIXES):
+        return f"编辑器主窗口（类名前缀命中 {class_name}）"
+    if ctypes.windll.user32.GetWindowLongW(wintypes.HWND(hwnd), GWL_STYLE) & WS_CAPTION:
+        return "有标题栏（WS_CAPTION）"
+    return "全部条件通过却未命中（逻辑矛盾，视为 bug）"
 
 
 def find_slideshow_window() -> tuple[int, str]:
@@ -632,56 +668,228 @@ class _ComBackend:
 # --------------------------------------------------------------------------- 控制器
 
 
-class _ProbeThread(QThread):
-    """放映探测线程。
+# 单次进度超过这个时长就告警（只告一次，避免刷屏）
+SLOW_CYCLE_MS = 1500
+# 看护定时器间隔 / 心跳静默多久算「卡住」/ 同一阶段最多多久报一次
+WATCHDOG_INTERVAL_MS = 1000
+WATCHDOG_STALE_S = 3.0
+WATCHDOG_REPEAT_S = 15.0
 
-    **所有** Win32 枚举与 COM 调用都只发生在这个线程里。
 
-    为什么必须挪出主线程：PowerPoint 的 COM 服务器是单套间（STA），
-    放映过程中它随时可能忙碌（渲染动画 / 切换电源状态）。在主线程里每 400ms
-    ``GetActiveObject`` + ``View.Slide.SlideIndex``，一次卡住就是整界面卡死
-    ——托盘点不动、控制条不刷新，用户看到的就是「卡死了」。
+class _Heartbeat:
+    """后台线程的「最后一次进度」，用来回答「它到底卡在哪」。
+
+    只有拥有者线程写（``enter`` / ``finish``），别的线程只读；全是单个属性的
+    读写，在 GIL 下不会读到半截值。
+
+    为什么需要它：探测链路一旦卡住，现象是「日志里什么都没有、控制条不出现」，
+    用户报障时完全无从下手（本项目就吃过这个亏）。有了心跳，日志能直接写成
+    「窗口探测线程：阶段『枚举顶层窗口』已 42.0s，静默 42.0s」——一眼定位。
     """
 
-    # 用基本类型而不是 object：跨线程排队连接不需要 Python 对象做元类型转换
-    stateReady = Signal(bool, int, int, int, str, str)
+    __slots__ = ("name", "phase", "phase_since", "last_beat", "cycles",
+                 "last_ms", "max_ms", "warned_at")
 
-    def __init__(self, interval_ms: int = 400, parent: Optional[QObject] = None) -> None:
+    def __init__(self, name: str) -> None:
+        now = time.monotonic()
+        self.name = name
+        self.phase = "未启动"
+        self.phase_since = now
+        self.last_beat = now
+        self.cycles = 0
+        self.last_ms = 0.0
+        self.max_ms = 0.0
+        self.warned_at = 0.0
+
+    def enter(self, phase: str) -> None:
+        now = time.monotonic()
+        self.phase = phase
+        self.phase_since = now
+        self.last_beat = now
+
+    def finish(self, elapsed_ms: float, phase: str = "待命") -> None:
+        now = time.monotonic()
+        self.last_beat = now
+        self.phase = phase
+        self.phase_since = now
+        self.cycles += 1
+        self.last_ms = float(elapsed_ms)
+        if elapsed_ms > self.max_ms:
+            self.max_ms = float(elapsed_ms)
+
+    def idle_seconds(self) -> float:
+        """距最后一次进度过了多久。"""
+        return time.monotonic() - self.last_beat
+
+    def phase_seconds(self) -> float:
+        return time.monotonic() - self.phase_since
+
+    def describe(self) -> str:
+        return (
+            f"{self.name}: 周期 {self.cycles} 次，最后 {self.last_ms:.0f}ms / "
+            f"最长 {self.max_ms:.0f}ms，阶段「{self.phase}」已 {self.phase_seconds():.1f}s，"
+            f"静默 {self.idle_seconds():.1f}s"
+        )
+
+
+# --------------------------------------------------------------------------- 完整性级别
+
+# UAC 完整性级别 —— 「COM 连不上」的第一大原因：运行对象表（ROT）按完整性级别隔离，
+# Medium 的进程看不见 High 的注册项（反之亦然）。连不上时翻页 / 页码 / 退出放映
+# 就只剩键盘回退，而 UIPI 连注入按键也一起挡掉。真机实测过：探针进程 High +
+# PowerPoint Medium 时 GetActiveObject 直接 0x800401E3（操作无法使用）。
+_TOKEN_QUERY = 0x0008
+_TOKEN_INTEGRITY_LEVEL = 25
+_INTEGRITY_NAMES = {
+    0x0000: "Untrusted", 0x1000: "Low", 0x2000: "Medium",
+    0x2100: "MediumPlus", 0x3000: "High(管理员)", 0x4000: "System",
+}
+
+
+class _SidAndAttributes(ctypes.Structure):
+    _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+
+class _TokenMandatoryLabel(ctypes.Structure):
+    _fields_ = [("Label", _SidAndAttributes)]
+
+
+def _process_integrity(pid: int) -> str:
+    """进程的完整性级别（``Medium`` / ``High(管理员)`` …）；拿不到返回空串。
+
+    纯 Win32 查询、不依赖 pywin32，任何一步失败都安静返回空串 —— 它只服务诊断。
+    """
+    if not pid or not hasattr(ctypes, "windll"):
+        return ""
+    try:
+        advapi32 = ctypes.windll.advapi32
+        # ctypes 默认按 32 位截断返回值，SID 相关 API 必须显式声明，否则指针被截断
+        advapi32.GetSidSubAuthorityCount.argtypes = [ctypes.c_void_p]
+        advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(ctypes.c_ubyte)
+        advapi32.GetSidSubAuthority.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+        advapi32.GetSidSubAuthority.restype = ctypes.POINTER(wintypes.DWORD)
+        advapi32.OpenProcessToken.argtypes = [
+            wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)
+        ]
+        advapi32.GetTokenInformation.argtypes = [
+            wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+            wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+        ]
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return ""
+        try:
+            token = wintypes.HANDLE()
+            if not advapi32.OpenProcessToken(handle, _TOKEN_QUERY, ctypes.byref(token)):
+                return ""
+            try:
+                size = wintypes.DWORD(0)
+                advapi32.GetTokenInformation(
+                    token, _TOKEN_INTEGRITY_LEVEL, None, 0, ctypes.byref(size)
+                )
+                if not size.value:
+                    return ""
+                buffer = ctypes.create_string_buffer(size.value)
+                if not advapi32.GetTokenInformation(
+                    token, _TOKEN_INTEGRITY_LEVEL, buffer, size.value, ctypes.byref(size)
+                ):
+                    return ""
+                label = ctypes.cast(
+                    buffer, ctypes.POINTER(_TokenMandatoryLabel)
+                ).contents
+                if not label.Label.Sid:
+                    return ""
+                sid = ctypes.c_void_p(label.Label.Sid)
+                count = advapi32.GetSidSubAuthorityCount(sid).contents.value
+                if count < 2:
+                    return ""
+                rid = advapi32.GetSidSubAuthority(sid, count - 1).contents.value
+                return _INTEGRITY_NAMES.get(rid, "0x%04X" % rid)
+            finally:
+                kernel32.CloseHandle(token)
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:  # pragma: no cover - 诊断辅助，拿不到就算了
+        return ""
+
+
+# --------------------------------------------------------------------------- 线程
+
+
+@dataclass(frozen=True)
+class _ComSnapshot:
+    """COM 线程最后一次读到的放映快照。
+
+    不可变对象 + 整体替换 ⇒ 读取端拿到的永远是一份**自洽**的数据快照，
+    不用加锁、更不会因为「锁被一个卡住的 COM 调用握着」而把窗口线程一起拖死
+    （这点很关键：跨线程传状态时，**绝不能让锁跨越可能阻塞的调用**）。
+    """
+
+    presenting: bool = False
+    slide_index: int = 0
+    slide_total: int = 0
+    window_handle: int = 0
+    status: str = "尚未探测"
+    at: float = 0.0       # 采集时刻（time.monotonic）
+    ok_at: float = 0.0    # 最后一次「确认在放映」的时刻
+
+    def age(self) -> float:
+        """距上次刷新过了多少秒；从未刷新过返回 ``-1``。"""
+        return time.monotonic() - self.at if self.at else -1.0
+
+
+class _ComThread(QThread):
+    """**只做 COM** 的线程。
+
+    为什么必须和窗口探测分开：PowerPoint 是单套间（STA），**它自己的主线程不抽消息时
+    任何跨进程调用都会一直排队**（放映中、弹模态框、保存 / 另存为时都会）。之前
+    COM 与窗口枚举挤在同一条线程里，那次 ``GetActiveObject`` /
+    ``SlideShowWindows.Count`` 一卡住，**整条探测链路跟着死**：日志静默、
+    控制条永远不出现 —— 正是用户报的「明明在放映却毫无反应」。
+
+    拆开之后：窗口探测（纯 Win32、毫秒级）永远不受影响，控制条照常出现；
+    COM 卡住只退化成「页码 0/0 + 翻页走键盘回退」，而且看护逻辑会把它明确写进日志。
+    """
+
+    def __init__(self, interval_ms: int = 800, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
-        self._interval_ms = max(100, int(interval_ms))
+        self._interval_ms = max(300, int(interval_ms))
         self._running = True
         self._com = _ComBackend()
         self._commands: "queue.Queue[Tuple[str, tuple]]" = queue.Queue()
         self._wake = threading.Event()
-        self._last = PresentationState()
-        self._slow_logged = False
-        # 每次探测刷新的 COM 通道状态（主线程只在诊断时读一下，够用）
-        self._com_status = "尚未探测"
+        self._snapshot = _ComSnapshot()
+        self._ticks = 0
+        self.heartbeat = _Heartbeat("COM 线程")
 
     # ---------------------------------------------------- 主线程侧（非阻塞）
 
     def request(self, name: str, *args) -> None:
-        """投递一个控制命令，交给工作线程执行，立即返回。"""
+        """投递一个控制命令，交给 COM 线程执行，立即返回。"""
         self._commands.put((name, args))
         self._wake.set()
 
+    @property
+    def snapshot(self) -> _ComSnapshot:
+        return self._snapshot
+
     def poke(self) -> None:
-        """唤醒一次探测（不等下一个周期）。"""
         self._wake.set()
 
     def set_probe_interval(self, interval_ms: int) -> None:
-        self._interval_ms = max(100, int(interval_ms))
+        self._interval_ms = max(300, int(interval_ms))
         self._wake.set()
 
     def stop_async(self) -> None:
         self._running = False
         self._wake.set()
 
-    # ------------------------------------------------------------ 工作线程
-
     def stop(self) -> None:  # pragma: no cover - 兼容调用习惯
         self.stop_async()
         self.wait(3000)
+
+    # ------------------------------------------------------------ COM 线程
 
     def run(self) -> None:
         pythoncom = None
@@ -696,25 +904,11 @@ class _ProbeThread(QThread):
             while self._running:
                 try:
                     self._drain_commands()
-                    started = time.perf_counter()
-                    state = self._probe_once()
-                    elapsed_ms = (time.perf_counter() - started) * 1000
-                    if elapsed_ms > 1500 and not self._slow_logged:
-                        log.warning(
-                            "一次放映探测耗时 %.0fms（演示程序可能正忙）；"
-                            "探测已在独立线程，界面不受影响",
-                            elapsed_ms,
-                        )
-                        self._slow_logged = True
-                    if state.marker != self._last.marker:
-                        self._log_change(state)
-                        self._last = state
-                        self.stateReady.emit(
-                            state.active, state.slide_index, state.slide_total,
-                            state.window_handle, state.title, state.source,
-                        )
-                except Exception:  # 探测异常不能中断轮询
-                    log.exception("放映状态探测失败")
+                    self.heartbeat.enter("读放映快照")
+                    self._refresh_snapshot()
+                except Exception:  # COM 异常不能中断轮询
+                    log.exception("放映状态 COM 探测失败")
+                    self.heartbeat.finish(0.0, "上一轮出错")
                 # 可被 poke() 提前唤醒，不必死等一个整周期
                 self._wake.wait(self._interval_ms / 1000.0)
                 self._wake.clear()
@@ -724,6 +918,48 @@ class _ProbeThread(QThread):
                     pythoncom.CoUninitialize()
                 except Exception:  # pragma: no cover
                     pass
+
+    def _refresh_snapshot(self) -> None:
+        """读一次页码 / 放映窗口并整体替换快照（只在 COM 线程调用）。"""
+        started = time.perf_counter()
+        previous = self._snapshot
+        try:
+            numbers = self._com.read_state()
+        except Exception:
+            log.debug("读取放映页码失败", exc_info=True)
+            numbers = None
+        if numbers is not None:
+            presenting = True
+            slide_index, slide_total, hwnd = numbers
+        else:
+            try:
+                presenting = self._com.is_presenting()
+            except Exception:
+                presenting = False
+            slide_index = slide_total = hwnd = 0
+
+        # 状态文本只服务诊断，却要额外两次跨进程属性读取（也是最容易排队的调用），
+        # 所以每 5 个周期刷新一次即可 —— 卡住时诊断会同时给出「静默 N 秒」。
+        self._ticks += 1
+        if self._ticks % 5 == 1 or presenting != previous.presenting or not previous.status:
+            try:
+                status = self._com.describe()
+            except Exception:  # pragma: no cover - 只服务诊断
+                status = "COM 状态读取失败"
+        else:
+            status = previous.status
+
+        now = time.monotonic()
+        self._snapshot = _ComSnapshot(
+            presenting=bool(presenting),
+            slide_index=int(slide_index or 0),
+            slide_total=int(slide_total or 0),
+            window_handle=int(hwnd or 0),
+            status=status,
+            at=now,
+            ok_at=now if presenting else previous.ok_at,
+        )
+        self.heartbeat.finish((time.perf_counter() - started) * 1000)
 
     def _drain_commands(self) -> None:
         while True:
@@ -738,12 +974,19 @@ class _ProbeThread(QThread):
         if handler is None:
             log.warning("未知的控制命令: %s", name)
             return
+        self.heartbeat.enter("执行命令「%s」" % name)
         try:
             handler(*args)
         except Exception:
             log.exception("执行「%s」失败", name)
+        finally:
+            # 命令执行完立刻刷一次，页码不必再等一个周期
+            try:
+                self._refresh_snapshot()
+            except Exception:  # pragma: no cover
+                pass
 
-    # 命令实现（只在探测线程被调用）
+    # 命令实现（只在 COM 线程被调用）
 
     def _cmd_next(self, hwnd: int) -> None:
         if not self._com.next_slide():
@@ -776,20 +1019,105 @@ class _ProbeThread(QThread):
             if vk is not None:
                 send_slideshow_key(vk, hwnd)
 
+
+class _ProbeThread(QThread):
+    """窗口探测线程：**一次 COM 都不碰**。
+
+    只用 ``EnumWindows`` 那一套（纯 Win32，毫秒级）。页码从 COM 线程的快照里取
+    （滞后最多一个 COM 周期），于是「PowerPoint 正忙着放映、COM 调用在排队」
+    再也不会把状态上报挡在门外 —— 控制条该出现就一定出现。
+
+    这条线程唯一还能卡住的理由是「日志写入阻塞」（stdout 是一条没人读的管道时，
+    写满 64KB 就会把调用它的线程按在那里），看护定时器会把它记进日志。
+    """
+
+    # 用基本类型而不是 object：跨线程排队连接不需要 Python 对象做元类型转换
+    stateReady = Signal(bool, int, int, int, str, str)
+
+    def __init__(
+        self,
+        interval_ms: int = 400,
+        com: Optional[_ComThread] = None,
+        parent: Optional[QObject] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._interval_ms = max(100, int(interval_ms))
+        self._com = com
+        self._running = True
+        self._wake = threading.Event()
+        self._last = PresentationState()
+        # 近失窗口（疑似放映却被拒）的日志节流：同一签名 30 秒最多一条
+        self._near_miss_sig = ""
+        self._near_miss_at = 0.0
+        self.heartbeat = _Heartbeat("窗口探测线程")
+
+    # ---------------------------------------------------- 主线程侧（非阻塞）
+
+    def poke(self) -> None:
+        """唤醒一次探测（不等下一个周期）。"""
+        self._wake.set()
+
+    def set_probe_interval(self, interval_ms: int) -> None:
+        self._interval_ms = max(100, int(interval_ms))
+        self._wake.set()
+
+    def stop_async(self) -> None:
+        self._running = False
+        self._wake.set()
+
+    def stop(self) -> None:  # pragma: no cover - 兼容调用习惯
+        self.stop_async()
+        self.wait(3000)
+
+    # ------------------------------------------------------------ 工作线程
+
+    def run(self) -> None:
+        state = PresentationState()
+        try:
+            while self._running:
+                self.heartbeat.enter("枚举顶层窗口")
+                started = time.perf_counter()
+                try:
+                    state = self._probe_once()
+                except Exception:  # 探测异常不能中断轮询
+                    log.exception("放映状态窗口探测失败")
+                    state = PresentationState()
+                    self.heartbeat.finish(
+                        (time.perf_counter() - started) * 1000, "上一轮出错"
+                    )
+                else:
+                    elapsed_ms = (time.perf_counter() - started) * 1000
+                    self.heartbeat.finish(elapsed_ms)
+                    if elapsed_ms > SLOW_CYCLE_MS:
+                        log.warning(
+                            "一次窗口探测耗时 %.0fms（纯 Win32 枚举不该这么慢）", elapsed_ms
+                        )
+                if state.marker != self._last.marker:
+                    self._log_change(state)
+                    self._last = state
+                    self.stateReady.emit(
+                        state.active, state.slide_index, state.slide_total,
+                        state.window_handle, state.title, state.source,
+                    )
+                if not state.active:
+                    self._report_near_miss()
+                # 可被 poke() 提前唤醒，不必死等一个整周期
+                self._wake.wait(self._interval_ms / 1000.0)
+                self._wake.clear()
+        finally:
+            self.heartbeat.enter("已退出")
+
     # ------------------------------------------------------------ 探测本身
 
     def _probe_once(self) -> PresentationState:
-        """单次探测（窗口类优先，COM 兜底）。只在探测线程调用。"""
-        try:
-            self._com_status = self._com.describe()
-        except Exception:  # pragma: no cover - COM 状态只服务诊断，失败无所谓
-            self._com_status = "COM 状态读取失败"
+        """单次探测：**窗口通道说了算，COM 只补页码**。只在窗口线程调用。"""
         hwnd, title = find_slideshow_window()
+        snapshot = self._com.snapshot if self._com is not None else _ComSnapshot()
         if hwnd:
             slide_index = slide_total = 0
-            numbers = self._com.read_state()
-            if numbers is not None:
-                slide_index, slide_total, _ = numbers
+            # 快照里还留着上一场放映的页码时不要串页
+            if not snapshot.window_handle or snapshot.window_handle == hwnd:
+                slide_index, slide_total = snapshot.slide_index, snapshot.slide_total
             return PresentationState(
                 active=True,
                 slide_index=slide_index,
@@ -798,23 +1126,13 @@ class _ProbeThread(QThread):
                 title=title,
                 source="window",
             )
-
         # 窗口类没探到：COM 报告有放映窗口也算放映中
-        try:
-            numbers = self._com.read_state()
-        except Exception:
-            numbers = None
-        if numbers is not None or self._com.is_presenting():
-            if numbers is None:
-                numbers = (0, 0, 0)
-            slide_index, slide_total, com_hwnd = numbers
-            if int(slide_index) < 0 or int(slide_total) < 0:
-                slide_index, slide_total = 0, 0
+        if snapshot.presenting:
             return PresentationState(
                 active=True,
-                slide_index=int(slide_index),
-                slide_total=int(slide_total),
-                window_handle=max(int(com_hwnd), 0),
+                slide_index=snapshot.slide_index,
+                slide_total=snapshot.slide_total,
+                window_handle=max(int(snapshot.window_handle), 0),
                 title="",
                 source="com",
             )
@@ -834,12 +1152,51 @@ class _ProbeThread(QThread):
         elif state.active:
             log.info("放映状态更新: 页码=%s/%s", state.slide_index, state.slide_total)
 
+    def _report_near_miss(self) -> None:
+        """未检测到放映时，看一眼**前台窗口**有没有「疑似放映却被拒」的。
+
+        用户报障最常见的形态是「明明在放映却毫无反应」——这条日志把拒绝
+        原因直接写进日志，不用再让用户跑诊断脚本。只看前台窗口，代价可忽略；
+        同一签名 30 秒最多一条，不刷屏。
+        """
+        if not hasattr(ctypes, "windll"):
+            return
+        try:
+            fg = int(ctypes.windll.user32.GetForegroundWindow() or 0)
+            if not fg:
+                return
+            facts = _window_facts(fg)
+        except OSError:  # 窗口在查询过程中销毁是常态
+            return
+        reason = _near_miss_reason(facts)
+        if reason is None:
+            return
+        hwnd, class_name, title, pid, _visible, _rect = facts
+        sig = f"{hwnd}:{reason}"
+        now = time.monotonic()
+        if sig == self._near_miss_sig and now - self._near_miss_at < 30.0:
+            return
+        self._near_miss_sig = sig
+        self._near_miss_at = now
+        log.info(
+            "疑似放映窗口未判定为放映: hwnd=0x%08X class=%r title=%r proc=%s 原因=%s"
+            "（若这确实是放映窗口，把 class/proc 填进 "
+            "presentation.window_classes / presentation.process_names）",
+            hwnd, class_name, title, _process_name(pid) or "?", reason,
+        )
+
 
 class PptController(QObject):
     """放映状态轮询 + 放映控制的**独立**入口。
 
-    对外的用法没变，但内部的探测与所有 COM 调用都跑在
-    :class:`_ProbeThread` 里，主线程只收发信号，**永不被演示程序拖住**::
+    内部是两条后台线程 + 一个看护定时器：
+
+    * :class:`_ProbeThread` —— 纯 Win32 窗口枚举，**探测的唯一权威**；
+    * :class:`_ComThread` —— 全部 COM 读写与放映控制命令（可能被 PowerPoint 拖住）；
+    * 主线程看护定时器 —— 两条线程静默超时就往日志写「卡在哪」，主线程永远不会被拖住。
+
+    于是「放映中检测没反应」这类故障不可能再是静默的：要么探测正常工作，
+    要么日志里明明白白写着哪条线程卡在哪个阶段、卡了多久。
 
         ppt = PptController(interval_ms=400)
         ppt.stateChanged.connect(on_state)
@@ -858,8 +1215,12 @@ class PptController(QObject):
     ) -> None:
         super().__init__(parent)
         self._state = PresentationState()
-        self._thread = _ProbeThread(interval_ms, self)
+        self._com = _ComThread(max(600, int(interval_ms) * 2), self)
+        self._thread = _ProbeThread(interval_ms, self._com, self)
         self._thread.stateReady.connect(self._on_state_ready)
+        self._watchdog = QTimer(self)
+        self._watchdog.setInterval(WATCHDOG_INTERVAL_MS)
+        self._watchdog.timeout.connect(self._on_watchdog)
         self.apply_config(config)
 
     # ------------------------------------------------------------------ 配置
@@ -892,22 +1253,57 @@ class PptController(QObject):
     # ------------------------------------------------------------------ 生命周期
 
     def start(self) -> None:
-        if not self._thread.isRunning():
-            self._thread.start()
+        for thread in (self._com, self._thread):
+            if not thread.isRunning():
+                thread.start()
+        if not self._watchdog.isActive():
+            self._watchdog.start()
 
     def stop(self) -> None:
         self._thread.stop_async()
+        self._com.stop_async()
+        self._watchdog.stop()
 
     def set_interval(self, interval_ms: int) -> None:
         self._thread.set_probe_interval(interval_ms)
+        # COM 比窗口探测慢一档：跨进程调用本身就贵，没必要跟着 400ms 跑
+        self._com.set_probe_interval(max(600, int(interval_ms) * 2))
 
     def refresh_now(self) -> None:
         self._thread.poke()
+        self._com.poke()
 
     def shutdown(self) -> None:
         self._thread.stop_async()
-        if self._thread.isRunning():
-            self._thread.wait(3000)
+        self._com.stop_async()
+        self._watchdog.stop()
+        for thread in (self._thread, self._com):
+            if thread.isRunning():
+                thread.wait(3000)
+
+    # ------------------------------------------------------------------ 看护
+
+    def _on_watchdog(self) -> None:
+        """两条后台线程的看护：静默太久就把「卡在哪」写进日志。
+
+        跑在**主线程**（QTimer），所以即使两条工作线程全卡死，这条告警照样能出来
+        ——「日志里什么都没有」这种最难查的情况就此绝迹。
+        """
+        now = time.monotonic()
+        for heartbeat in (self._thread.heartbeat, self._com.heartbeat):
+            if heartbeat.idle_seconds() < WATCHDOG_STALE_S:
+                heartbeat.warned_at = 0.0  # 恢复正常，下次卡住可以再报
+                continue
+            if heartbeat.warned_at and now - heartbeat.warned_at < WATCHDOG_REPEAT_S:
+                continue
+            heartbeat.warned_at = now
+            if heartbeat is self._com.heartbeat:
+                hint = ("COM 卡住不影响窗口探测，控制条该出现还是出现；"
+                        "受影响的是页码与 COM 翻页（会退化成键盘回退）")
+            else:
+                hint = ("窗口探测只做 Win32 枚举，慢成这样通常是日志输出被阻塞"
+                        "（stdout 管道写满 / 调试控制台没人读）或系统整体卡顿")
+            log.warning("放映链路卡住: %s —— %s", heartbeat.describe(), hint)
 
     # ------------------------------------------------------------------ 信号
 
@@ -940,19 +1336,40 @@ class PptController(QObject):
     def diagnose(self) -> str:
         """返回一段人读的诊断信息（写进日志，用于真机排查）。
 
-        **放映时跑一次这份诊断就能定位**：它会把当前所有「像放映窗口」的
-        顶层窗口连同类名 / 标题 / 进程名 / 矩形一起列出来——如果真正的放映
-        窗口在列表里但没被认出来，把它的类名或进程名填进
-        ``presentation.window_classes`` / ``presentation.process_names`` 即可。
+        这份诊断必须**能自证**：先给两条线程的心跳（卡住时会直接写「卡在哪个阶段、
+        卡了多久」），再给窗口候选清单、前台窗口、权限级别对照，最后给结论。
+        放映时跑一次就能定位到具体环节，不必再靠猜。
         """
         lines = ["PPT 控制器诊断:"]
-        lines.append(f"  探测线程运行中: {self._thread.isRunning()} "
-                     f"间隔 {self._thread._interval_ms}ms")
+        for heartbeat in (self._thread.heartbeat, self._com.heartbeat):
+            lines.append(f"  {heartbeat.describe()}")
+
+        com_idle = self._com.heartbeat.idle_seconds()
+        if com_idle >= WATCHDOG_STALE_S:
+            lines.append(
+                f"  ⚠ COM 线程已静默 {com_idle:.1f}s 没有结果 —— 大概率卡在 PowerPoint 的"
+                "跨进程调用里（放映中 / 弹模态框 / 保存时它不抽消息）。窗口探测与 COM "
+                "是两条独立线程，控制条不受影响；受影响的是页码与 COM 翻页 / 笔 / 退出"
+            )
+        probe_idle = self._thread.heartbeat.idle_seconds()
+        if probe_idle >= WATCHDOG_STALE_S:
+            lines.append(
+                f"  ⚠ 窗口探测线程已静默 {probe_idle:.1f}s —— 它只做 Win32 枚举（应为毫秒级），"
+                "请检查日志输出是否被阻塞（stdout 管道写满 / 调试控制台没人读）"
+            )
+
         lines.append(
             f"  当前状态: active={self._state.active} source={self._state.source!r} "
-            f"hwnd=0x{self._state.window_handle:08X}"
+            f"hwnd=0x{self._state.window_handle:08X} "
+            f"页码={self._state.slide_index}/{self._state.slide_total}"
         )
-        lines.append(f"  COM 通道: {self._thread._com_status}")
+        snapshot = self._com.snapshot
+        age = snapshot.age()
+        lines.append(
+            f"  COM 快照: {snapshot.status}"
+            + ("（还没刷新过）" if age < 0 else f"（距上次刷新 {age:.1f}s）")
+        )
+
         hwnd, title = find_slideshow_window()
         lines.append(f"  窗口探测: hwnd=0x{hwnd:08X} title={title!r} "
                      f"(类名白名单 {sorted(SLIDESHOW_WINDOW_CLASSES)})")
@@ -971,6 +1388,7 @@ class PptController(QObject):
 
         user32 = ctypes.windll.user32
         scored: list[tuple[int, str]] = []
+        demo_pids: dict[int, str] = {}
         for facts in windows:
             cand_hwnd, class_name, cand_title, pid, visible, rect = facts
             if not visible:
@@ -984,6 +1402,8 @@ class PptController(QObject):
                 continue
             process = _process_name(pid) if (title_hint or fullscreen) else ""
             known_process = process in SLIDESHOW_PROCESS_NAMES
+            if known_process:
+                demo_pids.setdefault(pid, process)
             caption = bool(
                 user32.GetWindowLongW(wintypes.HWND(cand_hwnd), GWL_STYLE) & WS_CAPTION
             )
@@ -1005,40 +1425,64 @@ class PptController(QObject):
         lines.append("  可见顶层窗口中的可疑者（放映时放映窗口应在这里，"
                      "且「判定=放映中」应当出现一次；按相关度排序）:")
         lines.extend(listed or ["    （无）"])
-        # 演示软件在跑但 COM 连不上 —— 十有八九是 UAC 完整性级别不一致：
-        # ROT 按完整性级别隔离，级别不同就互相看不见（实测：本进程 High +
-        # PowerPoint Medium 时 ROT 条目数为 0，GetActiveObject 直接 0x800401E3）。
-        if "未连接" in self._thread._com_status and frames:
-            lines.append(
-                "  提示: 演示软件在运行但 COM 连不上 —— 通常本程序与演示软件的"
-                "**权限级别不一致**（一个以管理员运行、另一个不是）。UAC 会按完整性"
-                "级别隔离 COM，连不上时翻页 / 笔 / 页码 / 退出放映只剩键盘回退。"
-                "请以与演示软件**相同**的权限级别运行 Luminalium。"
-            )
+
+        # 前台窗口：看「用户眼前是什么」，很多误判一眼就能看出来
+        try:
+            fg = int(user32.GetForegroundWindow() or 0)
+            if fg:
+                fg_hwnd, fg_class, fg_title, _fg_pid, fg_visible, _fg_rect = _window_facts(fg)
+                lines.append(
+                    f"  前台窗口: hwnd=0x{fg_hwnd:08X} class={fg_class!r} "
+                    f"title={fg_title[:36]!r} visible={fg_visible} "
+                    f"判定={'放映中' if _looks_like_slideshow((fg_hwnd, fg_class, fg_title, _fg_pid, fg_visible, _fg_rect)) else '否'}"
+                )
+        except OSError:  # pragma: no cover
+            pass
+
+        # 权限级别对照 —— 「COM 连不上」的头号原因，实测一遍比讲道理有用
+        own_level = _process_integrity(ctypes.windll.kernel32.GetCurrentProcessId())
+        if own_level:
+            parts = [f"本程序={own_level}"]
+            mismatch = False
+            for pid, process in sorted(demo_pids.items(), key=lambda item: item[1]):
+                level = _process_integrity(pid) or "未知"
+                if level not in ("未知", own_level):
+                    mismatch = True
+                parts.append(f"{process}={level}")
+            lines.append("  权限级别（UAC）: " + "，".join(parts))
+            if mismatch:
+                lines.append(
+                    "  ⚠ 权限级别不一致 —— UAC 按完整性级别隔离 COM（运行对象表），"
+                    "级别不同就互相看不见，注入按键也会被 UIPI 挡掉。"
+                    "请把 Luminalium 与演示软件设成**相同**的权限级别（通常都是普通启动）"
+                )
+
         if not self._state.active:
             lines.append(
-                "  结论: 未检测到放映，顶层窗口不会显示。若此时确实在放映，"
-                "把上面候选里的 class / proc 填进 presentation.window_classes "
-                "/ presentation.process_names"
+                "  结论: 三条通道都没判定为放映（窗口类 / 进程兜底 / COM）。"
+                "若此时确实在放映，把上面候选里的 class / proc 填进 "
+                "presentation.window_classes / presentation.process_names"
             )
+        else:
+            lines.append("  结论: 判定为正在放映，顶层窗口应当已按屏幕铺满并显示控制条")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------ 控制
 
     def next_slide(self, hwnd: int = 0) -> bool:
-        self._thread.request("next", int(hwnd or 0))
+        self._com.request("next", int(hwnd or 0))
         return True
 
     def previous_slide(self, hwnd: int = 0) -> bool:
-        self._thread.request("previous", int(hwnd or 0))
+        self._com.request("previous", int(hwnd or 0))
         return True
 
     def goto_slide(self, index: int, hwnd: int = 0) -> bool:
-        self._thread.request("goto", int(hwnd or 0), int(index))
+        self._com.request("goto", int(hwnd or 0), int(index))
         return True
 
     def exit_slideshow(self, hwnd: int = 0) -> bool:
-        self._thread.request("exit", int(hwnd or 0))
+        self._com.request("exit", int(hwnd or 0))
         return True
 
     def set_tool(self, tool: str, hwnd: int = 0) -> bool:
@@ -1046,10 +1490,10 @@ class PptController(QObject):
         if tool not in TOOL_TO_POINTER:
             log.warning("未知工具: %s", tool)
             return False
-        self._thread.request("tool", int(hwnd or 0), tool)
+        self._com.request("tool", int(hwnd or 0), tool)
         return True
 
     def clear_screen(self, hwnd: int = 0) -> bool:
         """清屏：擦除本页墨迹。"""
-        self._thread.request("clear", int(hwnd or 0))
+        self._com.request("clear", int(hwnd or 0))
         return True

@@ -46,9 +46,22 @@ def setup_logging(level: str = "INFO") -> None:
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
 
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(formatter)
-    root.addHandler(stream_handler)
+    # 只在**真终端**上再挂一份 stdout 日志。
+    #
+    # 为什么必须判断：Windows 管道的缓冲区写满（一般 64KB）时，写入方会被**阻塞**，
+    # 而不是丢弃。从 VS Code 的「调试控制台」这类没有人持续读取的管道启动时，
+    # 后台探测线程只要在 log 调用上撞到满缓冲区，就会被永远按在那里 ——
+    # 现象是「线程 isRunning=True 但一个探测周期都不完成、日志静默、控制条不出现」。
+    # 日志文件本身不受影响（先写文件再写 stdout），所以这里直接跳过最安全。
+    if sys.stdout is not None and sys.stdout.isatty():
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(formatter)
+        root.addHandler(stream_handler)
+    else:
+        log.info(
+            "标准输出不是终端（管道 / 调试控制台），已跳过控制台日志以免写满管道"
+            "阻塞后台探测线程；日志见 %s", LOG_DIR / "luminalium.log",
+        )
 
 
 class LuminaliumApplication:

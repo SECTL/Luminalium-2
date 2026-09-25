@@ -54,6 +54,7 @@ CORNERS: Dict[str, tuple[str, str]] = {
 # 这两个坑本项目都踩过。正确做法：一个 bit 都不碰，透明渲染与点击穿透
 # 互不干涉。
 GWL_EXSTYLE = -20
+WS_EX_TOPMOST = 0x00000008
 WS_EX_TRANSPARENT = 0x00000020  # 仅兜底方案使用：整窗穿透（命中测试跳过）
 WS_EX_LAYERED = 0x00080000      # Qt 透明窗口自带 —— 只读，用于自检与诊断
 WS_EX_NOACTIVATE = 0x08000000
@@ -261,6 +262,17 @@ def monitor_rect_for_window(hwnd: int) -> Optional[tuple[int, int, int, int]]:
         return None
 
 
+def _covers_monitor(hwnd: int, ratio: float = 0.9) -> bool:
+    """窗口是否铺满它所在的显示器（面积占比 ≥ ``ratio``）。"""
+    rect = _window_rect(hwnd)
+    monitor = monitor_rect_for_window(hwnd)
+    if rect is None or monitor is None:
+        return False
+    win_area = max(0, rect[2] - rect[0]) * max(0, rect[3] - rect[1])
+    mon_area = max(1, (monitor[2] - monitor[0]) * (monitor[3] - monitor[1]))
+    return win_area / mon_area >= ratio
+
+
 class WindowManager(QObject):
     """集中管理所有顶层窗口。"""
 
@@ -296,6 +308,8 @@ class WindowManager(QObject):
         self._overlay_ever_shown = False
         # 连续多少次自检发现「排在放映窗口之下」（用于告警，不是每次都刷屏）
         self._below_slideshow = 0
+        # 置顶层里排在我们之上的窗口集合签名（变化才告警一次）
+        self._above_sig = ""
         # 手动显示（托盘菜单）：探测不到放映时也能把控制条叫出来
         self._manual_shown = False
 
@@ -338,10 +352,11 @@ class WindowManager(QObject):
         window.hide()
 
     def _bind_panel(self) -> None:
-        try:
-            self.panel.closing.connect(self._on_panel_closing)
-        except (AttributeError, TypeError):  # pragma: no cover - 平台差异
-            log.debug("无法连接窗口 closing 信号，改由 hide_on_deactivate 处理")
+        # 关闭拦截写在 QML 侧（``onClosing`` + ``event.accepted = false``）。
+        # **不要**在这里把 Python 槽连到 ``closing(QQuickCloseEvent*)``：
+        # PySide 无法把 QQuickCloseEvent 转成 Python 参数，点关闭按钮时抛
+        # TypeError: Cannot call meta function ... cannot be converted，
+        # 冒泡成未捕获异常直接把应用打死（2026-09-25 真机日志实锤）。
         self.panel.activeChanged.connect(self._on_panel_active_changed)
 
     def _create_panel(self) -> None:
@@ -351,13 +366,6 @@ class WindowManager(QObject):
             raise RuntimeError(f"快捷面板根节点必须是 Window: {qml_path}")
         self.panel = root
         self._bind_panel()
-
-    def _on_panel_closing(self, *args: Any) -> None:
-        """拦截关闭按钮：托盘常驻应用只隐藏，不销毁窗口。"""
-        event = args[0] if args else None
-        if event is not None and hasattr(event, "ignore"):
-            event.ignore()
-        self.hide_panel()
 
     def _on_panel_active_changed(self) -> None:
         if not self._config.get("quick_panel.hide_on_deactivate", True):
@@ -739,25 +747,75 @@ class WindowManager(QObject):
         ``SetWindowPos(HWND_TOPMOST)`` 把窗口放到置顶层顶端，但放映窗口同样
         是 TOPMOST 且会自己重申；压不过去的表现就是「窗口可见但被盖住」。
         这里不猜，直接问系统：同一顶层序列里我们排在它前面还是后面。
+
+        另外扫描**整个置顶层**里排在我们之上的可见窗口（别的常驻overlay，
+        例如 Class Widgets 2 的全屏 TOPMOST 桌面窗口）：谁在我们上面就点名
+        记录，集合变化才记一次，避免刷屏。
         """
         slideshow = self._ppt.state.window_handle
         if not slideshow:
             self._below_slideshow = 0
-            return
-        hwnd = int(self.overlay.winId())
-        if not hwnd or hwnd == slideshow:
-            return
-        if _zorder_above(hwnd, slideshow) is False:
-            self._below_slideshow += 1
-            if self._below_slideshow >= 3:
-                # 已经重申过多次仍然在下面：不是竞态，是压根压不过去
-                log.error(
-                    "顶层窗口排在放映窗口(0x%08X)之下，重申置顶 %d 次仍失败；"
-                    "放映程序可能用了独占呈现，或它的窗口重申频率高于本应用",
-                    slideshow, self._below_slideshow,
-                )
         else:
-            self._below_slideshow = 0
+            hwnd = int(self.overlay.winId())
+            if hwnd and hwnd != slideshow:
+                if _zorder_above(hwnd, slideshow) is False:
+                    self._below_slideshow += 1
+                    if self._below_slideshow >= 3:
+                        # 已经重申过多次仍然在下面：不是竞态，是压根压不过去
+                        log.error(
+                            "顶层窗口排在放映窗口(0x%08X)之下，重申置顶 %d 次仍失败；"
+                            "放映程序可能用了独占呈现，或它的窗口重申频率高于本应用",
+                            slideshow, self._below_slideshow,
+                        )
+                else:
+                    self._below_slideshow = 0
+
+        above = self._visible_topmost_above()
+        sig = ";".join(above)
+        if sig != self._above_sig:
+            self._above_sig = sig
+            if above:
+                log.warning(
+                    "置顶层里排在本应用之上的可见窗口（可能盖住控制条）: %s",
+                    " | ".join(above),
+                )
+
+    def _visible_topmost_above(self, cover_only: bool = True) -> list[str]:
+        """置顶层里排在**本应用之上**的可见窗口，``["hwnd class title"]``。
+
+        从自己的窗口用 ``GW_HWNDPREV`` 一路向上走：这条路径无歧义，走到的
+        每一个都是「在我们之上」。（早前用「从 ``GW_HWNDFIRST`` 向下走到遇到
+        自己为止」，若 256 步内没遇到自己就会把整带都误报成在上方。）
+
+        ``cover_only=True`` 时只保留**铺满所在显示器**的窗口：实测置顶带里
+        绝大多数是系统/驱动的隐藏辅助窗（AMD DVR overlay、TabTip、
+        ThumbnailDeviceHelper 等），它们不可能盖住控制条，报出来只有噪音。
+        会遮挡的只有铺满整屏的窗口——例如桌面小组件类应用的全屏叠加层
+        （Class Widgets 2 就是）。注意：铺满 ≠ 一定不透明，z 序也不等于
+        视觉遮挡（实测 CW2 虽在 z 序之上，但它是逐像素透明的，控制条照样可见），
+        所以这条只作线索，不作结论。
+        """
+        if self.overlay is None or not hasattr(ctypes, "windll"):
+            return []
+        user32 = ctypes.windll.user32
+        hwnd_self = int(self.overlay.winId())
+        if not hwnd_self:
+            return []
+        out: list[str] = []
+        hwnd = user32.GetWindow(wintypes.HWND(hwnd_self), GW_HWNDPREV)
+        steps = 0
+        while hwnd and steps < 256:
+            if user32.IsWindowVisible(hwnd):
+                ex = user32.GetWindowLongW(wintypes.HWND(hwnd), GWL_EXSTYLE)
+                if ex & WS_EX_TOPMOST and (not cover_only or _covers_monitor(hwnd)):
+                    buf = ctypes.create_unicode_buffer(256)
+                    user32.GetClassNameW(wintypes.HWND(hwnd), buf, 256)
+                    cls = buf.value
+                    user32.GetWindowTextW(wintypes.HWND(hwnd), buf, 256)
+                    out.append(f"0x{int(hwnd):08X} {cls} {buf.value.strip()}")
+            hwnd = user32.GetWindow(hwnd, GW_HWNDPREV)
+            steps += 1
+        return out
 
     def _set_overlay_click_through(self, through: bool) -> None:
         """切换整窗穿透；状态不变时不写（避免高频 SetWindowLong）。"""
@@ -934,6 +992,7 @@ class WindowManager(QObject):
             f"TRANSPARENT={'Y' if style & WS_EX_TRANSPARENT else 'N'}] "
             f"cloaked={cloaked} region={region} 区域塑形={self._region_mode} "
             f"above_slideshow={above} (slideshow=0x{slideshow:08X}) "
+            f"上方TOPMOST={self._visible_topmost_above() or '无'} "
             f"显示过={self._overlay_ever_shown} 手动={self._manual_shown}"
         )
 

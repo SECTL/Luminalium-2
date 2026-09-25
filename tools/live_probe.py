@@ -99,15 +99,28 @@ def main() -> int:
     APP = app
     app.ppt.start()
 
-    QTimer.singleShot(1000, start_show)
-    QTimer.singleShot(10000, sample)
-    QTimer.singleShot(13000, stop_show)
+    # 固定定时在 PowerPoint 冷启动 / 大文件忙碌时不可靠（放映窗口可能晚于
+    # 采样点好几秒才出现），改成事件驱动：轮询等探测命中再采样。
+    deadline = 30.0  # 秒；超时也照常收尾
 
     def after() -> None:
         print("[live] 退出放映后:", app.ppt.state, app.windows.overlay.isVisible(), flush=True)
         app.qt_app.quit()
 
-    QTimer.singleShot(15000, after)
+    def poll_and_sample(elapsed: float = 0.0) -> None:
+        if app.ppt.state.active:
+            sample()
+            QTimer.singleShot(3000, stop_show)
+            QTimer.singleShot(5000, after)
+        elif elapsed >= deadline:
+            print("[live] 等待探测命中超时（30s），打印当前状态：", flush=True)
+            sample()
+            after()
+        else:
+            QTimer.singleShot(500, lambda: poll_and_sample(elapsed + 0.5))
+
+    QTimer.singleShot(1000, start_show)
+    QTimer.singleShot(1500, lambda: poll_and_sample(0.0))
     code = app.qt_app.exec()
     app.ppt.shutdown()
     return code

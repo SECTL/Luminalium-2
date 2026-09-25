@@ -126,15 +126,15 @@ Item {
 
     // ---- 图标 ----
     readonly property string overflowIcon: overflowCfg.icon !== undefined
-        ? overflowCfg.icon : "ic_fluent_more_horizontal_20_regular"
+        ? overflowCfg.icon : "ic_fluent_more_horizontal_20_filled"
     readonly property string overflowTooltip: overflowCfg.tooltip !== undefined
         ? overflowCfg.tooltip : qsTr("更多操作")
     readonly property string pagerIconPrev: pagerCfg.icon_prev !== undefined
-        ? pagerCfg.icon_prev : "ic_fluent_chevron_left_20_regular"
+        ? pagerCfg.icon_prev : "ic_fluent_chevron_left_20_filled"
     readonly property string pagerIconNext: pagerCfg.icon_next !== undefined
-        ? pagerCfg.icon_next : "ic_fluent_chevron_right_20_regular"
+        ? pagerCfg.icon_next : "ic_fluent_chevron_right_20_filled"
     readonly property string exitIcon: exitCfg.icon !== undefined
-        ? exitCfg.icon : "ic_fluent_power_20_regular"
+        ? exitCfg.icon : "ic_fluent_power_20_filled"
     readonly property string exitLabel: exitCfg.label !== undefined
         ? exitCfg.label : qsTr("退出放映")
     /*! ``default``（缺省）= 与其他按钮同款的透明圆钮 + 主题色图标；

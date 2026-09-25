@@ -130,18 +130,18 @@
   },
     "overflow": {
       "enabled": true,
-      "icon": "ic_fluent_more_horizontal_20_regular",
+      "icon": "ic_fluent_more_horizontal_20_filled",
       "tooltip": "更多操作"
     },
     "tools": [
-      { "id": "pen", "label": "笔", "icon": "ic_fluent_pen_20_regular" },
-      { "id": "eraser", "label": "橡皮", "icon": "ic_fluent_eraser_20_regular" }
+      { "id": "pen", "label": "笔", "icon": "ic_fluent_pen_20_filled" },
+      { "id": "eraser", "label": "橡皮", "icon": "ic_fluent_eraser_20_filled" }
     ],
     "actions": [
       {
         "id": "clear_screen",
         "label": "清屏",
-        "icon": "ic_fluent_broom_20_regular",
+        "icon": "ic_fluent_broom_20_filled",
         "tooltip": "清屏（擦除本页全部墨迹）"
       }
     ],
@@ -153,13 +153,13 @@
     "spacing": 8,
     "//surface_padding_x": "翻页 pill 的左右留白。Luminalium 1 的圆钮只距 pill 边缘 4px（.flipper-btn margin: 0 4px）—— 比工具条的 12 紧凑得多，这是「翻页栏更小更聚拢」的关键",
     "surface_padding_x": 4,
-    "icon_prev": "ic_fluent_chevron_left_20_regular",
-    "icon_next": "ic_fluent_chevron_right_20_regular"
+    "icon_prev": "ic_fluent_chevron_left_20_filled",
+    "icon_next": "ic_fluent_chevron_right_20_filled"
   },
   "exit": {
     "enabled": true,
     "label": "退出放映",
-    "icon": "ic_fluent_power_20_regular",
+    "icon": "ic_fluent_power_20_filled",
     "//style": "default = 与其他工具栏按钮同款的透明圆钮 + 主题色图标，缺省；danger = Luminalium 1 的 .tool-btn-danger（透明圆钮 + 红色电源图标）。强调色实底版式已按用户要求取消（2026-09-25）",
     "style": "default"
   },

@@ -231,6 +231,28 @@ def main() -> int:
         check("页码已同步", app.backend.slideIndex == 26 and app.backend.slideTotal == 41,
               f"{app.backend.slideIndex}/{app.backend.slideTotal}")
 
+        # ---- 开发中水印（开发者开关，不进设置页）----
+        wm_item = overlay.property("watermarkItem")
+        check(
+            "开发水印已挂到顶层窗口（左下角）",
+            wm_item is not None and wm_item.isVisible(),
+            str(type(wm_item).__name__ if wm_item is not None else None),
+        )
+        check("开发水印开关 = 配置 app.dev_watermark",
+              app.backend.devWatermark == (app.config.get("app.dev_watermark") is not False),
+              f"backend={app.backend.devWatermark} config={app.config.get('app.dev_watermark')}")
+        if app.windows._region_mode and wm_item is not None:
+            # 区域塑形模式下，水印若没被算进区域就会整块被裁掉（踩过思路盲区）
+            wm_local = app.windows._watermark_rect_local()
+            rects = app.windows._dock_rects_local()
+            covered = False
+            if wm_local is not None:
+                from PySide6.QtCore import QRect as _QRect
+                wr = _QRect(*wm_local)
+                covered = any(wr.intersects(_QRect(*r)) for r in rects)
+            check("开发水印在窗口区域内（区域塑形下可见）", covered,
+                  f"wm={wm_local} rects={len(rects)}")
+
         # ---- 工具栏恒横向（下中部）+ 翻页栏独立在两侧 ----
         corners_cfg = app.config.get("presentation.corners", {}) or {}
         center_groups = (corners_cfg.get("bottom_center") or {}).get("groups", [])
@@ -386,6 +408,31 @@ def main() -> int:
         app.windows.show_settings()
         settings = app.windows.settings
         check("设置窗口已创建", settings is not None)
+        if settings is not None:
+            # 设置窗口的水印：FluentWindow 内容走 default property
+            # （freeContainter），匿名 QML 类型的 type 名是 QQuickItem，
+            # 只能用「自定义属性 shown」来认它。断言它在窗口边界内 ——
+            # 曾把 leftMargin 用成 navigationView.width（那是整窗宽度的
+            # 内部项），水印被推到窗口外只剩一条边（2026-09-25）。
+            def _find_wm(item):
+                for child in item.childItems():
+                    if child.property("shown") is not None:
+                        return child
+                    found = _find_wm(child)
+                    if found is not None:
+                        return found
+                return None
+
+            wm_st = _find_wm(settings.contentItem())
+            check(
+                "设置窗口水印存在且在窗口边界内",
+                wm_st is not None
+                and wm_st.x() >= 0
+                and wm_st.x() + wm_st.width() <= settings.width()
+                and wm_st.y() + wm_st.height() <= settings.height(),
+                "未找到" if wm_st is None else
+                f"pos=({wm_st.x()},{wm_st.y()}) size={wm_st.width()}x{wm_st.height()}",
+            )
         if settings is not None:
             area = QGuiApplication.primaryScreen().availableGeometry()
             inside = (

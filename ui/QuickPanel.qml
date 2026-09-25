@@ -3,7 +3,6 @@ import QtQuick.Layouts
 import RinUI as Rin
 import Luminalium
 import "QuickPanel"
-
 /*!
     快捷面板（托盘浮窗）。
 
@@ -164,6 +163,16 @@ Rin.Window {
                 }
             }
         }
+    }
+
+    // ============================================================ 开发水印
+    // 左下角（底栏按钮在右下角，正好不冲突）；纯文字不吃点击。
+    DevWatermark {
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 10
+        anchors.bottomMargin: 8
+        z: 800
     }
 
     // ================================================== 添加快捷方式（覆盖层）

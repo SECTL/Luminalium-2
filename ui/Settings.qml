@@ -117,4 +117,17 @@ Rin.FluentWindow {
             position: Rin.Position.Bottom
         }
     ]
+
+    // ============================================================ 开发水印
+    // 内容区的左下角（导航栏右侧 —— 导航底部钉着「关于/检查更新」，不盖它们）。
+    // 注意 navigationView 本身铺满整窗，**导航栏实际宽度**要用
+    // ``navigationView.navigationBar.width``（公开 alias）。
+    // 纯文字不吃点击。
+    DevWatermark {
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: navigationView.navigationBar.width + 16
+        anchors.bottomMargin: 10
+        z: 1000
+    }
 }

@@ -116,6 +116,32 @@ class Backend(QObject):
     def uiDir(self) -> str:
         return str(UI_DIR)
 
+    @Property(bool, constant=True)
+    def devWatermark(self) -> bool:
+        """开发中水印开关（``app.dev_watermark``）。
+
+        这是**给开发者看的**开关：只存在于配置文件，设置页不出现、
+        文档不宣传 —— 用户不知道它的存在。缺省开启。
+        """
+        return self._config.get("app.dev_watermark", True) is not False
+
+    @Property(str, constant=True)
+    def devCodename(self) -> str:
+        return str(self._config.get("app.codename", "Glimmer"))
+
+    @Property(str, constant=True)
+    def deviceId(self) -> str:
+        """本机短 ID（水印第二行用）：主机名 + MAC 的 SHA1 前 8 位。
+
+        只用于开发者分辨「这是哪台测试机」，不含任何可逆的个人信息。
+        """
+        import hashlib
+        import platform
+        import uuid
+
+        raw = f"{platform.node()}|{uuid.getnode():x}"
+        return "DEV-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8].upper()
+
     @Slot(str, result=str)
     def resourceFile(self, name: str) -> str:
         """``resources/`` 下某个品牌资源（logo.svg / logo.ico / banner.png）的

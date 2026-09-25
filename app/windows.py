@@ -882,12 +882,41 @@ class WindowManager(QObject):
             if dock.isVisible() and self._dock_global_rect(dock).contains(cursor):
                 hit = True
                 break
+        if not hit:
+            # 区域塑形没生效的兜底模式下，水印也要能被看见（不穿透）。
+            wm = self._watermark_rect_local()
+            if wm is not None:
+                wm_rect = QRect(wm[0], wm[1], wm[2], wm[3])
+                origin = self.overlay.position()
+                wm_rect.translate(origin)
+                hit = wm_rect.contains(cursor)
         self._set_overlay_click_through(not hit)
 
     # ---------------------------------------------------------- 区域塑形
 
+    def _watermark_rect_local(self) -> Optional[tuple[int, int, int, int]]:
+        """左下角**开发水印**的矩形（顶层窗口局部坐标，逻辑像素）。
+
+        区域塑形会把窗口裁成「只有控制条几块」，区域外不绘制也不命中 ——
+        水印若不显式算进区域就会被整块裁掉。QML 侧在 ``TopWindow`` 上
+        用 ``watermarkItem`` 暴露这个 Item；没暴露 / 不可见就返回 None。
+        """
+        if self.overlay is None:
+            return None
+        wm = self.overlay.property("watermarkItem")
+        if not isinstance(wm, QQuickItem) or not wm.isVisible():
+            return None
+        scene = wm.mapRectToScene(QRectF(0, 0, wm.width(), wm.height())).toRect()
+        if scene.width() <= 0 or scene.height() <= 0:
+            return None
+        return (scene.x(), scene.y(), scene.width(), scene.height())
+
     def _dock_rects_local(self) -> list[tuple[int, int, int, int]]:
-        """各控制条表面矩形（顶层窗口局部坐标，逻辑像素）。"""
+        """各控制条表面矩形（顶层窗口局部坐标，逻辑像素）。
+
+        开发水印的矩形也一并返回（小余量）：区域塑形模式下不把它算进去
+        就等于看不见。
+        """
         if self.overlay is None:
             return []
         padding = int(self._config.get("presentation.region_padding", 20))
@@ -903,6 +932,16 @@ class WindowManager(QObject):
             y = max(0, rect.y() - origin.y() - padding)
             right = min(limit_w, rect.right() - origin.x() + padding)
             bottom = min(limit_h, rect.bottom() - origin.y() + padding)
+            if right > x and bottom > y:
+                rects.append((x, y, right - x, bottom - y))
+        # 开发水印：余量给小一点（文字贴边即可），别多吃可点面积
+        wm = self._watermark_rect_local()
+        if wm is not None:
+            wm_padding = 6
+            x = max(0, wm[0] - wm_padding)
+            y = max(0, wm[1] - wm_padding)
+            right = min(limit_w, wm[0] + wm[2] + wm_padding)
+            bottom = min(limit_h, wm[1] + wm[3] + wm_padding)
             if right > x and bottom > y:
                 rects.append((x, y, right - x, bottom - y))
         return rects

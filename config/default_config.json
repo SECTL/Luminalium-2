@@ -6,7 +6,11 @@
     "log_level": "INFO",
     "accent": "#4CC2FF",
     "//backdrop": "窗口背景材质：none=实色主题背景。RinUI 默认在 Win11 用 Mica / Win10 用 Acrylic，窗口会变成透明靠 DWM 合成，不支持/异常的机器上就是一片怪材质。",
-    "backdrop": "none"
+    "backdrop": "none",
+    "//codename": "开发代号（开发水印第二行用）",
+    "codename": "Glimmer",
+    "//dev_watermark": "**开发者开关，不进设置页**：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
+    "dev_watermark": true
   },
   "tray": {
     "enabled": true,

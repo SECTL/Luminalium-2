@@ -45,6 +45,7 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_bar_height": "presentation.bar_height",
     "presentation_screen_index": "presentation.screen_index",
     "presentation_shadow_enabled": "presentation.surface.shadow.enabled",
+    "presentation_surface_opacity": "presentation.surface.opacity",
     "presentation_divider_enabled": "presentation.divider.enabled",
     "presentation_pager_enabled": "presentation.pager.enabled",
     "presentation_exit_style": "presentation.exit.style",

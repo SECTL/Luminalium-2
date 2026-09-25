@@ -116,7 +116,9 @@ QtObject {
     readonly property int dockPaddingY: 9
     /*! 999 = 胶囊；``FlyoutSurface`` 会按 高/2 钳制，改条高不会失形。 */
     readonly property int dockSurfaceRadius: 999
-    readonly property real dockSurfaceOpacity: 0.97
+    /*! 底板不透明度：CW2 深色档同款 65%（``#1E1D22`` 65%）——半透明是
+        高光的前提，放映画面从底板透出来，描边才有「材质光泽」感。 */
+    readonly property real dockSurfaceOpacity: 0.65
     readonly property int dockShadowMargin: 24
 
     // ---- 底板高光（CW2 小组件同款的「渐变边框光影」）----

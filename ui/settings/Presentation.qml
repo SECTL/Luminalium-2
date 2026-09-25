@@ -91,6 +91,23 @@ Rin.FluentPage {
 
     Rin.SettingCard {
         Layout.fillWidth: true
+        title: qsTr("底板不透明度")
+        description: qsTr("底板越透，放映画面越能透出来，渐变高光越像 CW2 小组件的材质光泽；默认 65%")
+        icon.name: "ic_fluent_blur_20_regular"
+
+        Rin.SpinBox {
+            Layout.preferredWidth: 160
+            from: 20
+            to: 100
+            stepSize: 5
+            value: Backend.settings.presentation_surface_opacity !== undefined
+                ? Math.round(Backend.settings.presentation_surface_opacity * 100) : 65
+            onValueModified: Backend.setSetting("presentation_surface_opacity", value / 100)
+        }
+    }
+
+    Rin.SettingCard {
+        Layout.fillWidth: true
         title: qsTr("投影")
         description: qsTr("底板下方的柔和投影；纯色背景下关掉更清爽")
         icon.name: "ic_fluent_layer_diagonal_20_regular"

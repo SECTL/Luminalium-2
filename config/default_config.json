@@ -91,7 +91,8 @@
   "surface": {
     "//radius": "999 = 全圆胶囊（Luminalium 1：#toolbar / .flipper 都是 border-radius:999px）。FlyoutSurface 会按 高/2 钳制，改 bar_height 不会失形",
     "radius": 999,
-    "opacity": 0.97,
+    "//opacity": "底板不透明度（0~1）。**半透明是高光的前提**：CW2 小组件的底板就是 65% 的透明深色（#1E1D22 65%），放映画面从底板透出来，渐变描边才有「打在材质上的光泽」感；全不透明时高光只剩一条边线。默认取 CW2 深色档同款 0.65",
+    "opacity": 0.65,
     "//padding": "左右 9：**同心嵌套**——外壳帽半径 31 − 分段帽半径 22 = 9，两弧圆心才对齐。上下 9（内容高 44）",
     "padding_x": 9,
     "padding_y": 9,

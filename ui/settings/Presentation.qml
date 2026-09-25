@@ -39,7 +39,7 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("水平边距")
-        description: qsTr("控制条距屏幕左右边缘的距离（像素）")
+        description: qsTr("控制条距屏幕左右边缘的距离（像素，屏幕上量到的值；默认 20 对齐 Luminalium 1）")
         icon.name: "ic_fluent_arrow_bidirectional_left_right_20_regular"
 
         Rin.SpinBox {
@@ -47,7 +47,7 @@ Rin.FluentPage {
             from: 0
             to: 200
             value: Backend.settings.presentation_margin_x !== undefined
-                ? Backend.settings.presentation_margin_x : 8
+                ? Backend.settings.presentation_margin_x : 20
             onValueModified: Backend.setSetting("presentation_margin_x", value)
         }
     }
@@ -55,7 +55,7 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("垂直边距")
-        description: qsTr("控制条距屏幕上下边缘的距离（像素）")
+        description: qsTr("控制条距屏幕上下边缘的距离（像素，屏幕上量到的值；默认 20 对齐 Luminalium 1）")
         icon.name: "ic_fluent_arrow_bidirectional_up_down_20_regular"
 
         Rin.SpinBox {
@@ -63,7 +63,7 @@ Rin.FluentPage {
             from: 0
             to: 200
             value: Backend.settings.presentation_margin_y !== undefined
-                ? Backend.settings.presentation_margin_y : 8
+                ? Backend.settings.presentation_margin_y : 20
             onValueModified: Backend.setSetting("presentation_margin_y", value)
         }
     }

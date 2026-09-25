@@ -135,6 +135,34 @@ def main() -> int:
                 f"pos=({dock.x()},{dock.y()}) size={dock.width()}x{dock.height()} area={area_local}",
             )
 
+        # ---- 视觉贴边距离 = 配置里的 margin（对齐 Luminalium 1 的 20px）----
+        # 控制条窗口尺寸含投影余量，屏幕上量到的距离必须把这部分扣掉。
+        # 这里按实际属性复算，防止「margin 被投影余量吃掉」这类静默偏差
+        # （64px 的贴角容差抓不到这种错）。
+        margin_x = int(app.windows._config.get("presentation.margin_x", 20))
+        margin_y = int(app.windows._config.get("presentation.margin_y", 20))
+        cdock = app.windows._docks.get("bottom_center")
+        if cdock is not None:
+            shadow = int(cdock.property("shadowMargin") or 0)
+            visual_bottom = area_local.bottom() - (cdock.y() + cdock.height() - shadow)
+            check(
+                "工具栏视觉贴边距离 = 配置的垂直边距",
+                abs(visual_bottom - margin_y) <= 1,
+                f"视觉={visual_bottom} 期望={margin_y} shadow={shadow}",
+            )
+        for corner, edge in (("bottom_left", "left"), ("bottom_right", "right")):
+            dock = app.windows._docks.get(corner)
+            if dock is None:
+                continue
+            shadow = int(dock.property("shadowMargin") or 0)
+            visual_h = (dock.x() + shadow - area_local.left() if edge == "left"
+                        else area_local.right() - (dock.x() + dock.width() - shadow))
+            check(
+                f"翻页 pill {corner} 视觉贴边距离 = 配置的水平边距",
+                abs(visual_h - margin_x) <= 1,
+                f"视觉={visual_h} 期望={margin_x} shadow={shadow}",
+            )
+
         # ---- 可见性三要素（「放映时看不见控制条」的根因守卫）----
         # Qt 为了给顶层透明窗口画逐像素 alpha，自己给窗口加了 WS_EX_LAYERED
         # 并走 UpdateLayeredWindow。剥掉这个 bit、或额外调
@@ -320,6 +348,10 @@ def main() -> int:
         check("能移除快捷方式", "update" not in restored, str(restored))
 
         # ---- 设置项读写 ----
+        # 注意：这里会把值**持久化**进 config/config.json。所以必须先把原值存下来、
+        # 结束时原样写回 —— 曾经写成「测完恢复成写死的 8」，于是把旧默认值钉进了
+        # 用户配置，后来把默认改成 20 都不生效（2026-09-25 踩到）。
+        original_margin = app.config.get("presentation.margin_x")
         backend.setSetting("presentation_margin_x", 24)
         check("设置项已写入配置",
               app.config.get("presentation.margin_x") == 24,
@@ -327,7 +359,10 @@ def main() -> int:
         check("设置项已同步到 QML 视图",
               backend.settings.get("presentation_margin_x") == 24,
               str(backend.settings.get("presentation_margin_x")))
-        backend.setSetting("presentation_margin_x", 8)
+        backend.setSetting("presentation_margin_x", original_margin)
+        check("设置项已还原（自检不留副作用）",
+              app.config.get("presentation.margin_x") == original_margin,
+              f"{original_margin} -> {app.config.get('presentation.margin_x')}")
 
         failures = sum(1 for line in RESULTS if line.startswith("[FAIL]"))
         qt_app.quit()

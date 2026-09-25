@@ -661,15 +661,25 @@ class WindowManager(QObject):
 
         坐标是**顶层窗口局部**坐标（顶层窗口全屏铺在放映所在显示器，
         原点 = 屏幕 geometry 左上角）；工具栏仍按可用区（避开任务栏）摆放。
-        控制条 Item 自带投影余量（shadowMargin），所以视觉贴边距离 =
-        margin + shadowMargin，与旧的多窗口方案一致。
+        控制条 Item 自带投影余量（shadowMargin），而 ``margin_x`` / ``margin_y``
+        的语义是**视觉距离** —— 屏幕底板边缘到屏幕边缘的距离（对齐 Luminalium 1
+        的默认 20px：``Overlay.SafeArea`` 默认 0、贴边内边距固定 20px 四边一致，
+        只有 StrictEdgeAlignment 打开才贴死）。所以摆放时要把投影余量扣掉，
+        否则屏幕上量到的会是 ``margin + shadowMargin``。
         """
         dock = self._docks.get(corner)
         if dock is None or self.overlay is None:
             return
         horizontal, vertical = CORNERS.get(corner, ("left", "bottom"))
-        margin_x = int(self._config.get("presentation.margin_x", 32))
-        margin_y = int(self._config.get("presentation.margin_y", 32))
+        margin_x = int(self._config.get("presentation.margin_x", 20))
+        margin_y = int(self._config.get("presentation.margin_y", 20))
+        # 控制条 Item 为了投影不被窗口边界裁掉而自带 shadowMargin 余量：
+        # margin_* 说的是**视觉距离**（屏幕上量到的底板到屏幕边缘），
+        # 所以这里把它扣掉。margin 小于余量时多出的部分只是阴影尾部被屏幕裁掉。
+        try:
+            shadow = int(dock.property("shadowMargin") or 0)
+        except TypeError:  # pragma: no cover - 属性尚未就绪
+            shadow = 0
 
         screen = self._presentation_screen()
         if screen is None:
@@ -678,16 +688,16 @@ class WindowManager(QObject):
         area = screen.availableGeometry().translated(-origin)
 
         if horizontal == "left":
-            x = area.left() + margin_x
+            x = area.left() + margin_x - shadow
         elif horizontal == "center":
             # 居中按可用区（避开任务栏）算，不用整屏几何
             x = area.left() + (area.width() - dock.width()) // 2
         else:
-            x = area.right() - dock.width() - margin_x
+            x = area.right() - dock.width() - margin_x + shadow
         if vertical == "top":
-            y = area.top() + margin_y
+            y = area.top() + margin_y - shadow
         else:
-            y = area.bottom() - dock.height() - margin_y
+            y = area.bottom() - dock.height() - margin_y + shadow
         dock.setX(x)
         dock.setY(y)
 

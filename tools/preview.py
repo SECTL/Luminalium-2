@@ -96,8 +96,8 @@ def main() -> int:
             print("DOCK ERROR:", error.toString())
 
     container = top_window.property("container") if top_window is not None else None
-    margin_x = int(config.get("presentation.margin_x", 8))
-    margin_y = int(config.get("presentation.margin_y", 8))
+    margin_x = int(config.get("presentation.margin_x", 20))
+    margin_y = int(config.get("presentation.margin_y", 20))
     corners_cfg = config.get("presentation.corners", {}) or {}
     for corner in CORNERS:
         if not (corners_cfg.get(corner) or {}).get("enabled", False):
@@ -109,14 +109,17 @@ def main() -> int:
             continue
         dock._dock_component = dock_component  # 持有引用防引擎回收
         dock.setParentItem(container)
+        # 与 windows.py::_position_dock 同语义：margin 是**视觉距离**，
+        # 要扣掉控制条自带的投影余量（否则预览里的间距会比真机大 24px）
+        shadow = int(dock.property("shadowMargin") or 0)
         if corner.endswith("left"):
-            x = margin_x
+            x = margin_x - shadow
         elif corner.endswith("center"):
             x = (PREVIEW_W - dock.width()) // 2
         else:
-            x = PREVIEW_W - dock.width() - margin_x
+            x = PREVIEW_W - dock.width() - margin_x + shadow
         dock.setX(x)
-        dock.setY(PREVIEW_H - dock.height() - margin_y)
+        dock.setY(PREVIEW_H - dock.height() - margin_y + shadow)
 
     # 设置窗口：默认页由 NavigationView 在 Component.onCompleted 里推入
     settings = None

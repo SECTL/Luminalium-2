@@ -16,7 +16,11 @@
    （例如窗口类改名 / 异常形态），用 COM 的 ``SlideShowWindows(1).HWND``
    兜底判定为放映中。
 
-控制操作（翻页 / 退出 / 笔 / 清屏）COM 失败时回退为向放映窗口发按键。
+控制操作（翻页 / 退出 / 笔 / 清屏）COM 失败时回退为向放映窗口发按键。按键注入按
+**完整性级别**选路：同级 / 更低走 ``keybd_event``，本进程级别更高时 UIPI 会把
+``keybd_event`` 静默吞掉（不报错也不生效），改走 ``PostMessage`` 直投放映窗口 ——
+这是「按钮点了没反应」最隐蔽的成因。翻页另有一道 1 秒窗口的限流（对齐
+Luminalium 1 ``PPT.PageTurnRateLimit``），超出的直接丢弃。
 
 **线程模型（务必遵守，这是一次真机事故换来的）**：窗口探测与 COM 是**两条独立线程**。
 :class:`_ProbeThread` 只做 Win32 枚举（毫秒级），:class:`_ComThread` 承担全部 COM 调用。
@@ -39,6 +43,7 @@ import logging
 import queue
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
@@ -123,6 +128,10 @@ PP_POINTER_PEN = 2
 PP_POINTER_ERASER = 3
 PP_POINTER_AUTO_ARROW = 4
 
+# PpSlideShowState：1=运行中 2=暂停 3=黑屏 4=白屏 5=已结束 6=切场中。
+# 只有「已结束」要当成不在放映；黑屏 / 白屏仍是放映态（还要翻页、还要退出）。
+PP_SHOW_DONE = 5
+
 # 语义化工具名 -> COM 指针类型
 TOOL_TO_POINTER = {
     "none": PP_POINTER_NONE,
@@ -134,8 +143,14 @@ TOOL_TO_POINTER = {
 # 放映态按键（COM 不可用时的降级路径）
 VK_NEXT = 0x22  # PageDown
 VK_PRIOR = 0x21  # PageUp
+VK_DOWN = 0x28  # ↓（部分放映软件只认方向键，Luminalium 1 同款兜底）
+VK_UP = 0x26    # ↑
 VK_ESCAPE = 0x1B
 VK_ERASE = 0x45  # E
+
+# 键盘消息（PostMessage 降级路径用）
+WM_KEYDOWN = 0x0100
+WM_KEYUP = 0x0101
 
 
 @dataclass(frozen=True)
@@ -406,24 +421,84 @@ def find_powerpoint_console_window() -> int:
 # --------------------------------------------------------------------------- 按键回退
 
 
-def send_slideshow_key(vk_code: int, hwnd: int = 0) -> bool:
-    """把按键发送到放映窗口，用于 COM 不可用时的降级路径。
+def _window_pid(hwnd: int) -> int:
+    """窗口所属进程 PID；失败返回 0。"""
+    if not hwnd or not hasattr(ctypes, "windll"):
+        return 0
+    try:
+        pid = wintypes.DWORD(0)
+        ctypes.windll.user32.GetWindowThreadProcessId(
+            wintypes.HWND(int(hwnd)), ctypes.byref(pid)
+        )
+        return int(pid.value)
+    except OSError:  # pragma: no cover - 窗口销毁竞态
+        return 0
 
-    仅在本进程拥有前台权限时才生效；失败时静默返回 ``False``。
+
+def _key_lparam(vk: int, key_up: bool = False) -> int:
+    """构造 ``WM_KEYDOWN`` / ``WM_KEYUP`` 的 lParam。
+
+    lParam 不是随便填 0 就能用的：它带**扫描码**与「抬起」标志位，填错的
+    消息很多程序会当成无效按键直接丢掉（Luminalium 1 ``_build_key_lparam``
+    的做法）。
+    """
+    scan = 0
+    try:
+        scan = int(ctypes.windll.user32.MapVirtualKeyW(int(vk), 0) or 0)
+    except (OSError, AttributeError):  # pragma: no cover - 非 Windows
+        pass
+    lparam = 1 | (scan << 16)
+    if key_up:
+        lparam |= 0xC0000000  # 前一次按键状态位 + 抬起转换位
+    return lparam
+
+
+def _post_key_to_window(hwnd: int, vk: int) -> bool:
+    """把按键**直接投递**到指定窗口，不依赖前台焦点。"""
+    if not hwnd or not hasattr(ctypes, "windll"):
+        return False
+    user32 = ctypes.windll.user32
+    try:
+        handle = wintypes.HWND(int(hwnd))
+        user32.PostMessageW(handle, WM_KEYDOWN, int(vk), _key_lparam(vk, False))
+        user32.PostMessageW(handle, WM_KEYUP, int(vk), _key_lparam(vk, True))
+        return True
+    except OSError:  # pragma: no cover
+        return False
+
+
+def send_slideshow_key(vk_code: int, hwnd: int = 0) -> bool:
+    """把按键送到放映窗口 —— COM 不可用 / COM 执行失败时的降级路径。
+
+    两条腿，按**完整性级别**选路（UAC 的 UIPI 只允许向**同级或更低**级别注入）：
+
+    * 同级 / 更低：``SetForegroundWindow`` 后 ``keybd_event``（最可靠，
+      真实走一遍键盘输入栈）；
+    * **本进程级别更高**：``keybd_event`` 会被 UIPI **静默丢弃**（不报错也
+      不生效），直接 ``PostMessage`` 到放映窗口即可 —— 向低级别窗口投递
+      消息是允许的。
+
+    Luminalium 1 也是这两条腿（``_send_vk_to_slideshow``：先 keybd_event、
+    异常时退 ``PostMessage``）；这里额外把「谁会失败」提前判掉，因为
+    keybd_event 被吞掉时**不会有任何异常**可捕获 —— 那正是「按钮点了没反应」
+    最隐蔽的成因。
     """
     if not hasattr(ctypes, "windll"):
         return False
     user32 = ctypes.windll.user32
-    KEYEVENTF_KEYUP = 0x0002
+    target = _window_pid(hwnd) if hwnd else 0
+    if target and _integrity_rank(target) < _self_integrity_rank():
+        log.debug("目标进程完整性级别更低，keybd_event 会被 UIPI 丢弃，改用 PostMessage")
+        return _post_key_to_window(hwnd, vk_code)
     try:
         if hwnd:
-            user32.SetForegroundWindow(hwnd)
-        user32.keybd_event(vk_code, 0, 0, 0)
-        user32.keybd_event(vk_code, 0, KEYEVENTF_KEYUP, 0)
+            user32.SetForegroundWindow(wintypes.HWND(int(hwnd)))
+        user32.keybd_event(int(vk_code), 0, 0, 0)
+        user32.keybd_event(int(vk_code), 0, 0x0002, 0)  # KEYEVENTF_KEYUP
         return True
     except OSError:  # pragma: no cover
-        log.debug("发送按键失败", exc_info=True)
-        return False
+        log.debug("keybd_event 注入失败，改用 PostMessage", exc_info=True)
+        return _post_key_to_window(hwnd, vk_code)
 
 
 # --------------------------------------------------------------------------- COM 后端
@@ -497,7 +572,17 @@ class _ComBackend:
         try:
             if app.SlideShowWindows.Count == 0:
                 return None
-            return app.SlideShowWindows(1)
+            window = app.SlideShowWindows(1)
+            # 放映窗口对象可能还挂着，但放映其实已经结束（State = ppSlideShowDone）。
+            # 这时若仍算「放映中」，退出放映后控制条会赖着不走。
+            # Luminalium 1 用 ``view.State in (1, 2)`` 判定，代价是按 B/W 键
+            # 黑屏(3)/白屏(4) 时也会被判成没在放映；这里只排除「已结束」。
+            try:
+                if int(window.View.State) == PP_SHOW_DONE:
+                    return None
+            except Exception:
+                pass  # 读不到 State 就不下判断，退回「有窗口即在放映」
+            return window
         except Exception:
             log.debug("读取 SlideShowWindows 失败", exc_info=True)
             return None
@@ -674,6 +759,9 @@ SLOW_CYCLE_MS = 1500
 WATCHDOG_INTERVAL_MS = 1000
 WATCHDOG_STALE_S = 3.0
 WATCHDOG_REPEAT_S = 15.0
+# 翻页限流：1 秒窗口内最多放行 N 次（对齐 Luminalium 1 ``PPT.PageTurnRateLimit``）
+PAGE_TURN_WINDOW_S = 1.0
+PAGE_TURN_LIMIT_DEFAULT = 2
 
 
 class _Heartbeat:
@@ -754,13 +842,14 @@ class _TokenMandatoryLabel(ctypes.Structure):
     _fields_ = [("Label", _SidAndAttributes)]
 
 
-def _process_integrity(pid: int) -> str:
-    """进程的完整性级别（``Medium`` / ``High(管理员)`` …）；拿不到返回空串。
+def _integrity_rid(pid: int) -> int:
+    """进程完整性级别的 RID（``0x2000`` = Medium、``0x3000`` = High…）；拿不到返回 0。
 
-    纯 Win32 查询、不依赖 pywin32，任何一步失败都安静返回空串 —— 它只服务诊断。
+    纯 Win32 查询、不依赖 pywin32，任何一步失败都安静返回 0。返回 RID 而不是
+    名字，是为了能**比大小** —— UIPI 只允许向同级或更低级别注入输入。
     """
     if not pid or not hasattr(ctypes, "windll"):
-        return ""
+        return 0
     try:
         advapi32 = ctypes.windll.advapi32
         # ctypes 默认按 32 位截断返回值，SID 相关 API 必须显式声明，否则指针被截断
@@ -778,40 +867,69 @@ def _process_integrity(pid: int) -> str:
         kernel32 = ctypes.windll.kernel32
         handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
         if not handle:
-            return ""
+            return 0
         try:
             token = wintypes.HANDLE()
             if not advapi32.OpenProcessToken(handle, _TOKEN_QUERY, ctypes.byref(token)):
-                return ""
+                return 0
             try:
                 size = wintypes.DWORD(0)
                 advapi32.GetTokenInformation(
                     token, _TOKEN_INTEGRITY_LEVEL, None, 0, ctypes.byref(size)
                 )
                 if not size.value:
-                    return ""
+                    return 0
                 buffer = ctypes.create_string_buffer(size.value)
                 if not advapi32.GetTokenInformation(
                     token, _TOKEN_INTEGRITY_LEVEL, buffer, size.value, ctypes.byref(size)
                 ):
-                    return ""
+                    return 0
                 label = ctypes.cast(
                     buffer, ctypes.POINTER(_TokenMandatoryLabel)
                 ).contents
                 if not label.Label.Sid:
-                    return ""
+                    return 0
                 sid = ctypes.c_void_p(label.Label.Sid)
                 count = advapi32.GetSidSubAuthorityCount(sid).contents.value
-                if count < 2:
-                    return ""
-                rid = advapi32.GetSidSubAuthority(sid, count - 1).contents.value
-                return _INTEGRITY_NAMES.get(rid, "0x%04X" % rid)
+                # 强制标签 SID 形如 S-1-16-<RID> —— **只有 1 个子授权**，
+                # RID 就在下标 0。这里曾写成 `count < 2` 直接放弃，结果整个函数
+                # 永远返回 0：diagnose() 的「权限级别（UAC）」一行从来没打印过，
+                # 而按键选路也一直落在「查不到 ⇒ 按 Medium」的兜底分支上。
+                if count < 1:
+                    return 0
+                return int(advapi32.GetSidSubAuthority(sid, count - 1).contents.value)
             finally:
                 kernel32.CloseHandle(token)
         finally:
             kernel32.CloseHandle(handle)
     except Exception:  # pragma: no cover - 诊断辅助，拿不到就算了
-        return ""
+        return 0
+
+
+def _process_integrity(pid: int) -> str:
+    """完整性级别的可读名字（诊断用）；拿不到返回空串。"""
+    rid = _integrity_rid(pid)
+    return _INTEGRITY_NAMES.get(rid, "0x%04X" % rid) if rid else ""
+
+
+# 「查不到」一律按 Medium 处理：宁可走 keybd_event 这条常规路径，也不要因为
+# 拿不到级别就把对方误判成「更低」而改用 PostMessage。
+MEDIUM_INTEGRITY_RID = 0x2000
+_self_rid = -1
+
+
+def _self_integrity_rank() -> int:
+    """本进程的完整性级别 RID（缓存一次，避免每次按键都查一遍令牌）。"""
+    global _self_rid
+    if _self_rid < 0:
+        current = int(ctypes.windll.kernel32.GetCurrentProcessId())
+        _self_rid = _integrity_rid(current) or MEDIUM_INTEGRITY_RID
+    return _self_rid
+
+
+def _integrity_rank(pid: int) -> int:
+    """目标进程的完整性级别 RID；查不到按 Medium（保守，见上）。"""
+    return _integrity_rid(pid) or MEDIUM_INTEGRITY_RID
 
 
 # --------------------------------------------------------------------------- 线程
@@ -990,11 +1108,14 @@ class _ComThread(QThread):
 
     def _cmd_next(self, hwnd: int) -> None:
         if not self._com.next_slide():
-            send_slideshow_key(VK_NEXT, hwnd)
+            # 先 PageDown；连注入都失败再退方向键（部分放映软件只认 ↓，L1 同款）
+            if not send_slideshow_key(VK_NEXT, hwnd):
+                send_slideshow_key(VK_DOWN, hwnd)
 
     def _cmd_previous(self, hwnd: int) -> None:
         if not self._com.previous_slide():
-            send_slideshow_key(VK_PRIOR, hwnd)
+            if not send_slideshow_key(VK_PRIOR, hwnd):
+                send_slideshow_key(VK_UP, hwnd)
 
     def _cmd_goto(self, hwnd: int, index: int) -> None:
         if not self._com.goto_slide(index):
@@ -1221,6 +1342,8 @@ class PptController(QObject):
         self._watchdog = QTimer(self)
         self._watchdog.setInterval(WATCHDOG_INTERVAL_MS)
         self._watchdog.timeout.connect(self._on_watchdog)
+        self._page_turns: deque = deque()
+        self._page_turn_limit = PAGE_TURN_LIMIT_DEFAULT
         self.apply_config(config)
 
     # ------------------------------------------------------------------ 配置
@@ -1236,6 +1359,10 @@ class PptController(QObject):
                 config.get("presentation.fullscreen_ratio", None),
             )
             self.set_interval(int(config.get("presentation.poll_interval_ms", 400)))
+            self.set_page_turn_limit(
+                int(config.get("presentation.page_turn_rate_limit",
+                               PAGE_TURN_LIMIT_DEFAULT))
+            )
         except Exception:  # 配置异常不能连累探测
             log.debug("应用放映探测配置失败", exc_info=True)
 
@@ -1268,6 +1395,28 @@ class PptController(QObject):
         self._thread.set_probe_interval(interval_ms)
         # COM 比窗口探测慢一档：跨进程调用本身就贵，没必要跟着 400ms 跑
         self._com.set_probe_interval(max(600, int(interval_ms) * 2))
+
+    def set_page_turn_limit(self, limit: int) -> None:
+        """每秒最多放行多少次翻页（``presentation.page_turn_rate_limit``）。"""
+        self._page_turn_limit = max(1, int(limit))
+
+    def _consume_page_turn(self) -> bool:
+        """翻页令牌：1 秒窗口内放行 ``limit`` 次，超出的**直接丢弃**。
+
+        为什么必须有这道闸：放映中连点会把 COM 调用与键盘消息一股脑推给演示软件，
+        它忙不过来时要么拒绝调用（``RPC_E_CALL_REJECTED``）、要么把输入排队，
+        用户看到的就是「点了没反应，然后突然连跳好几页」。Luminalium 1 同样有
+        这道闸（``_consume_page_turn_token``，默认 2 次/秒）。
+        """
+        now = time.monotonic()
+        turns = self._page_turns
+        while turns and now - turns[0] > PAGE_TURN_WINDOW_S:
+            turns.popleft()
+        if len(turns) >= self._page_turn_limit:
+            log.debug("翻页过快（上限 %d 次/秒），本次丢弃", self._page_turn_limit)
+            return False
+        turns.append(now)
+        return True
 
     def refresh_now(self) -> None:
         self._thread.poke()
@@ -1470,10 +1619,16 @@ class PptController(QObject):
     # ------------------------------------------------------------------ 控制
 
     def next_slide(self, hwnd: int = 0) -> bool:
+        """下一页。返回 ``False`` 表示这次**被限流丢弃**（不是失败）。"""
+        if not self._consume_page_turn():
+            return False
         self._com.request("next", int(hwnd or 0))
         return True
 
     def previous_slide(self, hwnd: int = 0) -> bool:
+        """上一页。返回 ``False`` 表示这次**被限流丢弃**（不是失败）。"""
+        if not self._consume_page_turn():
+            return False
         self._com.request("previous", int(hwnd or 0))
         return True
 

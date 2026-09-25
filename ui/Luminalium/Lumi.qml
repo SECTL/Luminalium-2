@@ -110,7 +110,8 @@ QtObject {
     //   · 颜色仍走 RinUI 主题；只有「白 8% / 15%」这类**比例**照 L1 落实
 
     // ---- 底板 ----
-    readonly property int dockPaddingX: 12
+    /*! 左右 8 = 外壳帽半径 27 − 分段帽半径 19：嵌套弧线**同心**，间隙恒定 8。 */
+    readonly property int dockPaddingX: 8
     readonly property int dockPaddingY: 8
     /*! 999 = 胶囊；``FlyoutSurface`` 会按 高/2 钳制，改条高不会失形。 */
     readonly property int dockSurfaceRadius: 999
@@ -138,8 +139,9 @@ QtObject {
     // 「圆角矩形容器 + 圆角矩形选中板 + 下划线」这套方语言换成圆的。
     /*! 999 = 胶囊；``ToolSegment`` 按 高/2 钳制（38 → 19）。 */
     readonly property int dockSegmentRadius: 999
-    /*! 容器左右留白。上下为 0 —— 分页高 = 内容高（38），容器高也是它。 */
-    readonly property int dockSegmentPadding: 4
+    /*! 容器左右留白**必须为 0**（同心嵌套：外壳 8 + 0 + 半径 19 = 27 = 外壳帽半径）。
+        上下为 0 —— 分页高 = 内容高（38），容器高也是它。 */
+    readonly property int dockSegmentPadding: 0
     /*! 两个分页之间的间距。 */
     readonly property int dockSegmentSpacing: 4
     /*! 容器底：比底板亮一档（与按钮悬停同一档浓淡），读出「这是一个凹槽」。 */

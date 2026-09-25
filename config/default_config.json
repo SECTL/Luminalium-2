@@ -92,8 +92,8 @@
     "//radius": "999 = 全圆胶囊（Luminalium 1：#toolbar / .flipper 都是 border-radius:999px）。FlyoutSurface 会按 高/2 钳制，改 bar_height 不会失形",
     "radius": 999,
     "opacity": 0.97,
-    "//padding": "Luminalium 1 #toolbar padding: 8px 8px 8px 12px → 上下 8、左右 12。L1 右侧还挂着一个 28px 抓取柄，本组件没有该元素，故取对称的 12",
-    "padding_x": 12,
+    "//padding": "左右 8：**同心嵌套**——外壳帽半径 27 − 分段帽半径 19 = 8，两弧圆心才对齐（padding 12 时圆心差 4px，弧间空隙宽窄不一，看起来像条诡异的空槽）。上下 8 不变",
+    "padding_x": 8,
     "padding_y": 8,
       "shadow": {
         "enabled": true,
@@ -112,8 +112,8 @@
   },
   "segment": {
     "//description": "工具组是**圆的分段控件**（基类 RinUI 的 Segmented）：胶囊容器 + 两个圆形分页，选中的那页浮现一枚圆钮；Luminalium 1 里工具本来是散装圆钮，这里按用户要求恢复成「有容器」的分段，但语言是圆的（没有下划线）",
-    "//padding_x": "容器左右留白。上下为 0 —— 分页高 = 内容高 = 容器高（38），再缩就压到图标了",
-    "padding_x": 4,
+    "//padding_x": "必须为 0：分段帽要与外壳帽**同心**（外壳 padding 8 + 这里的 0 + 半径 19 = 27 = 外壳帽半径），这里再留白就会把圆心推偏、弧间空隙宽窄不一。上下为 0 —— 分页高 = 内容高 = 容器高（38）",
+    "padding_x": 0,
     "//spacing": "两个分页之间的间距",
     "spacing": 4
   },

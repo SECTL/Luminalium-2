@@ -264,7 +264,9 @@ def main() -> int:
         )
         # ---- 尺寸档位 = Luminalium 1 的实装值（防止比例被悄悄改回参考稿那套）----
         # 这些值之间的**关系**才是设计语言：按钮直径 = 内容高 = 条高 − 上下内边距×2，
-        # 圆角拉满成胶囊，翻页 pill 的留白只有 4（工具条是 12）。
+        # 圆角拉满成胶囊，翻页 pill 的留白只有 4（工具条是 8）。
+        # 嵌套弧线必须**同心**：外壳帽半径 − 分段帽半径 = 外壳左内边距，
+        # 圆心不对齐时弧间空隙宽窄不一，看起来像条诡异的空槽（真机踩过）。
         if cdock is not None:
             cshadow = int(cdock.property("shadowMargin") or 0)
             bar_h = cdock.property("contentHeight") + cdock.property("surfacePaddingY") * 2
@@ -308,6 +310,13 @@ def main() -> int:
                 "分段容器是圆的（胶囊圆角 = 内容高/2）",
                 abs(cdock.property("segmentPillRadius") - 38 / 2) <= 0.5,
                 f"segmentPillRadius={cdock.property('segmentPillRadius')} 期望=19",
+            )
+            check(
+                "嵌套弧线同心（外壳帽圆心 = 分段帽圆心：paddingX + 19 == 27）",
+                cdock.property("surfacePaddingX") + cdock.property("segmentPillRadius")
+                == cdock.property("pillRadius"),
+                f"paddingX={cdock.property('surfacePaddingX')} + segR="
+                f"{cdock.property('segmentPillRadius')} vs shellR={cdock.property('pillRadius')}",
             )
             check(
                 "工具栏尺寸（扣除投影余量）",

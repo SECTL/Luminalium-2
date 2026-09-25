@@ -3,11 +3,11 @@ import QtQuick.Layouts
 import RinUI as Rin
 import Luminalium
 
-/*! 放映控制条：开关、位置、外观细节。 */
+/*! 放映控制条：开关、位置与外观细节（轮询间隔在调试页）。 */
 Rin.FluentPage {
     id: page
 
-    title: qsTr("放映控制")
+    title: qsTr("放映")
     contentSpacing: 10
 
     Rin.Text {
@@ -157,30 +157,6 @@ Rin.FluentPage {
             currentIndex: Backend.settings.presentation_exit_style === "danger" ? 1 : 0
             onActivated: Backend.setSetting("presentation_exit_style",
                                             currentIndex === 1 ? "danger" : "default")
-        }
-    }
-
-    Rin.Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 10
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("检测")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("轮询间隔")
-        description: qsTr("越短越跟手，但 CPU 占用略高")
-        icon.name: "ic_fluent_timer_20_regular"
-
-        Rin.SpinBox {
-            Layout.preferredWidth: 160
-            from: 100
-            to: 2000
-            stepSize: 100
-            value: Backend.settings.presentation_poll_interval_ms !== undefined
-                ? Backend.settings.presentation_poll_interval_ms : 400
-            onValueModified: Backend.setSetting("presentation_poll_interval_ms", value)
         }
     }
 }

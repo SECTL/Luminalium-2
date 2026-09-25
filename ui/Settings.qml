@@ -14,7 +14,8 @@ import RinUI as Rin
       ``Qt.resolvedUrl``；
     * 页面本体是 ``Rin.FluentPage``：``title`` 走页面头部，内容默认进一个带
       左右留白的 ``ColumnLayout``；
-    * ``position: Rin.Position.Bottom`` 的项（关于 / 检查更新）钉在导航底部。
+    * ``position: Rin.Position.Bottom`` 的项（关于 / 更新 / 调试）钉在导航底部；
+      「调试」收开发者的诊断项，普通用户不需要碰。
 
     关闭按钮只隐藏窗口，不销毁 —— 桌面常驻应用里重建一个窗口没有必要。
 */
@@ -83,26 +84,21 @@ Rin.FluentWindow {
             icon: "ic_fluent_settings_20_regular",
             subItems: [
                 {
-                    title: qsTr("外观"),
-                    page: Qt.resolvedUrl("settings/General/Appearance.qml"),
-                    icon: "ic_fluent_paint_brush_20_regular"
-                },
-                {
-                    title: qsTr("行为"),
-                    page: Qt.resolvedUrl("settings/General/Behavior.qml"),
-                    icon: "ic_fluent_cursor_20_regular"
+                    title: qsTr("快捷面板"),
+                    page: Qt.resolvedUrl("settings/QuickPanelSettings.qml"),
+                    icon: "ic_fluent_apps_list_20_regular"
                 }
             ]
         },
         {
-            title: qsTr("放映控制"),
-            page: Qt.resolvedUrl("settings/Presentation.qml"),
-            icon: "ic_fluent_slide_play_20_regular"
+            title: qsTr("外观"),
+            page: Qt.resolvedUrl("settings/Appearance.qml"),
+            icon: "ic_fluent_paint_brush_20_regular"
         },
         {
-            title: qsTr("快捷面板"),
-            page: Qt.resolvedUrl("settings/QuickPanelSettings.qml"),
-            icon: "ic_fluent_apps_list_20_regular"
+            title: qsTr("放映"),
+            page: Qt.resolvedUrl("settings/Presentation.qml"),
+            icon: "ic_fluent_slide_play_20_regular"
         },
         {
             title: qsTr("关于"),
@@ -111,9 +107,16 @@ Rin.FluentWindow {
             position: Rin.Position.Bottom
         },
         {
-            title: qsTr("检查更新"),
+            title: qsTr("更新"),
             page: Qt.resolvedUrl("settings/Update.qml"),
             icon: "ic_fluent_arrow_sync_20_regular",
+            position: Rin.Position.Bottom
+        },
+        {
+            // 调试板块：开发者的诊断项（日志 / 轮询 / 水印开关），钉在导航最底部
+            title: qsTr("调试"),
+            page: Qt.resolvedUrl("settings/Debug.qml"),
+            icon: "ic_fluent_bug_20_regular",
             position: Rin.Position.Bottom
         }
     ]

@@ -3,7 +3,13 @@ import QtQuick.Layouts
 import RinUI as Rin
 import Luminalium
 
-/*! 通用：常用开关的汇总页，细分项在左侧导航的子项里。 */
+/*!
+    通用：托盘与快捷面板的行为开关。
+
+    2026-09-25 导航重构后本页吸收了原「行为」子页的全部内容；
+    主题 / 强调色 / 显示语言归「外观」页，日志级别归「调试」页。
+    快捷面板的尺寸与区块开关仍在左侧子项「快捷面板」里。
+*/
 Rin.FluentPage {
     id: page
 
@@ -13,33 +19,7 @@ Rin.FluentPage {
     Rin.Text {
         Layout.fillWidth: true
         typography: Rin.Typography.BodyStrong
-        text: qsTr("主题")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("应用主题")
-        description: qsTr("跟随系统时会随 Windows 的浅色 / 深色设置切换")
-        icon.name: "ic_fluent_paint_brush_20_regular"
-
-        Rin.ComboBox {
-            Layout.preferredWidth: 150
-            model: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
-            currentIndex: {
-                const value = Backend.settings.theme
-                if (value === "light") return 1
-                if (value === "dark") return 2
-                return 0
-            }
-            onActivated: Backend.setSetting("theme", ["auto", "light", "dark"][currentIndex])
-        }
-    }
-
-    Rin.Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 10
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("启动与托盘")
+        text: qsTr("托盘")
     }
 
     Rin.SettingCard {
@@ -70,15 +50,60 @@ Rin.FluentPage {
 
     Rin.SettingCard {
         Layout.fillWidth: true
-        title: qsTr("日志级别")
-        description: qsTr("排查问题时改成 DEBUG，日志写在 logs/luminalium.log")
-        icon.name: "ic_fluent_document_text_20_regular"
+        title: qsTr("左键打开快捷面板")
+        description: qsTr("关闭后左键不再唤出面板，只能走右键菜单")
+        icon.name: "ic_fluent_cursor_click_20_regular"
 
-        Rin.ComboBox {
-            Layout.preferredWidth: 150
-            model: ["DEBUG", "INFO", "WARNING", "ERROR"]
-            currentIndex: Math.max(0, model.indexOf(Backend.settings.log_level))
-            onActivated: Backend.setSetting("log_level", model[currentIndex])
+        Rin.Switch {
+            primaryColor: Lumi.accent
+            checked: Backend.settings.tray_show_on_click === true
+            onToggled: Backend.setSetting("tray_show_on_click", checked)
+        }
+    }
+
+    Rin.SettingCard {
+        Layout.fillWidth: true
+        title: qsTr("托盘提示文字")
+        description: qsTr("鼠标悬停在托盘图标上时显示")
+        icon.name: "ic_fluent_text_bulleted_list_20_regular"
+
+        Rin.TextField {
+            Layout.preferredWidth: 220
+            text: Backend.settings.tray_tooltip !== undefined ? Backend.settings.tray_tooltip : ""
+            onEditingFinished: Backend.setSetting("tray_tooltip", text)
+        }
+    }
+
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: 10
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("快捷面板")
+    }
+
+    Rin.SettingCard {
+        Layout.fillWidth: true
+        title: qsTr("失去焦点时收起")
+        description: qsTr("点击别处自动隐藏，和系统托盘菜单一致")
+        icon.name: "ic_fluent_eye_tracking_20_regular"
+
+        Rin.Switch {
+            primaryColor: Lumi.accent
+            checked: Backend.settings.panel_hide_on_deactivate === true
+            onToggled: Backend.setSetting("panel_hide_on_deactivate", checked)
+        }
+    }
+
+    Rin.SettingCard {
+        Layout.fillWidth: true
+        title: qsTr("快捷方式锁定")
+        description: qsTr("锁定后面板上的「编辑」按钮消失，防止误改")
+        icon.name: "ic_fluent_lock_closed_20_regular"
+
+        Rin.Switch {
+            primaryColor: Lumi.accent
+            checked: Backend.settings.panel_shortcuts_locked === true
+            onToggled: Backend.setSetting("panel_shortcuts_locked", checked)
         }
     }
 }

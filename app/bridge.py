@@ -49,6 +49,8 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_divider_enabled": "presentation.divider.enabled",
     "presentation_pager_enabled": "presentation.pager.enabled",
     "presentation_exit_style": "presentation.exit.style",
+    # 调试页专用（普通用户不暴露水印开关的存在）
+    "dev_watermark": "app.dev_watermark",
 }
 
 #: 值一变就需要 QML 重新取整块配置的键。
@@ -120,14 +122,14 @@ class Backend(QObject):
     def devWatermark(self) -> bool:
         """开发中水印开关（``app.dev_watermark``）。
 
-        这是**给开发者看的**开关：只存在于配置文件，设置页不出现、
-        文档不宣传 —— 用户不知道它的存在。缺省开启。
+        给开发者看的开关：设置窗口里只在**调试页**出现（普通用户
+        不会翻到那里）。缺省开启。
         """
         return self._config.get("app.dev_watermark", True) is not False
 
     @Property(str, constant=True)
     def devCodename(self) -> str:
-        return str(self._config.get("app.codename", "Glimmer"))
+        return str(self._config.get("app.codename", "YamadaRyou"))
 
     @Property(str, constant=True)
     def deviceId(self) -> str:
@@ -140,7 +142,7 @@ class Backend(QObject):
         import uuid
 
         raw = f"{platform.node()}|{uuid.getnode():x}"
-        return "DEV-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8].upper()
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8].upper()
 
     @Slot(str, result=str)
     def resourceFile(self, name: str) -> str:

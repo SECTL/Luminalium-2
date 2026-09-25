@@ -8,7 +8,7 @@ import Luminalium
     内容两行::
 
         开发中版本，不代表最终品质
-        1.6.600.1 / Glimmer / DEV-XXXXXXXX
+        1.6.600.1 / RyouYamada / DEV-XXXXXXXX
 
     **只给开发者看的开关**：显隐由 ``app.dev_watermark`` 配置驱动
     （经 ``Backend.devWatermark`` 透出），设置页**不出现**这个开关 ——

@@ -11,5 +11,5 @@
     app.application     应用装配入口
 """
 
-__version__ = "0.1.0"
+__version__ = "1.6.600.1"
 __all__ = ["__version__"]

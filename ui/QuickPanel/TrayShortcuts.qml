@@ -128,7 +128,8 @@ ColumnLayout {
                     anchors.margins: -6
                     iconName: "ic_fluent_subtract_20_regular"
                     tooltip: qsTr("移除")
-                    buttonSize: 24
+                    buttonWidth: 24
+                    buttonHeight: 24
                     iconSize: 14
                     onClicked: Backend.setShortcutEnabled(cell.modelData.id, false)
                 }

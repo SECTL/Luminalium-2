@@ -50,6 +50,14 @@ Rin.Window {
     minimumHeight: panelHeight
     maximumHeight: panelHeight
 
+    // 关闭按钮 = 隐藏（托盘常驻应用不销毁窗口）。
+    // 必须在 QML 侧拦：Python 槽接 ``closing(QQuickCloseEvent*)`` 会因
+    // 类型无法转换而抛 TypeError，直接把应用打死。
+    onClosing: function (event) {
+        event.accepted = false
+        Backend.hidePanel()
+    }
+
     // ================================================== 内容卡片（CW2 同款）
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter

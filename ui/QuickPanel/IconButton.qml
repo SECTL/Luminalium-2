@@ -3,10 +3,11 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    快捷面板上的扁平图标按钮（小节标题行 / 底栏）。
+    快捷面板上的扁平图标按钮（小节标题行 / 底栏 / 对话框头部）。
 
     形态对齐 Class Widgets 2 里的 ``ToolButton { flat: true }``：默认全透明、
-    悬停浮现极淡底色、按下更深，并带 ToolTip。
+    悬停浮现极淡底色、按下更深，并带 ToolTip。尺寸按 CW2 实测（本仓库探针
+    量得 RinUI ToolButton 隐式 44×32、字形 20），宽大于高。
 
     为什么要自己换 ``contentItem`` 而不是直接用 ``Rin.ToolButton``：
     ``Rin.ToolButton`` 在本版本里**没有**强制 ``flat``（源码里那行是注释掉的），
@@ -29,14 +30,17 @@ Rin.Button {
 
     property string iconName: ""
     property string tooltip: ""
-    property int buttonSize: 32
-    property int iconSize: 18
+    // CW2 实测比例（RinUI ToolButton 隐式尺寸）：44 宽 × 32 高、字形 20 ——
+    // 宽大于高（基类 implicitWidth = max(内容+26, 40)），不是正方形。
+    property int buttonWidth: 44
+    property int buttonHeight: 32
+    property int iconSize: 20
     property color glyphColor: Lumi.textPrimary
 
-    implicitWidth: buttonSize
-    implicitHeight: buttonSize
-    width: buttonSize
-    height: buttonSize
+    implicitWidth: buttonWidth
+    implicitHeight: buttonHeight
+    width: buttonWidth
+    height: buttonHeight
     padding: 0
     radius: Lumi.controlRadius
     flat: true

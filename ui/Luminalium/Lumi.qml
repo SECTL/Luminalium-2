@@ -45,10 +45,6 @@ QtObject {
         ? Backend.accent
         : (themeColors ? themeColors.primaryColor : "#4CC2FF")
 
-    /*! 强调色之上的前景色：参考稿里退出键的电源图标是**纯黑**。 */
-    readonly property color onAccent: themeColors
-        ? themeColors.textOnAccentColor : "#000000"
-
     // ------------------------------------------------------------ 表面 / 卡片
     readonly property color surfaceBg: themeColors
         ? themeColors.backgroundAcrylicColor : "#2C2C2C"
@@ -96,7 +92,8 @@ QtObject {
     //   | 分隔线              | .separator 1×24，margin: auto 4  | 1×24   |
     //   | 分隔线颜色          | --overlay-toolbar-line 白 15%     | 同     |
     //   | 翻页 pill           | .flipper 160×54，圆钮 margin 0 4  | 160×54 |
-    //   | 退出键              | 强调色实底**圆**（直径 = 内容高）  | 38     |
+    //   | 退出键              | 普通圆钮（与其他按钮同款；          | 38     |
+    //   |                     | ``danger`` 变体 = L1 红图标）       |        |
     //   | 悬停 / 选中填充      | 白 8% / 白 15%（浅色主题黑 6/12） | 同     |
     //   | 危险色（退出）       | 图标 #D9485A、悬停填充红 14%       | 同     |
     //
@@ -106,7 +103,10 @@ QtObject {
     //   · 工具组是**圆的分段控件**（``ToolSegment``，基类 RinUI 的 ``Segmented``）：
     //     胶囊容器 + 圆形分页，选中的那页就是圆钮；**没有下划线**这一层
     //   · 翻页 pill 比工具条紧凑：圆钮几乎贴着 pill 边缘（留白 4 vs 12）
-    //   · 退出键是**强调色实底圆**（不是圆角方块；``danger`` 变体才是 L1 的红图标圆钮）
+    //   · 退出键**不搞特殊**：与其他按钮同款的透明圆钮；``danger`` 变体才是
+    //     L1 的红图标圆钮（强调色实底版式已按用户要求取消）
+    //   · 工具栏与翻页栏的底板带 **CW2 小组件同款「渐变边框高光」**：
+    //     对角线渐变描边，两端亮、中段隐去（见 ``dockHighlight*``）
     //   · 颜色仍走 RinUI 主题；只有「白 8% / 15%」这类**比例**照 L1 落实
 
     // ---- 底板 ----
@@ -117,6 +117,15 @@ QtObject {
     readonly property int dockSurfaceRadius: 999
     readonly property real dockSurfaceOpacity: 0.97
     readonly property int dockShadowMargin: 24
+
+    // ---- 底板高光（CW2 小组件同款的「渐变边框光影」）----
+    // 出处：Class Widgets 2 ``Theme/components/Widget.qml``——一个对角线
+    // ``LinearGradient``（起点亮、中段全透明、终点又亮）裁成 ``borderWidth``
+    // 的描边环，偏好里叫 lighting_effect。CW2 的描边色**深浅主题都用白**
+    // （dark: 白 40%，light: 白 100%），本质上是一道「光泽」而不是描边，
+    // 所以这里同样不跟主题取色，取 CW2 深色档的白 40%。
+    readonly property real dockHighlightWidth: 1.5
+    readonly property color dockHighlightColor: Qt.rgba(1, 1, 1, 0.4)
 
     // ---- 控件（工具 / 动作 / 翻页 / 退出共用同一档内容高）----
     readonly property int dockIconSize: 20

@@ -131,15 +131,15 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("退出键样式")
-        description: qsTr("「危险红图标」是 Luminalium 1 的形态（圆形按钮 + 红色电源图标）；「强调色实底」是旧版式")
+        description: qsTr("「危险红图标」是 Luminalium 1 的形态（圆形按钮 + 红色电源图标）；「普通圆钮」与其他工具栏按钮同款")
         icon.name: "ic_fluent_power_20_regular"
 
         Rin.ComboBox {
             Layout.preferredWidth: 170
-            model: [qsTr("危险红图标（L1）"), qsTr("强调色实底")]
-            currentIndex: Backend.settings.presentation_exit_style === "accent" ? 1 : 0
+            model: [qsTr("普通圆钮"), qsTr("危险红图标（L1）")]
+            currentIndex: Backend.settings.presentation_exit_style === "danger" ? 1 : 0
             onActivated: Backend.setSetting("presentation_exit_style",
-                                            currentIndex === 1 ? "accent" : "danger")
+                                            currentIndex === 1 ? "danger" : "default")
         }
     }
 

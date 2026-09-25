@@ -52,6 +52,11 @@ Item {
 
     readonly property var surfaceCfg: cfg.surface !== undefined ? cfg.surface : ({})
     readonly property var shadowCfg: surfaceCfg.shadow !== undefined ? surfaceCfg.shadow : ({})
+    /*! CW2 小组件同款渐变边框高光（工具栏与翻页 pill 共用）。 */
+    readonly property bool highlightEnabled: surfaceCfg.highlight !== undefined
+        ? surfaceCfg.highlight === true : true
+    /*! 高光环是否真的在画（自检用；经 FlyoutSurface 透出）。 */
+    readonly property bool highlightRingVisible: bar.highlightRingVisible
     readonly property var buttonsCfg: cfg.buttons !== undefined ? cfg.buttons : ({})
     readonly property var dividerCfg: cfg.divider !== undefined ? cfg.divider : ({})
     readonly property var segmentCfg: cfg.segment !== undefined ? cfg.segment : ({})
@@ -131,17 +136,16 @@ Item {
         ? exitCfg.icon : "ic_fluent_power_20_regular"
     readonly property string exitLabel: exitCfg.label !== undefined
         ? exitCfg.label : qsTr("退出放映")
-    /*! ``accent``（缺省）= 强调色实底**圆形** + 深色图标；
-        ``danger`` = L1 的 .tool-btn-danger（红色图标透明圆钮）。 */
+    /*! ``default``（缺省）= 与其他按钮同款的透明圆钮 + 主题色图标；
+        ``danger`` = L1 的 .tool-btn-danger（红色图标透明圆钮）。
+        强调色实底版式已取消（2026-09-25）。 */
     readonly property string exitStyle: exitCfg.style !== undefined
-        ? exitCfg.style : "accent"
-    readonly property color exitAccent: exitCfg.accent !== undefined
-        ? exitCfg.accent : Lumi.accent
+        ? exitCfg.style : "default"
     /*! 两种版式**尺寸相同**（都是直径 = 内容高的圆），自检靠这两个颜色区分。 */
     readonly property color exitFillColor: exitStyle === "danger"
-        ? Lumi.dockDangerFill : exitAccent
+        ? Lumi.dockDangerFill : Lumi.dockButtonHoverFill
     readonly property color exitIconColor: exitStyle === "danger"
-        ? Lumi.dockDangerIcon : Lumi.onAccent
+        ? Lumi.dockDangerIcon : Lumi.textPrimary
 
     // ============================================================ 区块编排
     /*! 区块顺序固定；``corners.<corner>.groups`` 只需是它的子集。 */
@@ -238,6 +242,7 @@ Item {
         paddingY: dock.effPaddingCross
         surfaceRadius: dock.surfaceRadius
         surfaceOpacity: dock.surfaceOpacity
+        highlightEnabled: dock.highlightEnabled
         shadowEnabled: dock.shadowEnabled
         shadowMargin: dock.shadowMargin
         shadowBlur: dock.shadowBlur
@@ -371,7 +376,6 @@ Item {
             style: dock.exitStyle
             iconName: dock.exitIcon
             tooltip: dock.exitLabel
-            accent: dock.exitAccent
             buttonHeight: dock.contentHeight
             glyphSize: dock.iconSize
             onClicked: Backend.exitPresentation()

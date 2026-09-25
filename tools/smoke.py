@@ -287,6 +287,13 @@ def main() -> int:
                 f"pillRadius={cdock.property('pillRadius')} 期望={bar_h / 2}",
             )
             check(
+                "CW2 同款渐变边框高光已开（工具栏）",
+                cdock.property("highlightEnabled") is True
+                and cdock.property("highlightRingVisible") is True,
+                f"enabled={cdock.property('highlightEnabled')} "
+                f"ring={cdock.property('highlightRingVisible')}",
+            )
+            check(
                 "竖向分隔线 = L1（1×24、两侧各 4）",
                 cdock.property("dividerWidth") == 1
                 and cdock.property("dividerHeight") == 24
@@ -329,6 +336,13 @@ def main() -> int:
                 "翻页 pill = L1 的 .flipper（160×54）",
                 ldock.width() - lshadow * 2 == 160 and ldock.height() - lshadow * 2 == 54,
                 f"{ldock.width() - lshadow * 2}x{ldock.height() - lshadow * 2}",
+            )
+            check(
+                "CW2 同款渐变边框高光已开（翻页 pill）",
+                ldock.property("highlightEnabled") is True
+                and ldock.property("highlightRingVisible") is True,
+                f"enabled={ldock.property('highlightEnabled')} "
+                f"ring={ldock.property('highlightRingVisible')}",
             )
 
         # ---- 模拟退出放映：顶层窗口整体隐藏 ----
@@ -434,7 +448,7 @@ def main() -> int:
               app.config.get("presentation.margin_x") == original_margin,
               f"{original_margin} -> {app.config.get('presentation.margin_x')}")
 
-        # ---- 退出键样式可切换（accent ↔ danger，两种版式都是直径 38 的圆）----
+        # ---- 退出键样式可切换（default ↔ danger，两种版式都是直径 38 的圆）----
         # 这条走**内存改配置 + reload_from_config** 的成对用法（``persist=False``），
         # 不落盘 —— 免得像 margin_x 那样往用户配置里钉一个值。
         # 两种版式尺寸完全一样，只能靠暴露出来的填充色 / 图标色区分。
@@ -444,7 +458,7 @@ def main() -> int:
             base_fill = str(exit_dock.property("exitFillColor"))
             base_icon = str(exit_dock.property("exitIconColor"))
 
-            other = "danger" if (prev_style or "accent") == "accent" else "accent"
+            other = "danger" if (prev_style or "default") != "danger" else "default"
             app.config.set("presentation.exit.style", other, persist=False)
             app.backend.reload_from_config()
             check(

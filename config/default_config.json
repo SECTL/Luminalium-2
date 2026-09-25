@@ -95,6 +95,8 @@
     "//padding": "左右 8：**同心嵌套**——外壳帽半径 27 − 分段帽半径 19 = 8，两弧圆心才对齐（padding 12 时圆心差 4px，弧间空隙宽窄不一，看起来像条诡异的空槽）。上下 8 不变",
     "padding_x": 8,
     "padding_y": 8,
+    "//highlight": "CW2 小组件同款的「渐变边框高光」（lighting effect）：对角线渐变描边，两端亮白、中段隐去。工具栏与翻页 pill 都带；环宽与亮度在 Lumi.qml（dockHighlightWidth/dockHighlightColor）",
+    "highlight": true,
       "shadow": {
         "enabled": true,
         "margin": 24,
@@ -157,9 +159,8 @@
     "enabled": true,
     "label": "退出放映",
     "icon": "ic_fluent_power_20_regular",
-    "//style": "accent = 强调色实底**圆形**按钮（直径 = 内容高）+ 深色图标，缺省；danger = Luminalium 1 的 .tool-btn-danger（透明圆钮 + 红色电源图标）",
-    "style": "accent",
-    "//accent": "仅 style=accent 时使用；缺省 = 跟随 app.accent（Lumi.accent）"
+    "//style": "default = 与其他工具栏按钮同款的透明圆钮 + 主题色图标，缺省；danger = Luminalium 1 的 .tool-btn-danger（透明圆钮 + 红色电源图标）。强调色实底版式已按用户要求取消（2026-09-25）",
+    "style": "default"
   },
     "corners": {
       "//": "控制条恒横向。工具栏是**独立的一套组**摆在下中部（tools/actions/exit）；翻页栏独立出来，左右各一只 pill。",

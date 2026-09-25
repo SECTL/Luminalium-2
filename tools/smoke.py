@@ -66,10 +66,13 @@ def main() -> int:
         )
 
         # ---- 面板显隐与定位 ----
+        # 光标必须在 show_panel() **之前**取：面板按「弹出那一刻」的光标定位，
+        # 之后真鼠标一动，断言就会拿新位置跟旧面板比（真机踩过：光标中途
+        # 移动 500px → 假失败）。
+        cursor = QCursor.pos()
         app.windows.show_panel()
         panel = app.windows.panel
         check("快捷面板可见", panel.isVisible())
-        cursor = QCursor.pos()
         screen = QGuiApplication.screenAt(cursor) or QGuiApplication.primaryScreen()
         area = screen.availableGeometry()
         inside = (
@@ -289,6 +292,23 @@ def main() -> int:
                 f"{cdock.property('dividerWidth')}×{cdock.property('dividerHeight')} "
                 f"gap={cdock.property('dividerGap')}",
             )
+            # ---- 工具分段：胶囊容器 + 圆形分页（RinUI Segmented 基类）----
+            tools_count = len(app.config.get("presentation.tools") or [])
+            check(
+                "工具分段已接入（分页数 = 配置的 tools 数）",
+                cdock.property("segmentItemCount") == tools_count and tools_count > 0,
+                f"items={cdock.property('segmentItemCount')} 配置={tools_count}",
+            )
+            check(
+                "分页真的进了 TabBar 容器（count = 配置数，Repeater 接线成立）",
+                cdock.property("segmentPageCount") == tools_count,
+                f"tabCount={cdock.property('segmentPageCount')} 配置={tools_count}",
+            )
+            check(
+                "分段容器是圆的（胶囊圆角 = 内容高/2）",
+                abs(cdock.property("segmentPillRadius") - 38 / 2) <= 0.5,
+                f"segmentPillRadius={cdock.property('segmentPillRadius')} 期望=19",
+            )
             check(
                 "工具栏尺寸（扣除投影余量）",
                 cdock.width() - cshadow * 2 > 0 and cdock.height() - cshadow * 2 == 54,
@@ -405,36 +425,38 @@ def main() -> int:
               app.config.get("presentation.margin_x") == original_margin,
               f"{original_margin} -> {app.config.get('presentation.margin_x')}")
 
-        # ---- 退出键样式可切换（danger ↔ accent）----
+        # ---- 退出键样式可切换（accent ↔ danger，两种版式都是直径 38 的圆）----
         # 这条走**内存改配置 + reload_from_config** 的成对用法（``persist=False``），
         # 不落盘 —— 免得像 margin_x 那样往用户配置里钉一个值。
-        # 断言看 ``exitRequestedWidth`` 而不是控件实际宽度：Flow 的隐式尺寸要等
-        # 一次布局 polish 才刷，同一个事件循环里读不到（会假失败）。
+        # 两种版式尺寸完全一样，只能靠暴露出来的填充色 / 图标色区分。
         exit_dock = app.windows._docks.get("bottom_center")
         if exit_dock is not None:
             prev_style = app.config.get("presentation.exit.style")
-            danger_w = exit_dock.property("exitRequestedWidth")
+            base_fill = str(exit_dock.property("exitFillColor"))
+            base_icon = str(exit_dock.property("exitIconColor"))
 
-            app.config.set("presentation.exit.style", "accent", persist=False)
+            other = "danger" if (prev_style or "accent") == "accent" else "accent"
+            app.config.set("presentation.exit.style", other, persist=False)
             app.backend.reload_from_config()
             check(
-                "退出键样式已同步到 QML（danger → accent）",
-                exit_dock.property("exitStyle") == "accent",
+                f"退出键样式已同步到 QML（{prev_style} → {other}）",
+                exit_dock.property("exitStyle") == other,
                 str(exit_dock.property("exitStyle")),
             )
-            accent_w = exit_dock.property("exitRequestedWidth")
             check(
-                "强调色版退出键略宽于高（圆形 38 → 实底 41）",
-                danger_w == 38 and accent_w == round(38 * 1.07),
-                f"danger={danger_w} accent={accent_w}",
+                "两种版式的填充/图标色确实不同（尺寸相同时唯一的区分）",
+                str(exit_dock.property("exitFillColor")) != base_fill
+                and str(exit_dock.property("exitIconColor")) != base_icon,
+                f"{base_fill}/{base_icon} -> "
+                f"{exit_dock.property('exitFillColor')}/{exit_dock.property('exitIconColor')}",
             )
 
             app.config.set("presentation.exit.style", prev_style, persist=False)
             app.backend.reload_from_config()
             check(
                 "退出键样式已还原（自检不留副作用）",
-                exit_dock.property("exitRequestedWidth") == danger_w,
-                f"{danger_w} -> {exit_dock.property('exitRequestedWidth')}",
+                str(exit_dock.property("exitFillColor")) == base_fill,
+                f"{base_fill} -> {exit_dock.property('exitFillColor')}",
             )
 
         failures = sum(1 for line in RESULTS if line.startswith("[FAIL]"))

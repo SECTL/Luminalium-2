@@ -25,10 +25,11 @@ import Luminalium
     注意两边的横向内边距**不是同一档**：工具栏 12、翻页 pill 只有 4
     （L1 的圆钮自带 4px 外边距，几乎贴着 pill 边缘）。
 
-    **工具组没有「容器 + 下划线」的分段控件**：L1 里工具就是普通圆形按钮，
-    选中的那个浮现一档更深的填充。所以这里直接用
-    ``IconButton { active: }`` 绑 ``Backend.activeTool``，
-    不再需要组内互斥的中间层。
+    **工具组是「圆的分段控件」**（``ToolSegment``，基类 RinUI 的
+    ``Segmented``）：胶囊容器 + 每页一枚圆形图标，选中的那页浮现圆钮、
+    没有下划线。组内互斥与 ``currentIndex`` 由 ``TabBar`` 基类提供，
+    ``currentIndex ↔ Backend.activeTool`` 由本组件双向同步（后端换工具
+    —— 快捷键 / 托盘 —— 时选中页自动跟随）。
 
     ``corner`` 由 Python 注入（bottom_left / bottom_right / ...），
     每组显隐由 ``corners.<corner>.groups`` 决定。
@@ -53,6 +54,7 @@ Item {
     readonly property var shadowCfg: surfaceCfg.shadow !== undefined ? surfaceCfg.shadow : ({})
     readonly property var buttonsCfg: cfg.buttons !== undefined ? cfg.buttons : ({})
     readonly property var dividerCfg: cfg.divider !== undefined ? cfg.divider : ({})
+    readonly property var segmentCfg: cfg.segment !== undefined ? cfg.segment : ({})
     readonly property var overflowCfg: cfg.overflow !== undefined ? cfg.overflow : ({})
     readonly property var pagerCfg: cfg.pager !== undefined ? cfg.pager : ({})
     readonly property var exitCfg: cfg.exit !== undefined ? cfg.exit : ({})
@@ -91,6 +93,20 @@ Item {
     readonly property int pagerPillPaddingX: pagerCfg.surface_padding_x !== undefined
         ? pagerCfg.surface_padding_x : Lumi.dockPagerPaddingX
 
+    // ---- 分段控件（工具组）----
+    readonly property int segmentPaddingX: segmentCfg.padding_x !== undefined
+        ? segmentCfg.padding_x : Lumi.dockSegmentPadding
+    readonly property int segmentSpacing: segmentCfg.spacing !== undefined
+        ? segmentCfg.spacing : Lumi.dockSegmentSpacing
+    /*! 分段胶囊的**实际**圆角（= 高/2，钳制后）。自检读这个值。 */
+    readonly property real segmentPillRadius: present("tools")
+        ? toolSegment.effectiveRadius : 0
+    /*! 当前分页数（自检用；没启用工具组时为 0）。 */
+    readonly property int segmentItemCount: present("tools") ? toolsCfg.length : 0
+    /*! ``TabBar.count`` —— Repeater 的项**真的进了**容器的 contentModel
+        （配置长度只能证明 model 有几条，这条才证明接线成立）。 */
+    readonly property int segmentPageCount: present("tools") ? toolSegment.count : 0
+
     // ---- 开关 ----
     readonly property bool shadowEnabled: shadowCfg.enabled !== undefined
         ? shadowCfg.enabled : true
@@ -115,16 +131,17 @@ Item {
         ? exitCfg.icon : "ic_fluent_power_20_regular"
     readonly property string exitLabel: exitCfg.label !== undefined
         ? exitCfg.label : qsTr("退出放映")
-    /*! ``danger`` = L1 的 .tool-btn-danger（红色图标圆形）；``accent`` = 强调色实底。 */
+    /*! ``accent``（缺省）= 强调色实底**圆形** + 深色图标；
+        ``danger`` = L1 的 .tool-btn-danger（红色图标透明圆钮）。 */
     readonly property string exitStyle: exitCfg.style !== undefined
-        ? exitCfg.style : "danger"
-    /*! 退出键的宽:高比。danger 是纯圆（1.0），accent 版略宽于高（L1 外的旧版式）。 */
-    readonly property real exitWidthRatio: exitStyle === "accent"
-        ? Lumi.dockExitWidthRatio : 1
-    /*! 退出键算出来的宽度（自检读这个值，不必等布局刷完）。 */
-    readonly property int exitRequestedWidth: Math.round(contentHeight * exitWidthRatio)
+        ? exitCfg.style : "accent"
     readonly property color exitAccent: exitCfg.accent !== undefined
         ? exitCfg.accent : Lumi.accent
+    /*! 两种版式**尺寸相同**（都是直径 = 内容高的圆），自检靠这两个颜色区分。 */
+    readonly property color exitFillColor: exitStyle === "danger"
+        ? Lumi.dockDangerFill : exitAccent
+    readonly property color exitIconColor: exitStyle === "danger"
+        ? Lumi.dockDangerIcon : Lumi.onAccent
 
     // ============================================================ 区块编排
     /*! 区块顺序固定；``corners.<corner>.groups`` 只需是它的子集。 */
@@ -181,6 +198,21 @@ Item {
     /*! 横向（垂直于轴）内边距 —— 与工具条那一档共用（上下都是 8）。 */
     readonly property int effPaddingCross: surfacePaddingY
 
+    // ------------------------------------------------------- 工具 ↔ 选中页
+    /*! ``presentation.tools`` 里 id 为 ``toolId`` 的下标，找不到回落 0。 */
+    function toolIndex(toolId) {
+        for (var i = 0; i < toolsCfg.length; i++) {
+            if (toolsCfg[i].id === toolId) {
+                return i
+            }
+        }
+        return 0
+    }
+
+    function toolIdAt(index) {
+        return (index >= 0 && index < toolsCfg.length) ? toolsCfg[index].id : ""
+    }
+
     // ------------------------------------------------------------- 控制条本体
     // 根节点是 Item（不再是独立窗口）：所有角落的控制条都挂在
     // TopWindow.qml（全屏「顶层窗口」）的容器里，由 Python 定位。
@@ -211,24 +243,35 @@ Item {
         shadowBlur: dock.shadowBlur
         shadowOffsetY: dock.shadowOffsetY
 
-        // ==================================================== 1. 工具（笔 / 橡皮）
-        // L1 里工具就是普通圆形按钮，选中的那个浮现更深一档的填充 ——
-        // 没有「分段容器 + 下划线」。active 直接绑后端状态，
-        // 所以后端换工具（快捷键 / 托盘）时这里自动跟随，不用再同步。
-        Flow {
+        // ==================================================== 1. 工具分段
+        // 圆的分段控件（基类 Rin.Segmented = TabBar）：组内互斥与 currentIndex
+        // 都由基类提供。绑定 ``currentIndex: dock.toolIndex(...)`` 给出初值并
+        // 跟随后端切换；用户点击会写 currentIndex 打断绑定，由底部 Connections
+        // 继续同步（标准 TabBar 用法）。
+        ToolSegment {
+            id: toolSegment
             visible: dock.present("tools")
-            spacing: dock.buttonSpacing
+            itemHeight: dock.contentHeight
+            edgePadding: dock.segmentPaddingX
+            itemSpacing: dock.segmentSpacing
+
+            currentIndex: dock.toolIndex(Backend.activeTool)
+
+            onCurrentIndexChanged: {
+                var id = dock.toolIdAt(currentIndex)
+                if (id !== "" && Backend.activeTool !== id) {
+                    Backend.selectTool(id)
+                }
+            }
 
             Repeater {
                 model: dock.toolsCfg
 
-                delegate: IconButton {
-                    iconName: modelData.icon !== undefined ? modelData.icon : ""
-                    tooltip: modelData.label !== undefined ? modelData.label : ""
-                    hitSize: dock.hitSize
+                delegate: ToolSegmentItem {
+                    itemHeight: dock.contentHeight
                     glyphSize: dock.iconSize
-                    active: Backend.activeTool === modelData.id
-                    onClicked: Backend.selectTool(modelData.id)
+                    tooltip: modelData.label !== undefined ? modelData.label : ""
+                    icon.name: modelData.icon !== undefined ? modelData.icon : ""
                 }
             }
         }
@@ -330,9 +373,21 @@ Item {
             tooltip: dock.exitLabel
             accent: dock.exitAccent
             buttonHeight: dock.contentHeight
-            widthRatio: dock.exitWidthRatio
             glyphSize: dock.iconSize
             onClicked: Backend.exitPresentation()
+        }
+    }
+
+    // 用户点击后 currentIndex 的绑定被打断；后端发起的工具切换
+    // （快捷键 / 托盘菜单）由这里继续同步到选中页。
+    Connections {
+        target: Backend
+
+        function onActiveToolChanged() {
+            var index = dock.toolIndex(Backend.activeTool)
+            if (toolSegment.currentIndex !== index) {
+                toolSegment.currentIndex = index
+            }
         }
     }
 }

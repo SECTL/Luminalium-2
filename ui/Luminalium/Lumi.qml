@@ -96,16 +96,17 @@ QtObject {
     //   | 分隔线              | .separator 1×24，margin: auto 4  | 1×24   |
     //   | 分隔线颜色          | --overlay-toolbar-line 白 15%     | 同     |
     //   | 翻页 pill           | .flipper 160×54，圆钮 margin 0 4  | 160×54 |
-    //   | 退出键              | .tool-btn-danger 38 圆形          | 38     |
+    //   | 退出键              | 强调色实底**圆**（直径 = 内容高）  | 38     |
     //   | 悬停 / 选中填充      | 白 8% / 白 15%（浅色主题黑 6/12） | 同     |
     //   | 危险色（退出）       | 图标 #D9485A、悬停填充红 14%       | 同     |
     //
     // 设计语言（与 L1 一致）：
     //   · 底板是**全圆胶囊**，不是圆角矩形
     //   · 按钮一律**圆形**，平时完全透明、只在悬停 / 选中时浮现填充
-    //   · 工具没有「容器 + 下划线」的分段控件，选中就是圆底填充
+    //   · 工具组是**圆的分段控件**（``ToolSegment``，基类 RinUI 的 ``Segmented``）：
+    //     胶囊容器 + 圆形分页，选中的那页就是圆钮；**没有下划线**这一层
     //   · 翻页 pill 比工具条紧凑：圆钮几乎贴着 pill 边缘（留白 4 vs 12）
-    //   · 退出键是**红色图标**的圆形按钮，不是强调色实底方块
+    //   · 退出键是**强调色实底圆**（不是圆角方块；``danger`` 变体才是 L1 的红图标圆钮）
     //   · 颜色仍走 RinUI 主题；只有「白 8% / 15%」这类**比例**照 L1 落实
 
     // ---- 底板 ----
@@ -121,8 +122,6 @@ QtObject {
     readonly property int dockHitSize: 38
     /*! 同一组按钮之间的间距（L1 ``#toolbar gap: 4px``）。 */
     readonly property int dockButtonSpacing: 4
-    /*! 只有 ``style: "accent"`` 的退出键用得到（L1 的 danger 版是纯圆）。 */
-    readonly property int dockControlRadius: 5
 
     // ---- 按钮状态填充（L1 --overlay-button-hover / -active）----
     // 用 textPrimary 的透明度而不是写死白色：浅色主题下 L1 同样翻成
@@ -133,14 +132,26 @@ QtObject {
     readonly property color dockDangerIcon: "#D9485A"
     readonly property color dockDangerFill: "#24E03E3E"
 
+    // ---- 工具分段控件（``ToolSegment`` / ``ToolSegmentItem``）----
+    // 形态：**胶囊容器 + 圆形分页**。基类是 RinUI 的 ``Segmented``（TabBar）与
+    // ``SegmentedItem``（TabButton），组内互斥、键盘导航都用它的 —— 只是把
+    // 「圆角矩形容器 + 圆角矩形选中板 + 下划线」这套方语言换成圆的。
+    /*! 999 = 胶囊；``ToolSegment`` 按 高/2 钳制（38 → 19）。 */
+    readonly property int dockSegmentRadius: 999
+    /*! 容器左右留白。上下为 0 —— 分页高 = 内容高（38），容器高也是它。 */
+    readonly property int dockSegmentPadding: 4
+    /*! 两个分页之间的间距。 */
+    readonly property int dockSegmentSpacing: 4
+    /*! 容器底：比底板亮一档（与按钮悬停同一档浓淡），读出「这是一个凹槽」。 */
+    readonly property color dockSegmentBg: fade(textPrimary, 0.06)
+    /*! 选中钮：L1 的 ``--overlay-button-active`` 浓淡（白 15%）。 */
+    readonly property color dockSegmentCheckedBg: fade(textPrimary, 0.15)
+
     // ---- 分隔线（L1 .separator：1×24、两侧各 4、白 15%）----
     readonly property int dockDividerWidth: 1
     readonly property int dockDividerHeight: 24
     readonly property int dockDividerGap: 4
     readonly property color dockDivider: fade(textPrimary, 0.15)
-
-    // ---- 退出键（仅 style=accent 时用到的宽:高比）----
-    readonly property real dockExitWidthRatio: 1.07
 
     // ---- 页码 ----
     readonly property int dockPagerWidth: 60

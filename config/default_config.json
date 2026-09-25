@@ -48,7 +48,7 @@
       "//actions": "CW2 惯例：窗口右下角（卡片外）一排扁平图标按钮，各自带 ToolTip",
       "actions": [
         { "id": "reload", "icon": "ic_fluent_arrow_counterclockwise_20_regular", "tooltip": "重新加载" },
-        { "id": "exit", "icon": "ic_fluent_arrow_exit_20_regular", "tooltip": "退出 Luminalium 2" }
+        { "id": "exit", "icon": "ic_fluent_arrow_exit_20_regular", "tooltip": "退出 Luminalium" }
       ]
     }
   },
@@ -110,6 +110,13 @@
     "//spacing": "Luminalium 1 #toolbar gap: 4px",
     "spacing": 4
   },
+  "segment": {
+    "//description": "工具组是**圆的分段控件**（基类 RinUI 的 Segmented）：胶囊容器 + 两个圆形分页，选中的那页浮现一枚圆钮；Luminalium 1 里工具本来是散装圆钮，这里按用户要求恢复成「有容器」的分段，但语言是圆的（没有下划线）",
+    "//padding_x": "容器左右留白。上下为 0 —— 分页高 = 内容高 = 容器高（38），再缩就压到图标了",
+    "padding_x": 4,
+    "//spacing": "两个分页之间的间距",
+    "spacing": 4
+  },
   "divider": {
     "enabled": true,
     "width": 1,
@@ -150,8 +157,8 @@
     "enabled": true,
     "label": "退出放映",
     "icon": "ic_fluent_power_20_regular",
-    "//style": "danger = Luminalium 1 的 .tool-btn-danger（38 圆形按钮、红色图标 #D9485A、悬停红 14% 填充）；accent = 强调色实底方块（旧版式）",
-    "style": "danger",
+    "//style": "accent = 强调色实底**圆形**按钮（直径 = 内容高）+ 深色图标，缺省；danger = Luminalium 1 的 .tool-btn-danger（透明圆钮 + 红色电源图标）",
+    "style": "accent",
     "//accent": "仅 style=accent 时使用；缺省 = 跟随 app.accent（Lumi.accent）"
   },
     "corners": {

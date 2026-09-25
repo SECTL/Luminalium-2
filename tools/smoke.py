@@ -271,11 +271,11 @@ def main() -> int:
             cshadow = int(cdock.property("shadowMargin") or 0)
             bar_h = cdock.property("contentHeight") + cdock.property("surfacePaddingY") * 2
             check(
-                "控制条档位 = L1（条高 54 / 按钮 38 / 图标 20 / 间距 4）",
-                bar_h == 54
-                and cdock.property("contentHeight") == 38
-                and cdock.property("hitSize") == 38
-                and cdock.property("iconSize") == 20
+                "控制条档位 = 放大档（条高 62 / 按钮 44 / 图标 22 / 间距 4）",
+                bar_h == 62
+                and cdock.property("contentHeight") == 44
+                and cdock.property("hitSize") == 44
+                and cdock.property("iconSize") == 22
                 and cdock.property("buttonSpacing") == 4,
                 f"条高={bar_h} 内容高={cdock.property('contentHeight')} "
                 f"按钮={cdock.property('hitSize')} 图标={cdock.property('iconSize')} "
@@ -294,9 +294,9 @@ def main() -> int:
                 f"ring={cdock.property('highlightRingVisible')}",
             )
             check(
-                "竖向分隔线 = L1（1×24、两侧各 4）",
+                "竖向分隔线 = 放大档（1×28、两侧各 4）",
                 cdock.property("dividerWidth") == 1
-                and cdock.property("dividerHeight") == 24
+                and cdock.property("dividerHeight") == 28
                 and cdock.property("dividerGap") == 4,
                 f"{cdock.property('dividerWidth')}×{cdock.property('dividerHeight')} "
                 f"gap={cdock.property('dividerGap')}",
@@ -315,11 +315,11 @@ def main() -> int:
             )
             check(
                 "分段容器是圆的（胶囊圆角 = 内容高/2）",
-                abs(cdock.property("segmentPillRadius") - 38 / 2) <= 0.5,
-                f"segmentPillRadius={cdock.property('segmentPillRadius')} 期望=19",
+                abs(cdock.property("segmentPillRadius") - 44 / 2) <= 0.5,
+                f"segmentPillRadius={cdock.property('segmentPillRadius')} 期望=22",
             )
             check(
-                "嵌套弧线同心（外壳帽圆心 = 分段帽圆心：paddingX + 19 == 27）",
+                "嵌套弧线同心（外壳帽圆心 = 分段帽圆心：paddingX + 22 == 31）",
                 cdock.property("surfacePaddingX") + cdock.property("segmentPillRadius")
                 == cdock.property("pillRadius"),
                 f"paddingX={cdock.property('surfacePaddingX')} + segR="
@@ -327,14 +327,14 @@ def main() -> int:
             )
             check(
                 "工具栏尺寸（扣除投影余量）",
-                cdock.width() - cshadow * 2 > 0 and cdock.height() - cshadow * 2 == 54,
+                cdock.width() - cshadow * 2 > 0 and cdock.height() - cshadow * 2 == 62,
                 f"{cdock.width() - cshadow * 2}x{cdock.height() - cshadow * 2}",
             )
         if ldock is not None:
             lshadow = int(ldock.property("shadowMargin") or 0)
             check(
-                "翻页 pill = L1 的 .flipper（160×54）",
-                ldock.width() - lshadow * 2 == 160 and ldock.height() - lshadow * 2 == 54,
+                "翻页 pill = 放大档 .flipper（180×62）",
+                ldock.width() - lshadow * 2 == 180 and ldock.height() - lshadow * 2 == 62,
                 f"{ldock.width() - lshadow * 2}x{ldock.height() - lshadow * 2}",
             )
             check(
@@ -448,7 +448,7 @@ def main() -> int:
               app.config.get("presentation.margin_x") == original_margin,
               f"{original_margin} -> {app.config.get('presentation.margin_x')}")
 
-        # ---- 退出键样式可切换（default ↔ danger，两种版式都是直径 38 的圆）----
+        # ---- 退出键样式可切换（default ↔ danger，两种版式都是直径 44 的圆）----
         # 这条走**内存改配置 + reload_from_config** 的成对用法（``persist=False``），
         # 不落盘 —— 免得像 margin_x 那样往用户配置里钉一个值。
         # 两种版式尺寸完全一样，只能靠暴露出来的填充色 / 图标色区分。

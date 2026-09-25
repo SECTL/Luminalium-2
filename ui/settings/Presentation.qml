@@ -105,7 +105,7 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("组分隔线")
-        description: qsTr("在工具 / 动作 / 退出之间绘制细竖线")
+        description: qsTr("在动作 / 翻页 / 退出之间绘制细竖线（工具分段右侧不留）")
         icon.name: "ic_fluent_line_vertical_1_20_regular"
 
         Rin.Switch {

@@ -86,15 +86,15 @@
     "topmost_interval_ms": 800,
     "//verify_after_ms": "显示后多久做一次自检（对照窗口真实位置 / DWM 是否被披风化）",
     "verify_after_ms": 500,
-  "//bar_height": "条高。Luminalium 1 实测 = 按钮 38 + 上下内边距 8 × 2 = 54（#toolbar padding 上下 8、.tool-btn 38×38），翻页 .flipper 同为 54",
-  "bar_height": 54,
+  "//bar_height": "条高。Luminalium 1 实测 54（按钮 38 + 上下内边距 8×2）；2026-09-25 用户指令「默认的组件比例大一些（设计语言仍是 L1）」→ 整体放大一档：条高 62 = 按钮 44 + 上下内边距 9×2",
+  "bar_height": 62,
   "surface": {
     "//radius": "999 = 全圆胶囊（Luminalium 1：#toolbar / .flipper 都是 border-radius:999px）。FlyoutSurface 会按 高/2 钳制，改 bar_height 不会失形",
     "radius": 999,
     "opacity": 0.97,
-    "//padding": "左右 8：**同心嵌套**——外壳帽半径 27 − 分段帽半径 19 = 8，两弧圆心才对齐（padding 12 时圆心差 4px，弧间空隙宽窄不一，看起来像条诡异的空槽）。上下 8 不变",
-    "padding_x": 8,
-    "padding_y": 8,
+    "//padding": "左右 9：**同心嵌套**——外壳帽半径 31 − 分段帽半径 22 = 9，两弧圆心才对齐。上下 9（内容高 44）",
+    "padding_x": 9,
+    "padding_y": 9,
     "//highlight": "CW2 小组件同款的「渐变边框高光」（lighting effect）：对角线渐变描边，两端亮白、中段隐去。工具栏与翻页 pill 都带；环宽与亮度在 Lumi.qml（dockHighlightWidth/dockHighlightColor）",
     "highlight": true,
       "shadow": {
@@ -105,16 +105,16 @@
       }
     },
   "buttons": {
-    "//icon_size": "Luminalium 1 .icon-mask = 20px",
-    "icon_size": 20,
-    "//hit_size": "Luminalium 1 .tool-btn = 38×38 **圆形**；数值上等于内容高（条高 54 − 上下内边距 8×2）",
-    "hit_size": 38,
+    "//icon_size": "L1 .icon-mask 20px；放大档 22",
+    "icon_size": 22,
+    "//hit_size": "圆形按钮直径，= 内容高（条高 62 − 上下内边距 9×2 = 44）。L1 原档 38",
+    "hit_size": 44,
     "//spacing": "Luminalium 1 #toolbar gap: 4px",
     "spacing": 4
   },
   "segment": {
     "//description": "工具组是**圆的分段控件**（基类 RinUI 的 Segmented）：胶囊容器 + 两个圆形分页，选中的那页浮现一枚圆钮；Luminalium 1 里工具本来是散装圆钮，这里按用户要求恢复成「有容器」的分段，但语言是圆的（没有下划线）",
-    "//padding_x": "必须为 0：分段帽要与外壳帽**同心**（外壳 padding 8 + 这里的 0 + 半径 19 = 27 = 外壳帽半径），这里再留白就会把圆心推偏、弧间空隙宽窄不一。上下为 0 —— 分页高 = 内容高 = 容器高（38）",
+    "//padding_x": "必须为 0：分段帽要与外壳帽**同心**（外壳 padding 9 + 这里的 0 + 半径 22 = 31 = 外壳帽半径），这里再留白就会把圆心推偏、弧间空隙宽窄不一。上下为 0 —— 分页高 = 内容高 = 容器高（44）",
     "padding_x": 0,
     "//spacing": "两个分页之间的间距",
     "spacing": 4
@@ -122,8 +122,8 @@
   "divider": {
     "enabled": true,
     "width": 1,
-    "//height": "Luminalium 1 .separator height: 24px",
-    "height": 24,
+    "//height": "L1 .separator 24px；放大档 28",
+    "height": 28,
     "//gap": "Luminalium 1 .separator margin: auto 4px（线两侧各 4）",
     "gap": 4
   },
@@ -146,8 +146,8 @@
     ],
   "pager": {
     "enabled": true,
-    "//width": "页码文本区宽度。Luminalium 1 的 .flipper 宽 160 − 两个 38 圆钮与各自 4px 外边距（92）= 68，再扣掉页码区自己的 padding 0 4px × 2 → 60",
-    "width": 60,
+    "//width": "页码文本区宽度。放大档：翻页 pill 180 = 4 + 圆钮 44 + 8 + 68 + 8 + 44 + 4（L1 原档 160×54 的同比例放大）",
+    "width": 68,
     "//spacing": "圆钮与页码区之间的间距。Luminalium 1 = 按钮 margin 4 + 页码区 padding 4 = 8",
     "spacing": 8,
     "//surface_padding_x": "翻页 pill 的左右留白。Luminalium 1 的圆钮只距 pill 边缘 4px（.flipper-btn margin: 0 4px）—— 比工具条的 12 紧凑得多，这是「翻页栏更小更聚拢」的关键",

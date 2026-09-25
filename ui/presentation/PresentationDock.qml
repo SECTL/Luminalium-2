@@ -13,7 +13,8 @@ import Luminalium
 
         tools → actions → pager → exit
 
-    相邻的两个「可见区块」之间插一条竖向分隔线。
+    分隔线只插在 **动作 → 翻页 → 退出** 之间 —— 工具分段右侧没有：分段
+    自带胶囊容器，紧跟着再来一条竖线会显得「双层边」。
     某一区块在这个角落没被启用时，它连同它前后的分隔线一起消失::
 
         groups = ["tools", "actions", "exit"]  →  [笔][橡皮] │ [清屏][⋯] │ [⏻]
@@ -22,7 +23,7 @@ import Luminalium
     **工具栏与翻页栏是两套独立的条**：``bottom_center`` 是工具栏
     （tools/actions/exit），``bottom_left`` 与 ``bottom_right`` 各是一只翻页
     pill —— 同一套组件渲染三份，只是 ``groups`` 不同。
-    注意两边的横向内边距**不是同一档**：工具栏 12、翻页 pill 只有 4
+    注意两边的横向内边距**不是同一档**：工具栏 9、翻页 pill 只有 4
     （L1 的圆钮自带 4px 外边距，几乎贴着 pill 边缘）。
 
     **工具组是「圆的分段控件」**（``ToolSegment``，基类 RinUI 的
@@ -197,9 +198,9 @@ Item {
     /*! 只剩翻页一块时，底板退化成「留白很紧的小 pill」（L1 的 .flipper）。 */
     readonly property bool pagerOnly: presentCount === 1 && present("pager")
 
-    /*! 沿轴向内边距（横条即左右）。工具条 12、翻页 pill 只有 4（L1 的两档）。 */
+    /*! 沿轴向内边距（横条即左右）。工具条 9、翻页 pill 只有 4（两档）。 */
     readonly property int effPaddingAlong: pagerOnly ? pagerPillPaddingX : surfacePaddingX
-    /*! 横向（垂直于轴）内边距 —— 与工具条那一档共用（上下都是 8）。 */
+    /*! 横向（垂直于轴）内边距 —— 与工具条那一档共用（上下都是 9）。 */
     readonly property int effPaddingCross: surfacePaddingY
 
     // ------------------------------------------------------- 工具 ↔ 选中页
@@ -281,14 +282,8 @@ Item {
             }
         }
 
-        // ==================================== 分隔线（分段 → 动作）
-        SectionDivider {
-            visible: dock.dividerBefore("actions")
-            dividerWidth: dock.dividerWidth
-            dividerHeight: dock.dividerHeight
-            dividerGap: dock.dividerGap
-            rowHeight: dock.contentHeight
-        }
+        // （工具分段右侧**没有分隔线**：分段自带胶囊容器，紧跟着再来一条竖线
+        //  会显得「双层边」。分隔线只画在 动作 → 翻页 → 退出 之间。）
 
         // ==================================== 2. 动作按钮 + 溢出「⋯」
         Flow {

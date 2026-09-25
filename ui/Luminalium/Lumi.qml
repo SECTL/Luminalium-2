@@ -78,22 +78,23 @@ QtObject {
 
     // ================================================================== 放映控制条
     //
-    // 尺寸一律照 **Luminalium 1 的实装值**（`ppt_assistant/ui/overlay.html` 的
-    // CSS 原值，不是按比例折算的近似）：
+    // 尺寸照 **Luminalium 1 的实装值**（`ppt_assistant/ui/overlay.html` 的
+    // CSS 原值）作基准；2026-09-25 用户指令「默认的组件比例大一些（设计语言
+    // 仍是 L1）」→ 在 L1 档上整体放大约 15%（下表「本档」列）：
     //
-    //   | 元素                | L1 原值                          | 本档   |
-    //   |---------------------|----------------------------------|--------|
-    //   | 条高                | .tool-btn 38 + padding 上下 8    | 54     |
-    //   | 底板圆角            | border-radius: 999px（全圆胶囊）  | 高 / 2 |
-    //   | 内边距 上下 / 左右  | #toolbar padding: 8 / 12         | 8 / 12 |
-    //   | 按钮                | .tool-btn 38×38，圆角 19（圆）    | 38     |
-    //   | 图标                | .icon-mask 20×20                 | 20     |
-    //   | 按钮间距            | #toolbar gap: 4px                | 4      |
-    //   | 分隔线              | .separator 1×24，margin: auto 4  | 1×24   |
-    //   | 分隔线颜色          | --overlay-toolbar-line 白 15%     | 同     |
-    //   | 翻页 pill           | .flipper 160×54，圆钮 margin 0 4  | 160×54 |
-    //   | 退出键              | 普通圆钮（与其他按钮同款；          | 38     |
-    //   |                     | ``danger`` 变体 = L1 红图标）       |        |
+    //   | 元素                | L1 原值                          | 本档        |
+    //   |---------------------|----------------------------------|-------------|
+    //   | 条高                | .tool-btn 38 + padding 上下 8    | 62（L1 54） |
+    //   | 底板圆角            | border-radius: 999px（全圆胶囊）  | 高 / 2      |
+    //   | 内边距 上下 / 左右  | #toolbar padding: 8 / 12         | 9 / 9       |
+    //   | 按钮                | .tool-btn 38×38，圆角 19（圆）    | 44（L1 38） |
+    //   | 图标                | .icon-mask 20×20                 | 22（L1 20） |
+    //   | 按钮间距            | #toolbar gap: 4px                | 4           |
+    //   | 分隔线              | .separator 1×24，margin: auto 4  | 1×28        |
+    //   | 分隔线颜色          | --overlay-toolbar-line 白 15%     | 同          |
+    //   | 翻页 pill           | .flipper 160×54，圆钮 margin 0 4  | 180×62      |
+    //   | 退出键              | 普通圆钮（与其他按钮同款；          | 44          |
+    //   |                     | ``danger`` 变体 = L1 红图标）       |             |
     //   | 悬停 / 选中填充      | 白 8% / 白 15%（浅色主题黑 6/12） | 同     |
     //   | 危险色（退出）       | 图标 #D9485A、悬停填充红 14%       | 同     |
     //
@@ -110,9 +111,9 @@ QtObject {
     //   · 颜色仍走 RinUI 主题；只有「白 8% / 15%」这类**比例**照 L1 落实
 
     // ---- 底板 ----
-    /*! 左右 8 = 外壳帽半径 27 − 分段帽半径 19：嵌套弧线**同心**，间隙恒定 8。 */
-    readonly property int dockPaddingX: 8
-    readonly property int dockPaddingY: 8
+    /*! 左右 9 = 外壳帽半径 31 − 分段帽半径 22：嵌套弧线**同心**，间隙恒定 9。 */
+    readonly property int dockPaddingX: 9
+    readonly property int dockPaddingY: 9
     /*! 999 = 胶囊；``FlyoutSurface`` 会按 高/2 钳制，改条高不会失形。 */
     readonly property int dockSurfaceRadius: 999
     readonly property real dockSurfaceOpacity: 0.97
@@ -123,13 +124,18 @@ QtObject {
     // ``LinearGradient``（起点亮、中段全透明、终点又亮）裁成 ``borderWidth``
     // 的描边环，偏好里叫 lighting_effect。CW2 的描边色**深浅主题都用白**
     // （dark: 白 40%，light: 白 100%），本质上是一道「光泽」而不是描边，
-    // 所以这里同样不跟主题取色，取 CW2 深色档的白 40%。
-    readonly property real dockHighlightWidth: 1.5
-    readonly property color dockHighlightColor: Qt.rgba(1, 1, 1, 0.4)
+    // 所以这里同样不跟主题取色。CW2 原档 1.5px / 白 40%（他们的组件 100px 高）；
+    // 控制条只有 62px 高、还要在放映画面上**看得清**（2026-09-25 用户指令
+    // 「要明显」），所以加到 2px / 白 55% —— 效果结构一模一样，强度加大档。
+    readonly property real dockHighlightWidth: 2
+    readonly property color dockHighlightColor: Qt.rgba(1, 1, 1, 0.55)
 
     // ---- 控件（工具 / 动作 / 翻页 / 退出共用同一档内容高）----
-    readonly property int dockIconSize: 20
-    readonly property int dockHitSize: 38
+    // L1 原档是 38 / 20；2026-09-25 用户指令「默认的组件比例大一些（设计语言
+    // 仍是 L1）」→ 整体放大一档，比例关系不变：按钮直径 = 内容高 = 44，
+    // 条高 62 = 44 + 9×2，图标 22。
+    readonly property int dockIconSize: 22
+    readonly property int dockHitSize: 44
     /*! 同一组按钮之间的间距（L1 ``#toolbar gap: 4px``）。 */
     readonly property int dockButtonSpacing: 4
 
@@ -146,10 +152,10 @@ QtObject {
     // 形态：**胶囊容器 + 圆形分页**。基类是 RinUI 的 ``Segmented``（TabBar）与
     // ``SegmentedItem``（TabButton），组内互斥、键盘导航都用它的 —— 只是把
     // 「圆角矩形容器 + 圆角矩形选中板 + 下划线」这套方语言换成圆的。
-    /*! 999 = 胶囊；``ToolSegment`` 按 高/2 钳制（38 → 19）。 */
+    /*! 999 = 胶囊；``ToolSegment`` 按 高/2 钳制（44 → 22）。 */
     readonly property int dockSegmentRadius: 999
-    /*! 容器左右留白**必须为 0**（同心嵌套：外壳 8 + 0 + 半径 19 = 27 = 外壳帽半径）。
-        上下为 0 —— 分页高 = 内容高（38），容器高也是它。 */
+    /*! 容器左右留白**必须为 0**（同心嵌套：外壳 9 + 0 + 半径 22 = 31 = 外壳帽半径）。
+        上下为 0 —— 分页高 = 内容高（44），容器高也是它。 */
     readonly property int dockSegmentPadding: 0
     /*! 两个分页之间的间距。 */
     readonly property int dockSegmentSpacing: 4
@@ -158,14 +164,14 @@ QtObject {
     /*! 选中钮：L1 的 ``--overlay-button-active`` 浓淡（白 15%）。 */
     readonly property color dockSegmentCheckedBg: fade(textPrimary, 0.15)
 
-    // ---- 分隔线（L1 .separator：1×24、两侧各 4、白 15%）----
+    // ---- 分隔线（L1 .separator：1×24、两侧各 4、白 15%；放大档高 28）----
     readonly property int dockDividerWidth: 1
-    readonly property int dockDividerHeight: 24
+    readonly property int dockDividerHeight: 28
     readonly property int dockDividerGap: 4
     readonly property color dockDivider: fade(textPrimary, 0.15)
 
     // ---- 页码 ----
-    readonly property int dockPagerWidth: 60
+    readonly property int dockPagerWidth: 68
     readonly property int dockPagerSpacing: 8
     /*! 翻页 pill 的左右留白只有 4（L1 圆钮自带 margin），比工具条紧凑得多。 */
     readonly property int dockPagerPaddingX: 4

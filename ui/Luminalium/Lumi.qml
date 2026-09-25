@@ -12,9 +12,9 @@ import RinUI as Rin
 
     背景：界面上的按钮 / 卡片 / 文本 / 分隔线已经直接使用 RinUI 组件
     （``Rin.Button`` / ``Rin.Frame`` / ``Rin.Text`` / ``Rin.ToolSeparator`` /
-    ``Rin.SettingCard`` / ``Rin.Segmented``），它们自带主题取色。本单例只服务于：
+    ``Rin.SettingCard`` / ``Rin.Clip``），它们自带主题取色。本单例只服务于：
 
-    1. RinUI 没有对应组件、必须手绘的地方（分段控件的选中板与下划线）；
+    1. RinUI 没有对应组件、必须手绘的地方（设置页的圆形色板、品牌块）；
     2. RinUI 的默认取色与设计稿不符、需要覆盖的地方；
     3. 间距 / 尺寸常量。
 
@@ -82,67 +82,71 @@ QtObject {
 
     // ================================================================== 放映控制条
     //
-    // 尺寸比例全部对照**参考稿实测**（参考稿条高 H = 187 px）：
+    // 尺寸一律照 **Luminalium 1 的实装值**（`ppt_assistant/ui/overlay.html` 的
+    // CSS 原值，不是按比例折算的近似）：
     //
-    //   | 元素                     | 实测      | 占 H   |
-    //   |--------------------------|-----------|--------|
-    //   | 内容高（= 退出键高）      | 121       | 0.647H |
-    //   | 图标（圆占位）直径        | 62        | 0.331H |
-    //   | 横向内边距                | 50        | 0.267H |
-    //   | 上下内边距                | 33        | 0.176H |
-    //   | 底板圆角                  | 25        | 0.134H |
-    //   | 分段项宽                  | 192       | 1.027H |
-    //   | 分段选中板宽              | 156       | 0.81 项宽 |
-    //   | 下划线宽 / 高             | 62 / 11   | 0.331H / 0.059H |
-    //   | 退出键 宽×高              | 129 × 121 | 0.69H × 0.647H |
+    //   | 元素                | L1 原值                          | 本档   |
+    //   |---------------------|----------------------------------|--------|
+    //   | 条高                | .tool-btn 38 + padding 上下 8    | 54     |
+    //   | 底板圆角            | border-radius: 999px（全圆胶囊）  | 高 / 2 |
+    //   | 内边距 上下 / 左右  | #toolbar padding: 8 / 12         | 8 / 12 |
+    //   | 按钮                | .tool-btn 38×38，圆角 19（圆）    | 38     |
+    //   | 图标                | .icon-mask 20×20                 | 20     |
+    //   | 按钮间距            | #toolbar gap: 4px                | 4      |
+    //   | 分隔线              | .separator 1×24，margin: auto 4  | 1×24   |
+    //   | 分隔线颜色          | --overlay-toolbar-line 白 15%     | 同     |
+    //   | 翻页 pill           | .flipper 160×54，圆钮 margin 0 4  | 160×54 |
+    //   | 退出键              | .tool-btn-danger 38 圆形          | 38     |
+    //   | 悬停 / 选中填充      | 白 8% / 白 15%（浅色主题黑 6/12） | 同     |
+    //   | 危险色（退出）       | 图标 #D9485A、悬停填充红 14%       | 同     |
     //
-    // 设计语言（与参考稿一致）：
-    //   · 圆环是**图标占位**，真实界面里用图标，不做描边圆环
-    //   · 分段容器**比底板更暗**并有极淡描边；选中项**比底板更亮**
-    //   · 下划线宽度 = 图标宽度，紧贴容器底部
-    //   · 退出键 = 略宽于高的强调色圆角块 + 黑色图标（不是白色）
+    // 设计语言（与 L1 一致）：
+    //   · 底板是**全圆胶囊**，不是圆角矩形
+    //   · 按钮一律**圆形**，平时完全透明、只在悬停 / 选中时浮现填充
+    //   · 工具没有「容器 + 下划线」的分段控件，选中就是圆底填充
+    //   · 翻页 pill 比工具条紧凑：圆钮几乎贴着 pill 边缘（留白 4 vs 12）
+    //   · 退出键是**红色图标**的圆形按钮，不是强调色实底方块
+    //   · 颜色仍走 RinUI 主题；只有「白 8% / 15%」这类**比例**照 L1 落实
 
     // ---- 底板 ----
-    readonly property int dockPaddingX: 14
-    readonly property int dockPaddingY: 10
-    readonly property int dockSurfaceRadius: 8
+    readonly property int dockPaddingX: 12
+    readonly property int dockPaddingY: 8
+    /*! 999 = 胶囊；``FlyoutSurface`` 会按 高/2 钳制，改条高不会失形。 */
+    readonly property int dockSurfaceRadius: 999
     readonly property real dockSurfaceOpacity: 0.97
     readonly property int dockShadowMargin: 24
 
-    // ---- 控件（图标按钮 / 分段 / 退出共用同一档内容高）----
-    readonly property int dockIconSize: 18
-    readonly property int dockHitSize: 36
+    // ---- 控件（工具 / 动作 / 翻页 / 退出共用同一档内容高）----
+    readonly property int dockIconSize: 20
+    readonly property int dockHitSize: 38
+    /*! 同一组按钮之间的间距（L1 ``#toolbar gap: 4px``）。 */
+    readonly property int dockButtonSpacing: 4
+    /*! 只有 ``style: "accent"`` 的退出键用得到（L1 的 danger 版是纯圆）。 */
     readonly property int dockControlRadius: 5
 
-    // ---- 分段控件 ----
-    readonly property int dockSegmentRadius: 5
-    /*! 选中板相对分段项左右各内缩多少（实测 192→156，故约 18；按比例缩到 5）。 */
-    readonly property int dockSegmentPlateInset: 5
-    // 容器：黑 10% 叠加 → 比底板暗（实测 #292929 vs 底板 #2E2E2E）
-    readonly property color dockSegmentBg: themeColors
-        ? themeColors.controlAltSecondaryColor : "#1A000000"
-    // 容器描边：白 8% → 实测 #3E3E3E
-    readonly property color dockSegmentBorder: themeColors
-        ? themeColors.controlBorderAccentColor : "#14FFFFFF"
-    // 选中板：白 6% 叠在容器上 → 实测 #373737（比底板亮）
-    readonly property color dockSegmentCheckedBg: themeColors
-        ? themeColors.controlFillColor : "#0FFFFFFF"
+    // ---- 按钮状态填充（L1 --overlay-button-hover / -active）----
+    // 用 textPrimary 的透明度而不是写死白色：浅色主题下 L1 同样翻成
+    // 黑 6% / 黑 12%，跟着文本色走天然对齐。
+    readonly property color dockButtonHoverFill: fade(textPrimary, 0.08)
+    readonly property color dockButtonActiveFill: fade(textPrimary, 0.15)
+    /*! 退出键（L1 ``.tool-btn-danger``）：图标 #D9485A、悬停填充红 14%。 */
+    readonly property color dockDangerIcon: "#D9485A"
+    readonly property color dockDangerFill: "#24E03E3E"
 
-    // ---- 分隔线（实测比底板暗，与分段容器同色）----
+    // ---- 分隔线（L1 .separator：1×24、两侧各 4、白 15%）----
     readonly property int dockDividerWidth: 1
-    readonly property int dockDividerHeight: 20
-    readonly property int dockDividerGap: 12
-    readonly property color dockDivider: themeColors
-        ? themeColors.controlAltSecondaryColor : "#1A000000"
+    readonly property int dockDividerHeight: 24
+    readonly property int dockDividerGap: 4
+    readonly property color dockDivider: fade(textPrimary, 0.15)
 
-    // ---- 退出键（实测 129×121，略宽于高）----
+    // ---- 退出键（仅 style=accent 时用到的宽:高比）----
     readonly property real dockExitWidthRatio: 1.07
 
     // ---- 页码 ----
-    readonly property int dockPagerWidth: 48
-    readonly property int dockPagerSpacing: 14
-    /*! 页码 pill 的横向内边距明显大于工具条（实测 98/187 = 0.52H）。 */
-    readonly property int dockPagerPaddingX: 26
+    readonly property int dockPagerWidth: 60
+    readonly property int dockPagerSpacing: 8
+    /*! 翻页 pill 的左右留白只有 4（L1 圆钮自带 margin），比工具条紧凑得多。 */
+    readonly property int dockPagerPaddingX: 4
 
     // ================================================================== 快捷面板
     //

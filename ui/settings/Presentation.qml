@@ -55,7 +55,7 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("垂直边距")
-        description: qsTr("控制条距屏幕上下边缘的距离（像素，屏幕上量到的值；默认 20 对齐 Luminalium 1）")
+        description: qsTr("控制条距屏幕上下边缘的距离（像素，以整屏边缘为基准，不受任务栏影响；默认 20 对齐 Luminalium 1）")
         icon.name: "ic_fluent_arrow_bidirectional_up_down_20_regular"
 
         Rin.SpinBox {
@@ -118,13 +118,28 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("页码切换")
-        description: qsTr("右下角独立的上一页 / 下一页 pill")
+        description: qsTr("左右两侧各一只独立的上一页 / 下一页 pill")
         icon.name: "ic_fluent_arrow_sort_20_regular"
 
         Rin.Switch {
             primaryColor: Lumi.accent
             checked: Backend.settings.presentation_pager_enabled === true
             onToggled: Backend.setSetting("presentation_pager_enabled", checked)
+        }
+    }
+
+    Rin.SettingCard {
+        Layout.fillWidth: true
+        title: qsTr("退出键样式")
+        description: qsTr("「危险红图标」是 Luminalium 1 的形态（圆形按钮 + 红色电源图标）；「强调色实底」是旧版式")
+        icon.name: "ic_fluent_power_20_regular"
+
+        Rin.ComboBox {
+            Layout.preferredWidth: 170
+            model: [qsTr("危险红图标（L1）"), qsTr("强调色实底")]
+            currentIndex: Backend.settings.presentation_exit_style === "accent" ? 1 : 0
+            onActivated: Backend.setSetting("presentation_exit_style",
+                                            currentIndex === 1 ? "accent" : "danger")
         }
     }
 

@@ -47,6 +47,7 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_shadow_enabled": "presentation.surface.shadow.enabled",
     "presentation_divider_enabled": "presentation.divider.enabled",
     "presentation_pager_enabled": "presentation.pager.enabled",
+    "presentation_exit_style": "presentation.exit.style",
 }
 
 #: 值一变就需要 QML 重新取整块配置的键。

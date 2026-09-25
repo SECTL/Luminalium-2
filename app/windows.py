@@ -659,8 +659,16 @@ class WindowManager(QObject):
     def _position_dock(self, corner: str) -> None:
         """把控制条摆到顶层窗口容器内的对应角落。
 
-        坐标是**顶层窗口局部**坐标（顶层窗口全屏铺在放映所在显示器，
-        原点 = 屏幕 geometry 左上角）；工具栏仍按可用区（避开任务栏）摆放。
+        坐标是**顶层窗口局部**坐标（顶层窗口整屏铺在放映所在显示器，
+        原点 = screen geometry 左上角）。
+
+        ⚠️ 基准必须是**整屏几何** ``screen.geometry()``，不能用
+        ``availableGeometry()``（避开任务栏的工作区）—— 放映时任务栏被放映窗口
+        整个盖住，用户眼里的基准就是屏幕边缘，而 Windows 的「工作区」在任务栏
+        被盖住时**照样把它算掉**：本机实测下边比屏幕下边高 48px，于是
+        「左右 20px 正常、纵向变成 68px」。Luminalium 1 也是按整屏算的
+        （overlay 窗口铺满整屏 + ``bottom: 20px``）。
+
         控制条 Item 自带投影余量（shadowMargin），而 ``margin_x`` / ``margin_y``
         的语义是**视觉距离** —— 屏幕底板边缘到屏幕边缘的距离（对齐 Luminalium 1
         的默认 20px：``Overlay.SafeArea`` 默认 0、贴边内边距固定 20px 四边一致，
@@ -684,20 +692,19 @@ class WindowManager(QObject):
         screen = self._presentation_screen()
         if screen is None:
             return
-        origin = screen.geometry().topLeft()
-        area = screen.availableGeometry().translated(-origin)
+        geom = screen.geometry()
+        width, height = geom.width(), geom.height()
 
         if horizontal == "left":
-            x = area.left() + margin_x - shadow
+            x = margin_x - shadow
         elif horizontal == "center":
-            # 居中按可用区（避开任务栏）算，不用整屏几何
-            x = area.left() + (area.width() - dock.width()) // 2
+            x = (width - dock.width()) // 2
         else:
-            x = area.right() - dock.width() - margin_x + shadow
+            x = width - dock.width() - margin_x + shadow
         if vertical == "top":
-            y = area.top() + margin_y - shadow
+            y = margin_y - shadow
         else:
-            y = area.bottom() - dock.height() - margin_y + shadow
+            y = height - dock.height() - margin_y + shadow
         dock.setX(x)
         dock.setY(y)
 

@@ -3,32 +3,32 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    放映悬浮控制条（Design: "Flyout Base"），**恒横向**。
+    放映悬浮控制条，**恒横向**。
+
+    形态与尺寸照 **Luminalium 1**（``ppt_assistant/ui/overlay.html``）：
+    全圆胶囊底板、圆形图标按钮、选中即圆底填充、翻页 pill 紧凑。
+    逐个值的对照表在 ``ui/Luminalium/Lumi.qml`` 上方的注释里。
 
     **整条是「区块（section）」的顺序拼装**，区块顺序固定为::
 
         tools → actions → pager → exit
 
     相邻的两个「可见区块」之间插一条竖向分隔线。
-    某一区块在这个角落没被启用时，它连同它前后的分隔线一起消失。
+    某一区块在这个角落没被启用时，它连同它前后的分隔线一起消失::
 
-    于是参考稿里的两块底板就是同一套规则的两种结果::
-
-        groups = ["tools", "actions", "exit"]  →  [笔|橡皮] │ [清屏] [⋯] │ [⏻]
-        groups = ["pager"]                     →  [ ◀  26/41  ▶ ]   （独立小 pill）
+        groups = ["tools", "actions", "exit"]  →  [笔][橡皮] │ [清屏][⋯] │ [⏻]
+        groups = ["pager"]                     →  [ ‹  26/41  › ]  （独立小 pill）
 
     **工具栏与翻页栏是两套独立的条**：``bottom_center`` 是工具栏
     （tools/actions/exit），``bottom_left`` 与 ``bottom_right`` 各是一只翻页
     pill —— 同一套组件渲染三份，只是 ``groups`` 不同。
+    注意两边的横向内边距**不是同一档**：工具栏 12、翻页 pill 只有 4
+    （L1 的圆钮自带 4px 外边距，几乎贴着 pill 边缘）。
 
-    **关于「圆」**：参考稿里的白色圆圈是**图标占位**，不是设计元素 ——
-    真实界面就是一枚图标（``IconButton`` = ``Rin.Button { flat: true }``），
-    不画描边圆环。同理稿里那 4 个圆圈、3 个分段项是为示意排版而画，
-    本项目没有那么多功能，**不硬塞占位按钮**。
-
-    尺寸比例全部对照参考稿实测（条高 H=187）：内容高 0.647H、图标 0.331H、
-    沿轴内边距 0.267H、横向内边距 0.176H、底板圆角 0.134H。
-    详见 ``ui/Luminalium/Lumi.qml`` 里的对照表。
+    **工具组没有「容器 + 下划线」的分段控件**：L1 里工具就是普通圆形按钮，
+    选中的那个浮现一档更深的填充。所以这里直接用
+    ``IconButton { active: }`` 绑 ``Backend.activeTool``，
+    不再需要组内互斥的中间层。
 
     ``corner`` 由 Python 注入（bottom_left / bottom_right / ...），
     每组显隐由 ``corners.<corner>.groups`` 决定。
@@ -51,7 +51,6 @@ Item {
 
     readonly property var surfaceCfg: cfg.surface !== undefined ? cfg.surface : ({})
     readonly property var shadowCfg: surfaceCfg.shadow !== undefined ? surfaceCfg.shadow : ({})
-    readonly property var segmentCfg: cfg.segment !== undefined ? cfg.segment : ({})
     readonly property var buttonsCfg: cfg.buttons !== undefined ? cfg.buttons : ({})
     readonly property var dividerCfg: cfg.divider !== undefined ? cfg.divider : ({})
     readonly property var overflowCfg: cfg.overflow !== undefined ? cfg.overflow : ({})
@@ -70,8 +69,10 @@ Item {
         ? surfaceCfg.radius : Lumi.dockSurfaceRadius
     readonly property real surfaceOpacity: surfaceCfg.opacity !== undefined
         ? surfaceCfg.opacity : Lumi.dockSurfaceOpacity
+    /*! 钳制后的**实际**圆角（胶囊时为 高/2）。自检读这个值。 */
+    readonly property real pillRadius: bar.effectiveRadius
 
-    /*! 内容行高度：底板扣掉上下 padding —— 分段、图标按钮、退出键共用这一档。 */
+    /*! 内容行高度：底板扣掉上下 padding —— 图标按钮、退出键共用这一档。 */
     readonly property int contentHeight: barHeight - surfacePaddingY * 2
 
     readonly property int iconSize: buttonsCfg.icon_size !== undefined
@@ -79,15 +80,7 @@ Item {
     readonly property int hitSize: buttonsCfg.hit_size !== undefined
         ? buttonsCfg.hit_size : Lumi.dockHitSize
     readonly property int buttonSpacing: buttonsCfg.spacing !== undefined
-        ? buttonsCfg.spacing : 10
-
-    // 分段项**缺省是正方形**（= 内容高）：项里只有一枚图标，做宽只会显得空。
-    readonly property int segmentItemWidth: segmentCfg.item_width !== undefined
-        ? segmentCfg.item_width : contentHeight
-    readonly property int indicatorWidth: segmentCfg.indicator_width !== undefined
-        ? segmentCfg.indicator_width : iconSize
-    readonly property int indicatorHeight: segmentCfg.indicator_height !== undefined
-        ? segmentCfg.indicator_height : 3
+        ? buttonsCfg.spacing : Lumi.dockButtonSpacing
 
     readonly property int dividerWidth: dividerCfg.width !== undefined ? dividerCfg.width : 1
     readonly property int dividerHeight: dividerCfg.height !== undefined ? dividerCfg.height : 20
@@ -122,6 +115,14 @@ Item {
         ? exitCfg.icon : "ic_fluent_power_20_regular"
     readonly property string exitLabel: exitCfg.label !== undefined
         ? exitCfg.label : qsTr("退出放映")
+    /*! ``danger`` = L1 的 .tool-btn-danger（红色图标圆形）；``accent`` = 强调色实底。 */
+    readonly property string exitStyle: exitCfg.style !== undefined
+        ? exitCfg.style : "danger"
+    /*! 退出键的宽:高比。danger 是纯圆（1.0），accent 版略宽于高（L1 外的旧版式）。 */
+    readonly property real exitWidthRatio: exitStyle === "accent"
+        ? Lumi.dockExitWidthRatio : 1
+    /*! 退出键算出来的宽度（自检读这个值，不必等布局刷完）。 */
+    readonly property int exitRequestedWidth: Math.round(contentHeight * exitWidthRatio)
     readonly property color exitAccent: exitCfg.accent !== undefined
         ? exitCfg.accent : Lumi.accent
 
@@ -172,28 +173,13 @@ Item {
         return false
     }
 
-    /*! 只剩翻页一块时，底板退化成参考稿里那只「留白很足的小 pill」。 */
+    /*! 只剩翻页一块时，底板退化成「留白很紧的小 pill」（L1 的 .flipper）。 */
     readonly property bool pagerOnly: presentCount === 1 && present("pager")
 
-    /*! 沿轴向内边距（横条即左右）。参考稿实测 0.267H（pill 更大）。 */
+    /*! 沿轴向内边距（横条即左右）。工具条 12、翻页 pill 只有 4（L1 的两档）。 */
     readonly property int effPaddingAlong: pagerOnly ? pagerPillPaddingX : surfacePaddingX
-    /*! 横向（垂直于轴）内边距：参考稿实测 0.176H，与沿轴**不是同一档**。 */
+    /*! 横向（垂直于轴）内边距 —— 与工具条那一档共用（上下都是 8）。 */
     readonly property int effPaddingCross: surfacePaddingY
-
-    // ------------------------------------------------------- 工具 ↔ 选中项
-    /*! ``presentation.tools`` 里 id 为 ``toolId`` 的下标，找不到回落 0。 */
-    function toolIndex(toolId) {
-        for (var i = 0; i < toolsCfg.length; i++) {
-            if (toolsCfg[i].id === toolId) {
-                return i
-            }
-        }
-        return 0
-    }
-
-    function toolIdAt(index) {
-        return (index >= 0 && index < toolsCfg.length) ? toolsCfg[index].id : ""
-    }
 
     // ------------------------------------------------------------- 控制条本体
     // 根节点是 Item（不再是独立窗口）：所有角落的控制条都挂在
@@ -225,34 +211,24 @@ Item {
         shadowBlur: dock.shadowBlur
         shadowOffsetY: dock.shadowOffsetY
 
-        // ==================================================== 1. 工具分段
-        ToolSegment {
-            id: toolSegment
+        // ==================================================== 1. 工具（笔 / 橡皮）
+        // L1 里工具就是普通圆形按钮，选中的那个浮现更深一档的填充 ——
+        // 没有「分段容器 + 下划线」。active 直接绑后端状态，
+        // 所以后端换工具（快捷键 / 托盘）时这里自动跟随，不用再同步。
+        Flow {
             visible: dock.present("tools")
-            itemHeight: dock.contentHeight
-            // 绑定：给出初值，并在后端切换工具（快捷键等）时自动跟随。
-            // 用户点击会写 currentIndex 从而打断绑定，之后由下面的
-            // Connections 继续同步。
-            currentIndex: dock.toolIndex(Backend.activeTool)
-
-            onCurrentIndexChanged: {
-                var id = dock.toolIdAt(currentIndex)
-                if (id !== "" && Backend.activeTool !== id) {
-                    Backend.selectTool(id)
-                }
-            }
+            spacing: dock.buttonSpacing
 
             Repeater {
                 model: dock.toolsCfg
 
-                delegate: ToolSegmentItem {
-                    itemWidth: dock.segmentItemWidth
-                    itemHeight: dock.contentHeight
-                    indicatorWidth: dock.indicatorWidth
-                    indicatorHeight: dock.indicatorHeight
-                    glyphSize: dock.iconSize
+                delegate: IconButton {
+                    iconName: modelData.icon !== undefined ? modelData.icon : ""
                     tooltip: modelData.label !== undefined ? modelData.label : ""
-                    icon.name: modelData.icon !== undefined ? modelData.icon : ""
+                    hitSize: dock.hitSize
+                    glyphSize: dock.iconSize
+                    active: Backend.activeTool === modelData.id
+                    onClicked: Backend.selectTool(modelData.id)
                 }
             }
         }
@@ -349,25 +325,14 @@ Item {
         // ==================================================== 4. 退出放映
         ExitButton {
             visible: dock.present("exit")
+            style: dock.exitStyle
             iconName: dock.exitIcon
             tooltip: dock.exitLabel
             accent: dock.exitAccent
             buttonHeight: dock.contentHeight
-            widthRatio: Lumi.dockExitWidthRatio
+            widthRatio: dock.exitWidthRatio
             glyphSize: dock.iconSize
             onClicked: Backend.exitPresentation()
-        }
-    }
-
-    // 绑定被打断后，继续同步后端发起的工具切换
-    Connections {
-        target: Backend
-
-        function onActiveToolChanged() {
-            var index = dock.toolIndex(Backend.activeTool)
-            if (toolSegment.currentIndex !== index) {
-                toolSegment.currentIndex = index
-            }
         }
     }
 }

@@ -86,15 +86,15 @@
     "topmost_interval_ms": 800,
     "//verify_after_ms": "显示后多久做一次自检（对照窗口真实位置 / DWM 是否被披风化）",
     "verify_after_ms": 500,
-    "//bar_height": "参考稿实测条高 H=187px，本档按约 0.3 倍落地成 56",
-    "bar_height": 56,
-    "surface": {
-      "//radius": "实测 25/187 = 0.134H",
-      "radius": 8,
-      "opacity": 0.97,
-      "//padding": "实测 左右 50/187 = 0.267H、上下 33/187 = 0.176H，横竖不同档",
-      "padding_x": 14,
-      "padding_y": 10,
+  "//bar_height": "条高。Luminalium 1 实测 = 按钮 38 + 上下内边距 8 × 2 = 54（#toolbar padding 上下 8、.tool-btn 38×38），翻页 .flipper 同为 54",
+  "bar_height": 54,
+  "surface": {
+    "//radius": "999 = 全圆胶囊（Luminalium 1：#toolbar / .flipper 都是 border-radius:999px）。FlyoutSurface 会按 高/2 钳制，改 bar_height 不会失形",
+    "radius": 999,
+    "opacity": 0.97,
+    "//padding": "Luminalium 1 #toolbar padding: 8px 8px 8px 12px → 上下 8、左右 12。L1 右侧还挂着一个 28px 抓取柄，本组件没有该元素，故取对称的 12",
+    "padding_x": 12,
+    "padding_y": 8,
       "shadow": {
         "enabled": true,
         "margin": 24,
@@ -102,25 +102,22 @@
         "offset_y": 6
       }
     },
-    "segment": {
-      "//item_width": "缺省 = 内容高（正方形分段项，只放一枚图标）。要宽项才填这个键",
-      "//indicator": "实测下划线宽 = 圆(图标)直径 62/187、高 11/187",
-      "indicator_width": 18,
-      "indicator_height": 3
-    },
-    "buttons": {
-      "//icon_size": "实测圆圈(图标占位)直径 62/187 = 0.331H",
-      "icon_size": 18,
-      "//hit_size": "= 内容高 121/187 = 0.647H",
-      "hit_size": 36,
-      "spacing": 10
-    },
-    "divider": {
-      "enabled": true,
-      "width": 1,
-      "height": 20,
-      "gap": 14
-    },
+  "buttons": {
+    "//icon_size": "Luminalium 1 .icon-mask = 20px",
+    "icon_size": 20,
+    "//hit_size": "Luminalium 1 .tool-btn = 38×38 **圆形**；数值上等于内容高（条高 54 − 上下内边距 8×2）",
+    "hit_size": 38,
+    "//spacing": "Luminalium 1 #toolbar gap: 4px",
+    "spacing": 4
+  },
+  "divider": {
+    "enabled": true,
+    "width": 1,
+    "//height": "Luminalium 1 .separator height: 24px",
+    "height": 24,
+    "//gap": "Luminalium 1 .separator margin: auto 4px（线两侧各 4）",
+    "gap": 4
+  },
     "overflow": {
       "enabled": true,
       "icon": "ic_fluent_more_horizontal_20_regular",
@@ -138,21 +135,25 @@
         "tooltip": "清屏（擦除本页全部墨迹）"
       }
     ],
-    "pager": {
-      "enabled": true,
-      "width": 48,
-      "spacing": 14,
-      "//surface_padding_x": "参考稿页码 pill 左右留白 98/187 ≈ 0.52H，明显大于工具条",
-      "surface_padding_x": 26,
-      "icon_prev": "ic_fluent_chevron_left_20_regular",
-      "icon_next": "ic_fluent_chevron_right_20_regular"
-    },
-    "exit": {
-      "enabled": true,
-      "label": "退出放映",
-      "icon": "ic_fluent_power_20_regular",
-      "//accent": "缺省 = 跟随 app.accent（Lumi.accent）。只有想给退出键固定一个独立于强调色的颜色时才填"
-    },
+  "pager": {
+    "enabled": true,
+    "//width": "页码文本区宽度。Luminalium 1 的 .flipper 宽 160 − 两个 38 圆钮与各自 4px 外边距（92）= 68，再扣掉页码区自己的 padding 0 4px × 2 → 60",
+    "width": 60,
+    "//spacing": "圆钮与页码区之间的间距。Luminalium 1 = 按钮 margin 4 + 页码区 padding 4 = 8",
+    "spacing": 8,
+    "//surface_padding_x": "翻页 pill 的左右留白。Luminalium 1 的圆钮只距 pill 边缘 4px（.flipper-btn margin: 0 4px）—— 比工具条的 12 紧凑得多，这是「翻页栏更小更聚拢」的关键",
+    "surface_padding_x": 4,
+    "icon_prev": "ic_fluent_chevron_left_20_regular",
+    "icon_next": "ic_fluent_chevron_right_20_regular"
+  },
+  "exit": {
+    "enabled": true,
+    "label": "退出放映",
+    "icon": "ic_fluent_power_20_regular",
+    "//style": "danger = Luminalium 1 的 .tool-btn-danger（38 圆形按钮、红色图标 #D9485A、悬停红 14% 填充）；accent = 强调色实底方块（旧版式）",
+    "style": "danger",
+    "//accent": "仅 style=accent 时使用；缺省 = 跟随 app.accent（Lumi.accent）"
+  },
     "corners": {
       "//": "控制条恒横向。工具栏是**独立的一套组**摆在下中部（tools/actions/exit）；翻页栏独立出来，左右各一只 pill。",
       "bottom_center": {

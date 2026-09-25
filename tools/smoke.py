@@ -111,7 +111,10 @@ def main() -> int:
         overlay = app.windows.overlay
         screen = QGuiApplication.primaryScreen()
         geom = screen.geometry()
-        area_local = screen.availableGeometry().translated(-geom.topLeft())
+        # 定位基准是**整屏**几何，不是避开任务栏的 availableGeometry：
+        # 放映时任务栏被放映窗口盖住，用户眼里的基准就是屏幕边缘，
+        # 而 Windows 的工作区照样把任务栏算掉（本机差 48px）→ 纵向会凭空
+        # 多出一个任务栏的高度。这里用整屏复算，才能抓到这类静默偏差。
         check(
             "顶层窗口全屏显示",
             overlay is not None and overlay.isVisible()
@@ -119,20 +122,22 @@ def main() -> int:
             f"overlay={overlay.width()}x{overlay.height()} screen={geom.width()}x{geom.height()}",
         )
         for corner, dock in app.windows._docks.items():
-            near_left = dock.x() - area_local.left() <= 64
-            near_right = area_local.right() - (dock.x() + dock.width()) <= 64
-            near_bottom = area_local.bottom() - (dock.y() + dock.height()) <= 64
+            left_gap = dock.x()
+            right_gap = geom.width() - (dock.x() + dock.width())
+            bottom_gap = geom.height() - (dock.y() + dock.height())
+            near_left = left_gap <= 64
+            near_right = right_gap <= 64
+            near_bottom = bottom_gap <= 64
             if corner.endswith("center"):
                 # 居中：左右余量对称（后面还有一条专门的居中断言，这里只兜底）
-                left_gap = dock.x() - area_local.left()
-                right_gap = area_local.right() - (dock.x() + dock.width())
                 expected_horizontal = abs(left_gap - right_gap) <= 2
             else:
                 expected_horizontal = near_left if corner.endswith("left") else near_right
             check(
                 f"控制条 {corner} 贴角",
                 expected_horizontal and near_bottom,
-                f"pos=({dock.x()},{dock.y()}) size={dock.width()}x{dock.height()} area={area_local}",
+                f"pos=({dock.x()},{dock.y()}) size={dock.width()}x{dock.height()} "
+                f"gap=({left_gap},{right_gap},{bottom_gap})",
             )
 
         # ---- 视觉贴边距离 = 配置里的 margin（对齐 Luminalium 1 的 20px）----
@@ -144,7 +149,7 @@ def main() -> int:
         cdock = app.windows._docks.get("bottom_center")
         if cdock is not None:
             shadow = int(cdock.property("shadowMargin") or 0)
-            visual_bottom = area_local.bottom() - (cdock.y() + cdock.height() - shadow)
+            visual_bottom = geom.height() - (cdock.y() + cdock.height() - shadow)
             check(
                 "工具栏视觉贴边距离 = 配置的垂直边距",
                 abs(visual_bottom - margin_y) <= 1,
@@ -155,8 +160,8 @@ def main() -> int:
             if dock is None:
                 continue
             shadow = int(dock.property("shadowMargin") or 0)
-            visual_h = (dock.x() + shadow - area_local.left() if edge == "left"
-                        else area_local.right() - (dock.x() + dock.width() - shadow))
+            visual_h = (dock.x() + shadow if edge == "left"
+                        else geom.width() - (dock.x() + dock.width() - shadow))
             check(
                 f"翻页 pill {corner} 视觉贴边距离 = 配置的水平边距",
                 abs(visual_h - margin_x) <= 1,
@@ -254,12 +259,48 @@ def main() -> int:
             and rdock.x() > ldock.x(),
             f"left={ldock.width()}x{ldock.height()} right={rdock.width()}x{rdock.height()}",
         )
-        check(
-            "分段项是正方形（宽 = 内容高）",
-            cdock is not None
-            and abs(cdock.property("segmentItemWidth") - cdock.property("contentHeight")) <= 0,
-            f"{cdock.property('segmentItemWidth')} vs {cdock.property('contentHeight')}",
-        )
+        # ---- 尺寸档位 = Luminalium 1 的实装值（防止比例被悄悄改回参考稿那套）----
+        # 这些值之间的**关系**才是设计语言：按钮直径 = 内容高 = 条高 − 上下内边距×2，
+        # 圆角拉满成胶囊，翻页 pill 的留白只有 4（工具条是 12）。
+        if cdock is not None:
+            cshadow = int(cdock.property("shadowMargin") or 0)
+            bar_h = cdock.property("contentHeight") + cdock.property("surfacePaddingY") * 2
+            check(
+                "控制条档位 = L1（条高 54 / 按钮 38 / 图标 20 / 间距 4）",
+                bar_h == 54
+                and cdock.property("contentHeight") == 38
+                and cdock.property("hitSize") == 38
+                and cdock.property("iconSize") == 20
+                and cdock.property("buttonSpacing") == 4,
+                f"条高={bar_h} 内容高={cdock.property('contentHeight')} "
+                f"按钮={cdock.property('hitSize')} 图标={cdock.property('iconSize')} "
+                f"间距={cdock.property('buttonSpacing')}",
+            )
+            check(
+                "底板是全圆胶囊（圆角 = 条高/2）",
+                abs(cdock.property("pillRadius") - bar_h / 2) <= 0.5,
+                f"pillRadius={cdock.property('pillRadius')} 期望={bar_h / 2}",
+            )
+            check(
+                "竖向分隔线 = L1（1×24、两侧各 4）",
+                cdock.property("dividerWidth") == 1
+                and cdock.property("dividerHeight") == 24
+                and cdock.property("dividerGap") == 4,
+                f"{cdock.property('dividerWidth')}×{cdock.property('dividerHeight')} "
+                f"gap={cdock.property('dividerGap')}",
+            )
+            check(
+                "工具栏尺寸（扣除投影余量）",
+                cdock.width() - cshadow * 2 > 0 and cdock.height() - cshadow * 2 == 54,
+                f"{cdock.width() - cshadow * 2}x{cdock.height() - cshadow * 2}",
+            )
+        if ldock is not None:
+            lshadow = int(ldock.property("shadowMargin") or 0)
+            check(
+                "翻页 pill = L1 的 .flipper（160×54）",
+                ldock.width() - lshadow * 2 == 160 and ldock.height() - lshadow * 2 == 54,
+                f"{ldock.width() - lshadow * 2}x{ldock.height() - lshadow * 2}",
+            )
 
         # ---- 模拟退出放映：顶层窗口整体隐藏 ----
         app.ppt.inject_state(PresentationState(active=False))
@@ -363,6 +404,38 @@ def main() -> int:
         check("设置项已还原（自检不留副作用）",
               app.config.get("presentation.margin_x") == original_margin,
               f"{original_margin} -> {app.config.get('presentation.margin_x')}")
+
+        # ---- 退出键样式可切换（danger ↔ accent）----
+        # 这条走**内存改配置 + reload_from_config** 的成对用法（``persist=False``），
+        # 不落盘 —— 免得像 margin_x 那样往用户配置里钉一个值。
+        # 断言看 ``exitRequestedWidth`` 而不是控件实际宽度：Flow 的隐式尺寸要等
+        # 一次布局 polish 才刷，同一个事件循环里读不到（会假失败）。
+        exit_dock = app.windows._docks.get("bottom_center")
+        if exit_dock is not None:
+            prev_style = app.config.get("presentation.exit.style")
+            danger_w = exit_dock.property("exitRequestedWidth")
+
+            app.config.set("presentation.exit.style", "accent", persist=False)
+            app.backend.reload_from_config()
+            check(
+                "退出键样式已同步到 QML（danger → accent）",
+                exit_dock.property("exitStyle") == "accent",
+                str(exit_dock.property("exitStyle")),
+            )
+            accent_w = exit_dock.property("exitRequestedWidth")
+            check(
+                "强调色版退出键略宽于高（圆形 38 → 实底 41）",
+                danger_w == 38 and accent_w == round(38 * 1.07),
+                f"danger={danger_w} accent={accent_w}",
+            )
+
+            app.config.set("presentation.exit.style", prev_style, persist=False)
+            app.backend.reload_from_config()
+            check(
+                "退出键样式已还原（自检不留副作用）",
+                exit_dock.property("exitRequestedWidth") == danger_w,
+                f"{danger_w} -> {exit_dock.property('exitRequestedWidth')}",
+            )
 
         failures = sum(1 for line in RESULTS if line.startswith("[FAIL]"))
         qt_app.quit()

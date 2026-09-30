@@ -3,7 +3,7 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    工具分段控件的容器（笔 / 橡皮）。
+    工具分段控件的容器（指针 / 笔 / 橡皮，分页由 ``presentation.tools`` 配置驱动）。
 
     基类是 ``Rin.Segmented``（= ``TabBar``，Container 家族）：**组内互斥**、
     ``currentIndex``、键盘导航都由它提供 —— 这正是「用 RinUI 的 Segmented」

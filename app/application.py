@@ -28,6 +28,18 @@ from .windows import WindowManager
 
 log = logging.getLogger("luminalium")
 
+#: 启动画面的推进节奏 —— 每一步至少停留这么久才进下一步。
+#:
+#: 本机冷启动跑完整条 ``_boot_tray → _boot_presenter → _boot_ready`` 只要约 350ms，
+#: 不设节奏的话进度条会瞬间填满、那张卡片闪一下就没了（实测整段存活约 1.0s，
+#: 比不放还难看）。这几个步骤本身都是**真活儿**（建托盘 / 起探测线程），这里只是
+#: 让它们在画面上按人能读到的速度依次出现，不是造假进度。
+#:
+#: 代价是放映探测线程晚约 0.8s 起来 —— 反正启动画面正盖着屏幕，不影响观感。
+SPLASH_STEP_MS = 420
+#: 到 100% 之后再多停一会儿，让「就绪」被看见再淡出。
+SPLASH_HOLD_MS = 520
+
 
 def setup_logging(level: str = "INFO") -> None:
     ensure_runtime_dirs()
@@ -116,6 +128,10 @@ class LuminaliumApplication:
             self.backend,
             self.ppt,
             tray=self.tray,
+            # 把 RinUI 实例交出去：Python 侧另建的窗口要补登记进它的
+            # WinEventFilter / ThemeManager / WinEventManager，否则那些窗口
+            # 拿不到 DWM 阴影、圆角、resize 边框与 Snap（见 _attach_to_rinui）
+            rinui=self.rinui,
         )
         self.windows.attach_panel(self.rinui.root_window)
         self.windows.load_windows()
@@ -142,37 +158,67 @@ class LuminaliumApplication:
     # ================================================================ 启动
 
     def run(self) -> int:
+        """启动画面 + 收尾的启动步骤，然后进事件循环。
+
+        启动步骤**必须用 ``QTimer.singleShot`` 串起来**、不能全都塞在
+        ``exec()`` 之前：Qt 在事件循环跑起来之前不会绘制，一律同步做完的话
+        用户只会看到一个已经 100% 的窗口一闪而过。串起来之后每个 ``_boot_*``
+        之间都会回一次事件循环，启动画面才真的画得出来。
+        """
+        self.windows.show_splash()
+        self._splash(0.15, "初始化")
+        # 第一步也要占满一个节拍 —— 否则 ``singleShot(0)`` 会在同一帧就把进度推到
+        # 0.60，「初始化」这一档用户根本看不到（左标签会一直停在「正在启动」）。
+        QTimer.singleShot(SPLASH_STEP_MS, self._boot_tray)
+        log.info("进入事件循环")
+        return self.qt_app.exec()
+
+    def _splash(self, progress: float, stage: str) -> None:
+        self.backend.setSplashStage(float(progress), stage)
+
+    def _boot_tray(self) -> None:
         if self.config.get("tray.enabled", True):
             if self.tray.available:
                 self.tray.show()
             else:
                 log.warning("系统托盘不可用，快捷面板只能通过命令启动")
                 self.windows.show_panel()
+        self._splash(0.60, "创建托盘图标")
+        QTimer.singleShot(SPLASH_STEP_MS, self._boot_presenter)
 
+    def _boot_presenter(self) -> None:
         log.info(
             "PPT 控制器启动: 轮询 %dms，窗口类探测 + COM %s",
             int(self.config.get("presentation.poll_interval_ms", 400)),
             "/".join(COM_PROG_IDS),
         )
         self.ppt.start()
+        self._splash(0.88, "启动放映探测")
+        QTimer.singleShot(SPLASH_STEP_MS, self._boot_ready)
 
+    def _boot_ready(self) -> None:
         if self.config.get("tray.notify_on_start", False):
             self.tray.notify(
                 str(self.config.get("app.name", APP_NAME)),
                 "已驻留托盘，点击图标打开快捷面板。",
             )
-
-        log.info("进入事件循环")
-        return self.qt_app.exec()
+        self._splash(1.0, "就绪")
+        log.info("启动完成")
+        QTimer.singleShot(SPLASH_HOLD_MS, self.windows.hide_splash)
 
     # ================================================================ 动作
 
     def _on_shortcut(self, shortcut_id: str) -> None:
         """快捷方式分发。
 
-        目前的动作都是「打开设置（可选落到某一页）」，格式
-        ``open_settings:<相对 ui 的页面路径>``；不带页面的 ``open_settings``
-        落在默认页。Luminalium 没有课表类功能，不再提供占位快捷方式。
+        目前的动作有两类：
+
+        * ``open_settings[:<相对 ui 的页面路径>]`` —— 打开设置窗口（可落到某一页）；
+          不带页面的 ``open_settings`` 落在默认页；
+        * ``open_editor`` —— 打开**主界面编辑器**独立窗口
+          （``ui/MainInterfaceEditor.qml``）。
+
+        Luminalium 没有课表类功能，不再提供占位快捷方式。
         """
         catalog = self.config.get("quick_panel.shortcut_catalog", []) or []
         action = ""
@@ -186,6 +232,13 @@ class LuminaliumApplication:
         if action == "open_settings" or action.startswith("open_settings:"):
             page = action.split(":", 1)[1] if ":" in action else ""
             self._open_settings(page)
+            return
+        if action == "open_editor":
+            # 与 _open_settings 同款：先把托盘面板收起，否则两个浮窗会叠在一起。
+            # （QML 侧触发快捷方式时也会 hidePanel，这里再收一次是因为走
+            #  ``Backend.activateShortcut`` 之外的入口时面板可能是开着的。）
+            self.windows.hide_panel()
+            self.windows.show_editor()
             return
         log.info("未实现的快捷方式动作: %s", action)
 
@@ -247,7 +300,12 @@ class LuminaliumApplication:
         else:
             log.info("未处理的放映动作: %s", action)
 
-        QTimer.singleShot(120, self.ppt.refresh_now)
+        # 翻页后页码要立刻跟上：COM 命令是异步投递的，先等一小会儿让它执行完
+        # （命令结束会自己轻量刷一次快照），再 poke 两条线程把新页码送出去。
+        # 单次 120ms 有时赶在 COM 命令之前，于是页码要再多等一个周期 —— 这就是
+        # 「页码识别迟钝」的观感来源。这里补一次稍晚的重试。
+        QTimer.singleShot(90, self.ppt.refresh_now)
+        QTimer.singleShot(320, self.ppt.refresh_now)
 
     def _show_overflow_menu(self) -> None:
         """控制条上「⋯」溢出菜单。

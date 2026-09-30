@@ -3,7 +3,7 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    分段控件的单页（笔 / 橡皮），**圆形**。
+    分段控件的单页（指针 / 笔 / 橡皮），**圆形**。
 
     基类是 ``Rin.SegmentedItem``（= ``TabButton``）：``checked``、组内互斥、
     键盘导航全部由它提供。本组件只把它的**方语言换成圆语言**：

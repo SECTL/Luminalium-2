@@ -1,107 +1,27 @@
 import QtQuick
-import QtQuick.Layouts
 import RinUI as Rin
-import Luminalium
 
-/*! 外观：主题模式与强调色。 */
+/*!
+    主界面：**目前刻意留空**。
+
+    2026-10-01 用户指令：「把『外观』改成『主界面』」—— 导航项由「外观」改名
+    而来，同时原页面里的**主题模式 / 强调色 / 界面语言**三张卡整体挪去了
+    「通用」页（那三项是全局外观设定，不属于「主界面」这个概念）。
+
+    本页留空，专放**主界面本身**的设定；主界面的可视化编辑走独立窗口
+    ``ui/MainInterfaceEditor.qml``（由快捷面板的「主界面编辑器」快捷方式打开）。
+
+    留空时不写任何子项：``Rin.FluentPage`` 的内容层是 default property
+    （``freeContainter``），没有子项就是干净的一页，不需要占位符 ——
+    与 ``Home.qml`` / ``About.qml`` / ``Update.qml`` 同一惯例。
+
+    ⚠️ 本文件原名 ``Appearance.qml``。改名是安全的：设置页路径只被
+    ``Settings.qml`` 的 ``navigationItems`` 与 ``default_config.json`` 里的
+    ``shortcut_catalog`` 动作引用，两处都在仓库内、已同批更新；
+    用户配置只存「启用了哪些快捷方式 id」，不存页面路径。
+*/
 Rin.FluentPage {
     id: page
 
-    /*! 可选的强调色。第一项与 default_config.json 的 app.accent 一致。 */
-    readonly property var accentPresets: [
-        "#4CC2FF", "#0078D4", "#5B5FC7", "#00B294",
-        "#C239B3", "#E3008C", "#EF6950", "#107C10"
-    ]
-
-    title: qsTr("外观")
-    contentSpacing: 10
-
-    Rin.Text {
-        Layout.fillWidth: true
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("主题模式")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("应用主题")
-        description: qsTr("影响所有窗口与控件的取色")
-        icon.name: "ic_fluent_dark_theme_20_regular"
-
-        Rin.ComboBox {
-            Layout.preferredWidth: 150
-            model: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
-            currentIndex: {
-                const value = Backend.settings.theme
-                if (value === "light") return 1
-                if (value === "dark") return 2
-                return 0
-            }
-            onActivated: Backend.setSetting("theme", ["auto", "light", "dark"][currentIndex])
-        }
-    }
-
-    Rin.Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 10
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("强调色")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("强调色")
-        description: qsTr("按钮、开关、选中态统一使用这个颜色")
-        icon.name: "ic_fluent_color_20_regular"
-
-        // 色板没有对应的 RinUI 组件，用 Rin.Clip 画成圆形色块
-        // （Clip = 圆角可点表面，悬停自带高亮；这里把圆角拉满成圆）。
-        Repeater {
-            model: page.accentPresets
-
-            delegate: Rin.Clip {
-                required property var modelData
-
-                Layout.preferredWidth: 28
-                Layout.preferredHeight: 28
-                Layout.alignment: Qt.AlignVCenter
-                radius: width / 2
-                padding: 0
-                color: modelData
-                border.width: Backend.settings.accent === modelData ? 2 : 0
-                border.color: Lumi.textPrimary
-
-                onClicked: Backend.setSetting("accent", modelData)
-
-                Rin.Icon {
-                    anchors.centerIn: parent
-                    visible: Backend.settings.accent === modelData
-                    icon: "ic_fluent_checkmark_20_filled"
-                    size: 14
-                    color: "#FFFFFF"
-                }
-            }
-        }
-    }
-
-    Rin.Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 10
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("显示语言")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("界面语言")
-        description: qsTr("切换后需要重新加载应用")
-        icon.name: "ic_fluent_local_language_20_regular"
-
-        Rin.ComboBox {
-            Layout.preferredWidth: 150
-            model: ["zh_CN", "en_US"]
-            currentIndex: Math.max(0, model.indexOf(Backend.settings.language))
-            onActivated: Backend.setSetting("language", model[currentIndex])
-        }
-    }
+    title: qsTr("主界面")
 }

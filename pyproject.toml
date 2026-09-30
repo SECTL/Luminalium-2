@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "luminalium2"
-version = "1.6.600.1"
+name = "luminalium"
+version = "1.6.620.1"
 description = ""
 readme = "README.md"
 requires-python = ">=3.9"

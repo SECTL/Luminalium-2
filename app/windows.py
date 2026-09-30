@@ -16,7 +16,18 @@ import ctypes.wintypes as wintypes
 import logging
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QPoint, QRect, QRectF, QTimer, QUrl, Slot
+from PySide6.QtCore import (
+    Q_ARG,
+    QMetaObject,
+    QObject,
+    QPoint,
+    QRect,
+    QRectF,
+    Qt,
+    QTimer,
+    QUrl,
+    Slot,
+)
 from PySide6.QtGui import QCursor, QGuiApplication, QScreen
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
@@ -29,7 +40,8 @@ log = logging.getLogger(__name__)
 
 # 角标识 -> (水平对齐, 垂直对齐)
 # ``center`` 用于**独立于工具栏的居中组块**（默认布局：工具栏在下中部，
-# 翻页栏左右各一只 pill）。
+# 翻页栏左右各一只 pill）；``middle`` 用于**竖版两侧翻页**（屏幕左右边缘、
+# 垂直居中 —— Luminalium 1 ``.flipper`` 的默认形态）。
 CORNERS: Dict[str, tuple[str, str]] = {
     "bottom_left": ("left", "bottom"),
     "bottom_right": ("right", "bottom"),
@@ -37,7 +49,19 @@ CORNERS: Dict[str, tuple[str, str]] = {
     "top_left": ("left", "top"),
     "top_right": ("right", "top"),
     "top_center": ("center", "top"),
+    "middle_left": ("left", "middle"),
+    "middle_right": ("right", "middle"),
 }
+
+#: 亚克力在窗口**显示之后**要补打的那一拍（毫秒）。
+#: 实测：``show()`` 之后的 ~200ms 内系统会把 ``DWMWA_SYSTEMBACKDROP_TYPE``
+#: 重置回 0（Qt 首次展示时的平台窗口初始化会重新应用 frame），之后重打即稳定。
+ACRYLIC_REAPPLY_MS = 320
+
+#: 快捷面板弹出时，面板顶边在光标下方多少像素（CW2 的托盘面板惯例 30）。
+#: 2026-10-01 起是**常量**：原 ``quick_panel.offset_y`` 配置键连同设置项一起
+#: 按用户指令删除，位置行为不再可配（光标锚定行为本身保留）。
+PANEL_OFFSET_Y = 30
 
 # ---------------------------------------------------------------- Win32 穿透
 # 顶层窗口「除控制条以外的区域」鼠标/触摸穿透。首选方案是**区域塑形**
@@ -70,6 +94,16 @@ GW_HWNDPREV = 3
 GW_OWNER = 4
 RGN_OR = 2
 DWMWA_CLOAKED = 14
+
+# ---- DWM 系统背景材质（Win11 22H2 / build 22621 起可用）----
+DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+DWMWA_BORDER_COLOR = 34
+DWMWA_CAPTION_COLOR = 35
+DWMWA_SYSTEMBACKDROP_TYPE = 38
+#: ``DWMSBT_TRANSIENTWINDOW`` —— 也就是「亚克力」。
+DWMSBT_TRANSIENTWINDOW = 3
+#: ``DWMWA_COLOR_NONE`` —— 让 DWM 不要给该处上色（既用于边框也用于标题栏）。
+DWMWA_COLOR_NONE = 0xFFFFFFFE
 _dwm_ready = True
 
 
@@ -242,6 +276,17 @@ class _MonitorInfo(ctypes.Structure):
     ]
 
 
+class _Margins(ctypes.Structure):
+    """``DwmExtendFrameIntoClientArea`` 的 ``MARGINS``。"""
+
+    _fields_ = [
+        ("cxLeftWidth", ctypes.c_int),
+        ("cxRightWidth", ctypes.c_int),
+        ("cyTopHeight", ctypes.c_int),
+        ("cyBottomHeight", ctypes.c_int),
+    ]
+
+
 def monitor_rect_for_window(hwnd: int) -> Optional[tuple[int, int, int, int]]:
     """返回指定窗口所在显示器的**物理**矩形 ``(left, top, right, bottom)``。"""
     if not hwnd or not hasattr(ctypes, "windll"):
@@ -283,6 +328,7 @@ class WindowManager(QObject):
         backend,
         ppt: PptController,
         tray=None,
+        rinui=None,
         parent: Optional[QObject] = None,
     ) -> None:
         super().__init__(parent)
@@ -291,9 +337,20 @@ class WindowManager(QObject):
         self._backend = backend
         self._ppt = ppt
         self._tray = tray
+        #: ``RinUIWindow`` 实例 —— 用于把 Python 侧另建的窗口补登记进 RinUI
+        #: 的 WinEventFilter / ThemeManager / WinEventManager（见 ``_attach_to_rinui``）
+        self._rinui = rinui
+        self._rinui_windows: List[Any] = list(rinui.windows) if rinui is not None else []
+        self._rinui_hooked: List[Any] = []
 
         self.panel: Optional[QQuickWindow] = None
+        #: 启动画面（只在启动阶段存在，淡出后销毁）
+        self.splash: Optional[QQuickWindow] = None
         self.settings: Optional[QQuickWindow] = None
+        #: 调试窗口（隐藏入口：设置窗口标题连点 10 次）
+        self.debug: Optional[QQuickWindow] = None
+        #: 主界面编辑器（入口：快捷面板的「主界面编辑器」快捷方式）
+        self.editor: Optional[QQuickWindow] = None
         self.overlay: Optional[QQuickWindow] = None
         self._docks: Dict[str, QQuickItem] = {}
         self._components: List[QQmlComponent] = []
@@ -393,11 +450,15 @@ class WindowManager(QObject):
         self.overlay = overlay
 
         corners = self._config.get("presentation.corners", {}) or {}
-        qml_path = UI_DIR / "presentation" / "PresentationDock.qml"
         for name in CORNERS:
             settings = corners.get(name) or {}
             if not settings.get("enabled", False):
                 continue
+            # 竖版两侧翻页（middle_*）用独立的竖排组件，其余角落仍是横向 dock
+            if name.startswith("middle"):
+                qml_path = UI_DIR / "presentation" / "SidePager.qml"
+            else:
+                qml_path = UI_DIR / "presentation" / "PresentationDock.qml"
             root = self._create(qml_path, {"corner": name})
             if root is None or not isinstance(root, QQuickItem):
                 log.error("控制条加载失败: %s", name)
@@ -431,6 +492,125 @@ class WindowManager(QObject):
                 log.error("QML 实例化失败 [%s] %s", qml_path.name, error.toString())
         return root
 
+    # ======================================================== RinUI 窗口接管
+
+    def _attach_to_rinui(self, window) -> bool:
+        """把 Python 侧另建的顶层窗口**完整**交给 RinUI 接管。
+
+        RinUI 只在 ``launcher.load()`` 那一刻登记窗口：它取
+        ``[root_window] + root_window.findChildren(QQuickWindow)`` 里带
+        ``isRinUIWindow`` 的那些，**之后不再接受新成员**。我们用
+        ``QQmlComponent`` 另建的设置 / 调试窗口一份名单都进不去，于是三层
+        一起塌（都是 Win32 / DWM 层的事实，与 QML 画得对不对无关）：
+
+        * ``ThemeManager.windows`` 里没有它 → 没有 ``DWMWA_WINDOW_CORNER_PREFERENCE``
+          （圆角）、没有 ``DWMWA_NCRENDERING_POLICY``（**系统阴影 —— 实测未接管的
+          窗口外圈是 1 像素硬边，接管后立刻出现 10 像素渐变阴影**）、没有暗色 /
+          边框色 / backdrop；
+        * ``WinEventFilter.hwnds`` 里没有它 → ``WM_NCCALCSIZE`` 不处理（于是
+          ``WS_CAPTION`` 一加上就变成**真的原生标题栏**，这正是当初只能在 QML 里
+          ``flags |= FramelessWindowHint`` 兜底的原因）、``WM_NCHITTEST`` 不处理
+          （没有 8px resize 边框与 ``HTCAPTION`` 拖动）、``WM_GETMINMAXINFO``
+          不处理（``minimumWidth/minimumHeight`` 递不到系统）；
+        * ``WinEventManager.windows`` 里没有它 → 系统改窗口 frame 之后没人重新
+          应用上述效果。
+
+        三份名单缺一不可 —— 实测只补 ``hwnds`` 不补 ``windows`` 时，
+        ``nativeEventFilter`` 遍历不到它，原生标题栏会直接画出来。
+
+        ``TopWindow``（放映叠加层）**刻意不接管**：它是全屏 ``WS_EX_TRANSPARENT``
+        ＋ ``SetWindowRgn`` 塑形的穿透窗口，RinUI 那套非客户区处理会和它打架。
+        """
+        if self._rinui is None or window is None:
+            return False
+        try:
+            event_filter = self._rinui.win_event_filter
+            theme = self._rinui.theme_manager
+            hwnd = int(window.winId())
+        except Exception:
+            log.warning("RinUI 接管失败：拿不到窗口句柄", exc_info=True)
+            return False
+
+        # ① WinEventFilter：WM_NCCALCSIZE / WM_NCHITTEST / WM_GETMINMAXINFO 按 hwnd 分发
+        if window not in event_filter.windows:
+            event_filter.windows.append(window)
+        event_filter.hwnds[window] = hwnd
+        event_filter.sync_window_backdrop(window)
+        # 窗口若被 Qt 重建（改 flags / 换屏 / DPI 变化），hwnd 会变，跟着刷一次
+        if window not in self._rinui_hooked:
+            self._rinui_hooked.append(window)
+            # ⚠️ ``visibleChanged`` 在 Qt 6 里是 **带参信号**（``visibleChanged(bool)``）。
+            # 写成 ``lambda w=window: ...`` 会被信号那个 bool 顶掉默认值 —— 实测症状是
+            # 每次显示/隐藏都往日志里灌一条 ``AttributeError: 'bool' object has no
+            # attribute 'isVisible'``，而且**句柄刷新其实一次都没跑成**（hwnd 变了也没人同步）。
+            # 用 ``*_args`` 把信号参数吞掉，真正的窗口从默认值来。
+            window.visibleChanged.connect(
+                lambda *_args, w=window: self._refresh_rinui_handle(w)
+            )
+
+        # ② ThemeManager：圆角 / 阴影 / 暗色 / 边框色 / backdrop
+        if hwnd not in theme.windows:
+            theme.set_window(window)
+
+        # ③ WinEventManager：系统改 frame 后重新应用效果
+        manager = self._rinui.win_event_manager
+        if window not in self._rinui_windows:
+            self._rinui_windows.append(window)
+        manager.set_windows(self._rinui_windows, manager.on_window_frame_changed)
+
+        # 加 WS_CAPTION|WS_THICKFRAME 并 SWP_FRAMECHANGED（DWM 阴影 / resize / Snap 的前提）
+        manager.syncWindowFrame(window)
+        theme.apply_window_effects()
+        theme._update_window_theme()  # RinUI 没有公开的「重新应用」入口
+        backdrop = str(self._config.get("app.backdrop", "none")).lower()
+        if backdrop in ("mica", "acrylic", "tabbed"):
+            theme.apply_backdrop_effect(backdrop)
+
+        ok = (
+            window in event_filter.windows
+            and event_filter.hwnds.get(window) == hwnd
+            and hwnd in theme.windows
+            and window in self._rinui_windows
+        )
+        if ok:
+            log.info("RinUI 已接管窗口: %s (hwnd=%s)", window.metaObject().className(), hwnd)
+        else:
+            log.warning("RinUI 未接管窗口: %s (hwnd=%s)", window.metaObject().className(), hwnd)
+        return ok
+
+    def _refresh_rinui_handle(self, window) -> None:
+        """窗口重新显示时同步一次 hwnd（Qt 重建原生窗口后句柄会变）。"""
+        if self._rinui is None or window is None:
+            return
+        try:
+            if not window.isVisible():
+                return
+            hwnd = int(window.winId())
+            event_filter = self._rinui.win_event_filter
+            if event_filter.hwnds.get(window) != hwnd:
+                event_filter.hwnds[window] = hwnd
+            if hwnd not in self._rinui.theme_manager.windows:
+                self._rinui.theme_manager.set_window(window)
+            event_filter.sync_window_backdrop(window)
+            # 编辑器窗口的亚克力是挂在 hwnd 上的：句柄重建、以及本次显隐引起的
+            # frame 重应用都会把它清掉，所以这里也补一拍
+            if window is self.editor:
+                self._attach_editor_acrylic(schedule=True)
+        except Exception:
+            log.debug("刷新 RinUI 窗口句柄失败", exc_info=True)
+
+    def _keep_frameless(self, window) -> None:
+        """接管失败时的兜底：退回「纯 frameless」。
+
+        没有 RinUI 处理 ``WM_NCCALCSIZE`` 时，``WS_CAPTION`` 会变成真的原生
+        标题栏压在自绘标题栏上 —— 宁可不要系统阴影，也不能要这条标题栏。
+        """
+        try:
+            window.setFlags(window.flags() | Qt.FramelessWindowHint)
+            log.info("已退回 frameless 兜底: %s", window.metaObject().className())
+        except Exception:
+            log.warning("frameless 兜底失败", exc_info=True)
+
     def _schedule_reposition(self, corner: str) -> None:
         QTimer.singleShot(0, lambda: self._position_dock(corner))
 
@@ -439,9 +619,16 @@ class WindowManager(QObject):
     def _wire_signals(self) -> None:
         self._backend.panelHideRequested.connect(self.hide_panel)
         self._backend.settingsCloseRequested.connect(self.hide_settings)
+        self._backend.debugWindowRequested.connect(self.show_debug)
+        self._backend.debugWindowCloseRequested.connect(self.hide_debug)
+        self._backend.editorRequested.connect(self.show_editor)
+        self._backend.editorCloseRequested.connect(self.hide_editor)
         self._ppt.stateChanged.connect(self._on_presentation_state)
 
     def _on_presentation_state(self, state) -> None:
+        # 状态只往两处去：bridge（QML 侧读 presentationActive / 页码）与控制条显隐。
+        # 2026-10-01 起不再把整份快照塞给 bridge —— 那是为「设置页显示实际认到
+        # 哪家软件 / 哪个窗口」那几张卡片准备的，卡片已随用户指令删除。
         self._backend.apply_state(state)
         if state.active:
             self.show_docks()
@@ -483,9 +670,24 @@ class WindowManager(QObject):
         if self.panel is None:
             return
 
-        width, height = self.panel.width(), self.panel.height()
+        # 尺寸取 **QML 声明的意图值**（``panelWidth`` / ``panelHeight``），
+        # 不能直接读 ``panel.width()`` / ``height()``：窗口在**第一次 show()
+        # 之前**，Qt 报的几何还带着无边框窗口的 resize 边框余量 —— 实测
+        # 387x453（QML 里明明是 375x440，min/max 也都是 375x440）。拿它算位置
+        # 会让首次弹窗整体偏 13px，甚至翻页判断失效、把面板压在光标上
+        # （2026-10-01 自检实锤：cursor=(657,475) → panel=(464,473)，光标落在
+        # 面板里）。show() 之后两者才一致，所以只影响「第一次弹出」。
+        def _intent(name: str, fallback: int) -> int:
+            try:
+                value = int(self.panel.property(name))
+            except (TypeError, ValueError):  # 属性不存在（老组件）→ 用几何
+                return fallback
+            return value if value > 0 else fallback
+
+        width = _intent("panelWidth", self.panel.width())
+        height = _intent("panelHeight", self.panel.height())
         anchor = pos if pos is not None else QCursor.pos()
-        offset_y = int(self._config.get("quick_panel.offset_y", 30))
+        offset_y = PANEL_OFFSET_Y
         margin = 12
 
         screen = QGuiApplication.screenAt(anchor) or QGuiApplication.primaryScreen()
@@ -506,6 +708,75 @@ class WindowManager(QObject):
         y = max(area.top() + margin, min(y, area.bottom() - height - margin))
         self.panel.setPosition(int(x), int(y))
 
+    # ================================================================ 启动画面
+
+    def show_splash(self) -> None:
+        """显示启动画面（应用启动时最先出现、最后一个消失的东西）。
+
+        **刻意不 ``_attach_to_rinui``**：RinUI 接管会给窗口加 ``WS_CAPTION``
+        并让 DWM 画系统圆角与阴影，而设计稿是一整块**无边框圆角 92（设计值）**
+        的卡片、卡外全透明（同 ``TopWindow`` 的理由）。
+
+        只显示不销毁 —— 淡出结束后由 ``_destroy_splash`` 收掉，因为那张
+        1717×1640 的插画贴图常驻一份不划算（约 11MB 显存 / 内存）。
+        """
+        if self.splash is None:
+            qml_path = UI_DIR / "SplashWindow.qml"
+            if not qml_path.exists():
+                log.warning("启动画面不存在，跳过: %s", qml_path)
+                return
+            root = self._create(qml_path, {"visible": False})
+            if root is None:
+                log.error("启动画面创建失败: %s", qml_path)
+                return
+            self.splash = root
+            # 淡出动画结束 → 收窗口。无参信号，从 Python 侧接安全。
+            try:
+                root.fadeOutFinished.connect(self._destroy_splash)
+            except Exception:  # pragma: no cover - 信号缺失只影响回收时机
+                log.debug("启动画面没有 fadeOutFinished 信号", exc_info=True)
+
+        self._position_splash()
+        self.splash.show()
+        self.splash.raise_()
+
+    def hide_splash(self) -> None:
+        """淡出启动画面；真正收窗口在 ``fadeOutFinished`` 里。"""
+        if self.splash is None or not self.splash.isVisible():
+            self._destroy_splash()
+            return
+        try:
+            QMetaObject.invokeMethod(self.splash, "fadeOut")
+        except Exception:
+            log.debug("启动画面淡出调用失败，直接收窗口", exc_info=True)
+            self._destroy_splash()
+
+    def _destroy_splash(self) -> None:
+        if self.splash is None:
+            return
+        window, self.splash = self.splash, None
+        try:
+            window.hide()
+            window.deleteLater()
+        except RuntimeError:  # 对象已被 QML 引擎回收
+            pass
+
+    def _position_splash(self) -> None:
+        """居中到主屏。
+
+        用 ``availableGeometry``（避开任务栏）而不是整屏 —— 启动画面不贴着
+        屏幕边，居中在可视区里才对。
+        """
+        if self.splash is None:
+            return
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        x = area.left() + (area.width() - self.splash.width()) // 2
+        y = area.top() + (area.height() - self.splash.height()) // 2
+        self.splash.setPosition(int(x), int(y))
+
     # ================================================================ 设置窗口
 
     def _create_settings(self) -> None:
@@ -525,6 +796,9 @@ class WindowManager(QObject):
             log.error("设置窗口创建失败: %s", qml_path)
             return
         self.settings = root
+        # 交给 RinUI 管（否则没有 DWM 阴影 / 圆角 / resize 边框 / Snap）
+        if not self._attach_to_rinui(root):
+            self._keep_frameless(root)
 
     def toggle_settings(self) -> None:
         if self.settings is not None and self.settings.isVisible():
@@ -577,15 +851,261 @@ class WindowManager(QObject):
         y = area.top() + (area.height() - self.settings.height()) // 2
         self.settings.setPosition(int(x), int(y))
 
+    # ================================================================ 调试窗口
+
+    def _create_debug(self) -> None:
+        """按需创建调试窗口。
+
+        入口是隐藏的（设置窗口标题连点 10 次，见 ``Backend.openDebugWindow``），
+        与设置窗口同理：不打开就一个对象都不建。
+        """
+        if self.debug is not None:
+            return
+        qml_path = UI_DIR / "DebugWindow.qml"
+        if not qml_path.exists():
+            log.warning("调试窗口不存在，跳过: %s", qml_path)
+            return
+        root = self._create(qml_path, {"visible": False})
+        if root is None:
+            log.error("调试窗口创建失败: %s", qml_path)
+            return
+        self.debug = root
+        # 同设置窗口：不接管的话没有系统阴影 / 圆角，且 WS_CAPTION 会露原生标题栏
+        if not self._attach_to_rinui(root):
+            self._keep_frameless(root)
+
+    def show_debug(self) -> None:
+        self._create_debug()
+        if self.debug is None:
+            log.info("调试窗口不可用")
+            return
+        self._position_debug()
+        self.debug.show()
+        self.debug.raise_()
+        self.debug.requestActivate()
+
+    def hide_debug(self) -> None:
+        if self.debug is not None and self.debug.isVisible():
+            self.debug.hide()
+
+    def toggle_debug(self) -> None:
+        if self.debug is not None and self.debug.isVisible():
+            self.hide_debug()
+        else:
+            self.show_debug()
+
+    def _position_debug(self) -> None:
+        """摆在设置窗口旁边（设置窗口开着的时候），否则居中到光标所在显示器。
+
+        两个窗口都是居中摆放的话会**完全重叠** —— 调试窗口是从设置窗口里点
+        出来的，贴边并排才符合「母子关系」的直觉。右侧放不下就翻到左侧；
+        两侧都放不下（窄屏上两个窗口加起来比屏还宽，很常见）就退到右下角
+        错开，至少让设置窗口露出一角。
+        """
+        self._place_beside_settings(self.debug, "调试窗口")
+
+    def _position_editor(self) -> None:
+        """主界面编辑器：与调试窗口同一套摆位（设置窗口开着就贴边并排）。
+
+        编辑器的入口是**快捷面板**而不是设置窗口，但两者仍可能同时在屏幕上，
+        居中摆放会整块压住设置窗口；沿用同一套「先贴边、放不下再错开」的策略
+        比各写一份更省心。
+        """
+        self._place_beside_settings(self.editor, "主界面编辑器")
+
+    def _place_beside_settings(self, window, label: str) -> None:
+        """把 ``window`` 摆在设置窗口旁边，没有设置窗口就居中到光标所在显示器。
+
+        ``label`` 只用于日志（窗口没建起来时能一眼看出是谁没位置）。
+        """
+        if window is None:
+            log.debug("%s 尚未创建，跳过摆位", label)
+            return
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        width, height = window.width(), window.height()
+
+        anchor = self.settings if (self.settings is not None and self.settings.isVisible()) else None
+        if anchor is None:
+            x = area.left() + (area.width() - width) // 2
+            y = area.top() + (area.height() - height) // 2
+        else:
+            gap = 16
+            right = anchor.x() + anchor.width() + gap
+            left = anchor.x() - gap - width
+            if right + width <= area.right() + 1:
+                x, y = right, anchor.y()
+            elif left >= area.left():
+                x, y = left, anchor.y()
+            else:
+                # 两侧都放不下：退到右下角错开
+                inset = 12
+                x = area.right() + 1 - width - inset
+                y = area.bottom() + 1 - height - inset
+            # 夹回屏内（设置窗口本身可能就贴着屏幕边缘）
+            x = max(area.left(), min(x, area.right() + 1 - width))
+            y = max(area.top(), min(y, area.bottom() + 1 - height))
+        window.setPosition(int(x), int(y))
+
+    # ========================================================== 主界面编辑器
+
+    def _dark_theme(self) -> bool:
+        """当前是否暗色主题（问不到就按暗色算 —— 本项目默认暗色）。"""
+        try:
+            return bool(self._rinui.theme_manager.is_dark_theme())
+        except Exception:  # pragma: no cover - RinUI 未就绪
+            return True
+
+    def _apply_acrylic(self, window) -> bool:
+        """给**单只**窗口铺亚克力（DWM 系统背景材质）。
+
+        ⚠️ 刻意**不走** ``rinui.setBackdropEffect()``：那个 API 是**全局**的 ——
+        它把值写进 ``RinConfig``，再遍历 ``ThemeManager.windows`` 广播给每一只
+        已登记窗口；一调，设置窗口 / 调试窗口 / 快捷面板会跟着全变亚克力。
+        这里直接对目标 hwnd 打 DWM 属性，只影响这一只。
+
+        需要 QML 侧配合两件事，缺一不可：
+
+        * 根项声明 ``property bool backdropEnabled: true`` —— RinUI 的**按窗口**
+          钩子（``core/window.py::extend_frame_into_client_area``），它会调
+          ``DwmExtendFrameIntoClientArea(-1,-1,-1,-1)`` 把 frame 铺满客户区；
+        * ``background`` 画成透明 —— 否则不透明底色把亚克力整个盖住。
+
+        这里自己再调一次 ``DwmExtendFrameIntoClientArea``：不依赖 RinUI 那条
+        钩子是否真的被触发（登记顺序 / 版本差异都可能让它落空）。
+        """
+        # 平台判断照项目惯例用 ``hasattr(ctypes, "windll")``，不引 sys
+        if window is None or not hasattr(ctypes, "windll"):
+            return False
+        try:
+            hwnd = int(window.winId())
+        except Exception:  # pragma: no cover - 尚无原生句柄
+            return False
+        if not hwnd:
+            return False
+
+        try:
+            dwm = ctypes.windll.dwmapi
+            handle = wintypes.HWND(hwnd)
+
+            dark = ctypes.c_int(1 if self._dark_theme() else 0)
+            dwm.DwmSetWindowAttribute(
+                handle,
+                ctypes.c_uint(DWMWA_USE_IMMERSIVE_DARK_MODE),
+                ctypes.byref(dark),
+                ctypes.sizeof(dark),
+            )
+
+            backdrop = ctypes.c_int(DWMSBT_TRANSIENTWINDOW)
+            dwm.DwmSetWindowAttribute(
+                handle,
+                ctypes.c_uint(DWMWA_SYSTEMBACKDROP_TYPE),
+                ctypes.byref(backdrop),
+                ctypes.sizeof(backdrop),
+            )
+
+            # 标题栏与边框都不许 DWM 上色：标题栏实色块、窗口描边都由 QML 画，
+            # 系统再叠一层会跟 Fluent 配色打架（也会在圆角处露出一圈系统色）。
+            none = ctypes.c_int(DWMWA_COLOR_NONE)
+            for attribute in (DWMWA_CAPTION_COLOR, DWMWA_BORDER_COLOR):
+                dwm.DwmSetWindowAttribute(
+                    handle,
+                    ctypes.c_uint(attribute),
+                    ctypes.byref(none),
+                    ctypes.sizeof(none),
+                )
+
+            margins = _Margins(-1, -1, -1, -1)
+            dwm.DwmExtendFrameIntoClientArea(handle, ctypes.byref(margins))
+        except Exception:
+            log.warning("亚克力背景应用失败", exc_info=True)
+            return False
+        return True
+
+    def _create_editor(self) -> None:
+        """按需创建主界面编辑器窗口（**占位骨架**，正文待填）。
+
+        入口是快捷面板的「主界面编辑器」快捷方式（``shortcut_catalog`` 里
+        ``action: "open_editor"``）。与设置 / 调试窗口同理：不打开就一个对象
+        都不建。
+        """
+        if self.editor is not None:
+            return
+        qml_path = UI_DIR / "MainInterfaceEditor.qml"
+        if not qml_path.exists():
+            log.warning("主界面编辑器不存在，跳过: %s", qml_path)
+            return
+        root = self._create(qml_path, {"visible": False})
+        if root is None:
+            log.error("主界面编辑器创建失败: %s", qml_path)
+            return
+        self.editor = root
+        # 同设置窗口：不接管的话没有系统阴影 / 圆角，且 WS_CAPTION 会露原生标题栏
+        if not self._attach_to_rinui(root):
+            self._keep_frameless(root)
+        # 亚克力背景（用户指令：窗口整体背景除标题栏外都是亚克力）。
+        # 要在接管之后打：接管会补 WS_CAPTION / 扩展 frame，属性次序反了会被覆盖。
+        self._attach_editor_acrylic()
+
+    def _attach_editor_acrylic(self, schedule: bool = False) -> None:
+        """给编辑器窗口铺亚克力，并把结果写回 QML（自检读得到）。
+
+        ⚠️ **必须在 ``show()`` 之后**再补打一次（``schedule=True``）。实测：窗口
+        显示前的调用是「成功」的（回读得到 ``DWMWA_SYSTEMBACKDROP_TYPE = 3``），
+        但 ``show()`` 之后的 ~200ms 内系统会把它**重置回 0** —— 那个时间窗里
+        Qt 正在做首次展示的平台窗口初始化 / 重新应用 frame。之后再打就稳定了
+        （实测补打后 700ms 仍保持 3）。
+        """
+        if self.editor is None:
+            return
+        ok = self._apply_acrylic(self.editor)
+        try:
+            self.editor.setProperty("acrylicActive", bool(ok))
+        except Exception:  # pragma: no cover - 属性尚未注册
+            log.debug("回写 acrylicActive 失败", exc_info=True)
+        if schedule:
+            QTimer.singleShot(ACRYLIC_REAPPLY_MS, self._reapply_editor_acrylic)
+
+    def _reapply_editor_acrylic(self) -> None:
+        """延迟补打的那一拍（窗口已经关掉就跳过）。"""
+        if self.editor is not None and self.editor.isVisible():
+            self._attach_editor_acrylic()
+
+    def show_editor(self) -> None:
+        self._create_editor()
+        if self.editor is None:
+            log.info("主界面编辑器不可用")
+            return
+        self._position_editor()
+        self.editor.show()
+        # 显示后再打一次，并排一拍补打（原因见 _attach_editor_acrylic 的注释：
+        # show() 后 ~200ms 内系统会把 backdrop 重置回 0）
+        self._attach_editor_acrylic(schedule=True)
+        self.editor.raise_()
+        self.editor.requestActivate()
+
+    def hide_editor(self) -> None:
+        if self.editor is not None and self.editor.isVisible():
+            self.editor.hide()
+
+    def toggle_editor(self) -> None:
+        if self.editor is not None and self.editor.isVisible():
+            self.hide_editor()
+        else:
+            self.show_editor()
+
     # ================================================================ 顶层窗口
 
     def show_docks(self) -> None:
         """放映开始：顶层窗口全屏铺到放映所在显示器，控制条落到各角落。
 
         顺序很重要：**先定屏 → 再全屏 → 再摆控制条 → 最后才谈穿透**。
+
+        2026-10-01 起没有「放映总开关」了（``presentation.enabled`` 已按用户
+        指令删除）：探测到放映就显示，不再读任何开关。
         """
-        if not self._config.get("presentation.enabled", True):
-            return
         if self.overlay is None:
             log.warning("顶层窗口未创建，无法显示控制条")
             return
@@ -603,6 +1123,15 @@ class WindowManager(QObject):
         self.overlay.setGeometry(screen.geometry())
         for name in self._docks:
             self._position_dock(name)
+
+        # 把「放映铺在哪块屏」告诉 Bridge：主界面编辑器的画布比例以它为准
+        # （Bridge 自己复现不了这段判定 —— 它依赖放映窗口的**物理**显示器，
+        # 见 :meth:`_presentation_screen`）。
+        geometry = screen.geometry()
+        self._backend.syncPresentationScreen(
+            geometry.width(), geometry.height(), screen.name(),
+            float(screen.devicePixelRatio()),
+        )
 
         self.overlay.show()
         self._overlay_ever_shown = True
@@ -703,6 +1232,10 @@ class WindowManager(QObject):
             x = width - dock.width() - margin_x + shadow
         if vertical == "top":
             y = margin_y - shadow
+        elif vertical == "middle":
+            # 竖版两侧翻页：屏幕左右、**垂直居中**（L1 .flipper 默认形态）。
+            # dock 尺寸含对称的投影余量，居中后底板也在屏幕竖直中线上。
+            y = (height - dock.height()) // 2
         else:
             y = height - dock.height() - margin_y + shadow
         dock.setX(x)
@@ -1136,11 +1669,16 @@ class WindowManager(QObject):
     # ================================================================== 收尾
 
     def shutdown(self) -> None:
+        self._destroy_splash()
         self.hide_panel()
         self.hide_settings()
+        self.hide_debug()
+        self.hide_editor()
         self.hide_docks()
         self._docks.clear()
         self._components.clear()
         self.panel = None
         self.settings = None
+        self.debug = None
+        self.editor = None
         self.overlay = None

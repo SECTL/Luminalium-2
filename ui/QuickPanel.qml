@@ -16,15 +16,18 @@ import "QuickPanel"
       高度留出底部工具条的位置。
     * 头部：logo + 应用名（Luminalium 没有更新摘要功能，不做该按钮）；
     * 快捷方式：``TrayShortcuts``（3 列网格 + 编辑态 + 空状态）；
-    * 放映状态：``StatusCard``（替代 CW2 的课程表区块 —— Luminalium
-      是放映伴侣，不是课表软件）；
     * 底栏：**卡片外**、窗口右下角一排扁平图标按钮 + ToolTip；
     * 点托盘图标时由 Python 侧按**光标位置**摆放（``pos.x - w/2``，
       ``pos.y + 30``，下方放不下就翻到上方，夹取到屏幕内），然后
       ``raise() + requestActivate()``。
 
-    全部内容由 ``config/default_config.json`` 的 ``quick_panel`` 段驱动，
-    组件内不写死业务数据。
+    2026-10-01 移除了「放映状态」区块（``StatusCard``）—— 用户指令
+    「删除快捷面板的放映状态相关代码」；放映状态另有展示位置（控制条本身
+    就在放映画面上），面板里再放一张卡片属于重复。
+
+    内容（区块开关 / 底栏动作 / 快捷方式清单）由
+    ``config/default_config.json`` 的 ``quick_panel`` 段驱动；**尺寸与位置
+    不再读配置**（见下方 ``panelWidth`` / ``panelHeight``）。
 */
 Rin.Window {
     id: panel
@@ -34,8 +37,16 @@ Rin.Window {
     readonly property var footerCfg: cfg.footer !== undefined ? cfg.footer : ({})
     readonly property var footerActions: footerCfg.actions !== undefined ? footerCfg.actions : []
 
-    readonly property int panelWidth: cfg.width !== undefined ? cfg.width : 375
-    readonly property int panelHeight: cfg.height !== undefined ? cfg.height : 440
+    /*! 面板尺寸**写死**，不再读配置。
+
+        2026-10-01 用户指令：删掉「尺寸与位置」的设置**包括行为的代码** ——
+        ``quick_panel.width`` / ``height`` 已从 ``default_config.json`` 与
+        ``bridge.SETTING_PATHS`` 一并移除，尺寸不再随配置变化，这里就是唯一
+        来源（375 宽，与 CW2 的托盘面板同宽；440 高给网格留三行 + 底栏）。
+        面板弹出位置同样不再可配（``windows.py::_position_panel`` 用常量
+        偏移），但**光标锚定行为本身保留** —— 那是托盘面板的基本交互。 */
+    readonly property int panelWidth: 375
+    readonly property int panelHeight: 440
 
     title: Backend.appVersion
     minimizeVisible: false
@@ -115,23 +126,6 @@ Rin.Window {
             onAddRequested: addOverlay.open()
         }
 
-        // ================================================ 放映状态
-        ColumnLayout {
-            Layout.fillWidth: true
-            visible: sectionsCfg.status !== false
-            spacing: Lumi.panelSectionSpacing
-
-            Rin.Text {
-                Layout.fillWidth: true
-                typography: Rin.Typography.BodyStrong
-                text: qsTr("放映状态")
-            }
-
-            StatusCard {
-                Layout.fillWidth: true
-                Layout.preferredHeight: Lumi.statusRowHeight
-            }
-        }
     }
 
     // ============================================================ 底栏

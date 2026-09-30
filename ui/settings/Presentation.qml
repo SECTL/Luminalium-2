@@ -3,31 +3,23 @@ import QtQuick.Layouts
 import RinUI as Rin
 import Luminalium
 
-/*! 放映控制条：开关、位置与外观细节（轮询间隔在调试页）。 */
+/*!
+    放映控制条：位置与外观细节。
+
+    轮询间隔在**调试窗口**里（隐藏入口：在设置窗口标题文本上连点 10 次）。
+
+    2026-10-01 按用户指令删掉两块：
+    * **总开关**（「放映时显示控制条」）—— 配置键 ``presentation.enabled``
+      连同 ``windows.py::show_docks`` 里的判断一并移除，探测到放映就显示；
+    * **检测状态卡片**（原来显示识别到的软件族与窗口句柄）—— 属于放映状态
+      显示，连同 ``Backend.presentingKind`` / ``presentingWindow`` 一起删除。
+      排查「探测认没认出放映窗口」改看日志：``logs/luminalium.log``。
+*/
 Rin.FluentPage {
     id: page
 
     title: qsTr("放映")
     contentSpacing: 10
-
-    Rin.Text {
-        Layout.fillWidth: true
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("总开关")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("放映时显示控制条")
-        description: qsTr("检测到 PowerPoint 进入放映状态后自动出现")
-        icon.name: "ic_fluent_slide_play_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.presentation_enabled === true
-            onToggled: Backend.setSetting("presentation_enabled", checked)
-        }
-    }
 
     Rin.Text {
         Layout.fillWidth: true
@@ -135,7 +127,7 @@ Rin.FluentPage {
     Rin.SettingCard {
         Layout.fillWidth: true
         title: qsTr("页码切换")
-        description: qsTr("左右两侧各一只独立的上一页 / 下一页 pill")
+        description: qsTr("翻页 pill：默认为屏幕左右、垂直居中的竖版（Luminalium 1 形态）；也可在配置里改用底部左右横版")
         icon.name: "ic_fluent_arrow_sort_20_regular"
 
         Rin.Switch {

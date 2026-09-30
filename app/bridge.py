@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 from PySide6.QtCore import QUrl
+from PySide6.QtGui import QGuiApplication
 
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
@@ -30,15 +31,10 @@ SETTING_PATHS: Dict[str, str] = {
     "tray_tooltip": "tray.tooltip",
     "tray_show_on_click": "tray.show_on_click",
     "tray_notify_on_start": "tray.notify_on_start",
-    "panel_width": "quick_panel.width",
-    "panel_height": "quick_panel.height",
-    "panel_offset_y": "quick_panel.offset_y",
     "panel_hide_on_deactivate": "quick_panel.hide_on_deactivate",
     "panel_shortcuts_locked": "quick_panel.shortcuts_locked",
     "panel_section_shortcuts": "quick_panel.sections.shortcuts",
-    "panel_section_status": "quick_panel.sections.status",
     "panel_section_footer": "quick_panel.sections.footer",
-    "presentation_enabled": "presentation.enabled",
     "presentation_poll_interval_ms": "presentation.poll_interval_ms",
     "presentation_margin_x": "presentation.margin_x",
     "presentation_margin_y": "presentation.margin_y",
@@ -49,13 +45,12 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_divider_enabled": "presentation.divider.enabled",
     "presentation_pager_enabled": "presentation.pager.enabled",
     "presentation_exit_style": "presentation.exit.style",
-    # 调试页专用（普通用户不暴露水印开关的存在）
+    # 只在调试窗口出现（隐藏入口：设置标题连点 10 次），普通用户看不到水印开关
     "dev_watermark": "app.dev_watermark",
 }
 
 #: 值一变就需要 QML 重新取整块配置的键。
-_BROADCAST_KEYS = {"panel_width", "panel_height", "panel_section_shortcuts",
-                   "panel_section_status", "panel_section_footer"}
+_BROADCAST_KEYS = {"panel_section_shortcuts", "panel_section_footer"}
 
 
 class Backend(QObject):
@@ -67,9 +62,12 @@ class Backend(QObject):
     activeToolChanged = Signal()
     shortcutsChanged = Signal()
     presentationConfigChanged = Signal()
+    presentationScreenChanged = Signal()
     quickPanelConfigChanged = Signal()
     settingsChanged = Signal()
     statusChanged = Signal()
+    #: 启动画面的进度 / 阶段文字变了
+    splashChanged = Signal()
 
     # ---- 请求类信号（由窗口管理器 / 应用层响应）----
     panelHideRequested = Signal()
@@ -79,6 +77,12 @@ class Backend(QObject):
     quitRequested = Signal()
     settingsRequested = Signal()
     settingsCloseRequested = Signal()
+    #: 调试窗口（隐藏入口：设置窗口标题连点 10 次）
+    debugWindowRequested = Signal()
+    debugWindowCloseRequested = Signal()
+    #: 主界面编辑器（入口：快捷面板的「主界面编辑器」快捷方式）
+    editorRequested = Signal()
+    editorCloseRequested = Signal()
     themeChangeRequested = Signal(str)
     accentChangeRequested = Signal(str)
 
@@ -92,10 +96,20 @@ class Backend(QObject):
         self._active_tool = "pen"
         self._status_text = ""
 
+        #: 启动画面进度（0..1）与阶段文字。由应用层按真实里程碑推进
+        #: （见 ``application.py::LuminaliumApplication._boot_*``）。
+        self._splash_progress = 0.0
+        self._splash_stage = ""
+
         #: 已启用的快捷方式 id（顺序即显示顺序）
         self._shortcut_ids: List[str] = [
             str(item) for item in (config.get("quick_panel.shortcuts", []) or [])
         ]
+
+        #: ``WindowManager`` 推来的**真实**放映显示器几何（顶层窗口铺在哪块屏）。
+        #: None 表示还没有放映过，此时 :meth:`_get_presentation_screen` 自己按
+        #: 配置索引兜底。见 ``syncPresentationScreen``。
+        self._overlay_screen: Optional[Dict[str, Any]] = None
 
 
     # ==================================================================== 常量
@@ -122,14 +136,38 @@ class Backend(QObject):
     def devWatermark(self) -> bool:
         """开发中水印开关（``app.dev_watermark``）。
 
-        给开发者看的开关：设置窗口里只在**调试页**出现（普通用户
-        不会翻到那里）。缺省开启。
+        给开发者看的开关：只在**调试窗口**里出现，而调试窗口本身没有可见入口
+        （设置窗口标题连点 10 次，见 ``openDebugWindow``）。缺省开启。
         """
         return self._config.get("app.dev_watermark", True) is not False
 
     @Property(str, constant=True)
     def devCodename(self) -> str:
-        return str(self._config.get("app.codename", "YamadaRyou"))
+        return str(self._config.get("app.codename", "AwaSubaru"))
+
+    # ================================================================ 启动画面
+
+    @Property(float, notify=splashChanged)
+    def splashProgress(self) -> float:
+        """启动进度，0..1。"""
+        return self._splash_progress
+
+    @Property(str, notify=splashChanged)
+    def splashStage(self) -> str:
+        """当前阶段的短说明（设计稿里是「创建托盘图标」那一类）。"""
+        return self._splash_stage
+
+    @Property(str, constant=True)
+    def splashSubtitle(self) -> str:
+        """版本行文案：``<版本号> // <开发代号>``（设计稿同款）。"""
+        return f"{self.appVersion} // {self.devCodename}"
+
+    @Slot(float, str)
+    def setSplashStage(self, progress: float, stage: str) -> None:
+        """推进启动画面（应用层每到一个真实里程碑调一次）。"""
+        self._splash_progress = max(0.0, min(1.0, float(progress)))
+        self._splash_stage = str(stage)
+        self.splashChanged.emit()
 
     @Property(str, constant=True)
     def deviceId(self) -> str:
@@ -212,6 +250,65 @@ class Backend(QObject):
         _get_presentation_config,
         notify=presentationConfigChanged,
     )
+
+    # ------------------------------------------------- 放映显示器几何（画布基准）
+
+    def _get_presentation_screen(self) -> Dict[str, Any]:
+        """放映所在显示器的**逻辑**几何 —— 主界面编辑器画布的坐标基准。
+
+        优先用 :meth:`syncPresentationScreen` 推来的真实结果（放映窗口在哪块屏
+        就报哪块）；还没放映过时退回「配置索引 → 主屏」，与
+        ``windows.py::_presentation_screen`` 的兜底分支同源。
+
+        ⚠️ 不能用 QML 的 ``Screen`` attached property 代替：那说的是**本窗口**
+        所在显示器。双屏时编辑器在主屏、放映在副屏，画布比例会整个错掉。
+        """
+        if self._overlay_screen is not None:
+            return dict(self._overlay_screen)
+        try:
+            screens = QGuiApplication.screens()
+        except Exception:  # pragma: no cover - QApplication 尚未建好
+            screens = []
+        index = int(self._config.get("presentation.screen_index", -1))
+        screen = screens[index] if 0 <= index < len(screens) else None
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        if screen is None:  # pragma: no cover - 极端情况（无显示器）
+            return {"width": 1920, "height": 1080, "name": "",
+                    "scale": 1.0, "source": "fallback"}
+        geometry = screen.geometry()
+        return {
+            "width": geometry.width(),
+            "height": geometry.height(),
+            "name": screen.name(),
+            "scale": float(screen.devicePixelRatio()),
+            "source": "config",
+        }
+
+    presentationScreen = Property(
+        "QVariantMap", _get_presentation_screen, notify=presentationScreenChanged
+    )
+
+    @Slot(int, int, str, float)
+    def syncPresentationScreen(
+        self, width: int, height: int, name: str, scale: float
+    ) -> None:
+        """由 ``WindowManager.show_docks()`` 调用：顶层窗口定位完，把真实屏幕推过来。
+
+        顶层窗口铺在哪块屏是按**放映窗口的物理显示器**判定的（见
+        ``windows.py::_presentation_screen``），Bridge 侧复现不了，所以只能推。
+        """
+        info = {
+            "width": int(width),
+            "height": int(height),
+            "name": str(name),
+            "scale": float(scale),
+            "source": "overlay",
+        }
+        if info == self._overlay_screen:
+            return
+        self._overlay_screen = info
+        self.presentationScreenChanged.emit()
 
     def _get_quick_panel_config(self) -> Dict[str, Any]:
         return self._config.get("quick_panel", {}) or {}
@@ -332,11 +429,41 @@ class Backend(QObject):
             self.quickPanelConfigChanged.emit()
         if key.startswith("presentation_"):
             self.presentationConfigChanged.emit()
+            # 改 ``presentation_screen_index`` 会换一块显示器；还没放映过时
+            # ``presentationScreen`` 是按配置现算的，得给它一个重取的理由。
+            self.presentationScreenChanged.emit()
         self.settingsChanged.emit()
 
     @Slot()
     def closeSettings(self) -> None:
         self.settingsCloseRequested.emit()
+
+    @Slot()
+    def openDebugWindow(self) -> None:
+        """打开调试窗口。
+
+        入口是**隐藏**的：在设置窗口左上角的标题文本上连点 10 次
+        （``Settings.qml`` 的 ``debugTitleHotspot``）。调试项不再占用
+        设置导航栏的位置。
+        """
+        self.debugWindowRequested.emit()
+
+    @Slot()
+    def closeDebugWindow(self) -> None:
+        self.debugWindowCloseRequested.emit()
+
+    @Slot()
+    def openMainEditor(self) -> None:
+        """打开主界面编辑器窗口。
+
+        与调试窗口不同，这个是**正经入口**：快捷面板的「主界面编辑器」快捷方式
+        （``shortcut_catalog`` 里 ``action: "open_editor"``）会派发到这里。
+        """
+        self.editorRequested.emit()
+
+    @Slot()
+    def closeMainEditor(self) -> None:
+        self.editorCloseRequested.emit()
 
     def reload_from_config(self) -> None:
         self._shortcut_ids = [
@@ -345,6 +472,7 @@ class Backend(QObject):
         self.shortcutsChanged.emit()
         self.settingsChanged.emit()
         self.presentationConfigChanged.emit()
+        self.presentationScreenChanged.emit()
         self.quickPanelConfigChanged.emit()
 
     # ============================================================ 放映控制槽
@@ -409,11 +537,3 @@ class Backend(QObject):
         self.panelHideRequested.emit()
 
     # ------------------------------------------------------------------ 工具
-
-    @Slot(result=str)
-    def describeSlideProgress(self) -> str:
-        if not self._presentation_active:
-            return "未在放映"
-        if self._slide_total <= 0:
-            return "放映中"
-        return f"{self._slide_index}/{self._slide_total}"

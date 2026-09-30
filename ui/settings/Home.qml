@@ -1,79 +1,21 @@
 import QtQuick
-import QtQuick.Layouts
 import RinUI as Rin
-import Luminalium
 
-/*! 设置首页：一眼看清应用状态与常用入口。 */
+/*!
+    设置首页：**目前刻意留空**。
+
+    2026-10-01 用户指令：「设置的主页目前留空」。原内容（放映状态卡片 /
+    主题摘要 / 快捷入口开关）已全部移除 —— 那些入口分别有各自的设置页，
+    首页再复述一遍只会产生两处要同步维护的同一份状态。
+
+    留空时不写任何子项：``Rin.FluentPage`` 的内容层是 default property
+    （``freeContainter``），没有子项就是干净的一页，不需要占位符。
+
+    以后要放什么，直接往这里加卡片即可；页面本身仍挂在导航第一项，
+    配置里的 ``settings.default_page`` 也仍指向本文件。
+*/
 Rin.FluentPage {
     id: page
 
     title: qsTr("主页")
-    contentSpacing: 10
-
-    // ---------------------------------------------------------------- 状态
-    Rin.Text {
-        Layout.fillWidth: true
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("当前状态")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("放映状态")
-        description: Backend.presentationActive
-            ? qsTr("正在放映 · %1").arg(Backend.describeSlideProgress())
-            : qsTr("未检测到放映中的演示文稿")
-        icon.name: Backend.presentationActive
-            ? "ic_fluent_slide_play_20_filled"
-            : "ic_fluent_slide_play_20_regular"
-
-        Rin.Button {
-            flat: true
-            text: qsTr("重新检测")
-            onClicked: Backend.requestReload()
-        }
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("主题")
-        description: Backend.settings.theme !== undefined
-            ? (Backend.settings.theme === "dark" ? qsTr("深色") : qsTr("浅色"))
-            : qsTr("深色")
-        icon.name: "ic_fluent_paint_brush_20_regular"
-    }
-
-    // ------------------------------------------------------------ 快捷入口
-    Rin.Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 10
-        typography: Rin.Typography.BodyStrong
-        text: qsTr("快捷入口")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("快捷面板")
-        description: qsTr("点击托盘图标即可在光标附近弹出")
-        icon.name: "ic_fluent_apps_list_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.tray_enabled === true
-            onToggled: Backend.setSetting("tray_enabled", checked)
-        }
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("放映控制条")
-        description: qsTr("检测到放映时自动出现在屏幕角落")
-        icon.name: "ic_fluent_slide_play_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.presentation_enabled === true
-            onToggled: Backend.setSetting("presentation_enabled", checked)
-        }
-    }
 }

@@ -8,8 +8,8 @@
     "//backdrop": "窗口背景材质：none=实色主题背景。RinUI 默认在 Win11 用 Mica / Win10 用 Acrylic，窗口会变成透明靠 DWM 合成，不支持/异常的机器上就是一片怪材质。",
     "backdrop": "none",
     "//codename": "开发代号（开发水印第二行用）",
-    "codename": "YamadaRyou",
-    "//dev_watermark": "**开发者开关，只在设置窗口的「调试」页出现**：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
+    "codename": "AwaSubaru",
+    "//dev_watermark": "**开发者开关，只在调试窗口里出现**（调试窗口没有可见入口：在设置窗口左上角标题文本上连点 10 次打开）：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
     "dev_watermark": true
   },
   "tray": {
@@ -20,31 +20,29 @@
   },
   "quick_panel": {
     "title": "快捷面板",
-    "width": 375,
-    "//height": "≈ 头部 32 + 网格 3 行 252 + 放映状态 56 + 留白；CW2 同款为 475（含课程表区块）",
-    "height": 440,
-    "//offset_y": "CW2 惯例：面板顶边 = 光标 y + 30；下方放不下时翻到光标上方",
-    "offset_y": 30,
+    "//size": "面板尺寸与弹出偏移（原 width=375 / height=440 / offset_y=30）已于 2026-10-01 按用户指令移除（「尺寸与位置的设置删除包括行为的代码」）：尺寸写死在 ui/QuickPanel.qml 的 panelWidth / panelHeight，弹出偏移写死在 app/windows.py::_position_panel 的 PANEL_OFFSET_Y。改尺寸直接改那两处常量",
     "hide_on_deactivate": true,
     "header": {
       "logotext": "Luminalium 2"
     },
+    "//sections": "面板区块开关。原「status」（放映状态区块）已于 2026-10-01 随区块代码一起删除；shortcuts = 快捷方式网格，footer = 右下角那排图标按钮",
     "sections": {
       "shortcuts": true,
-      "status": true,
       "footer": true
     },
     "//shortcuts": "已启用的快捷方式 id，顺序即显示顺序；可选来源是 shortcut_catalog",
     "shortcuts": [
       "settings",
       "presentation",
-      "update"
+      "update",
+      "main_editor"
     ],
-    "//shortcut_catalog": "全部可用快捷方式（设置页与「+」对话框从这里取）。Luminalium 是放映伴侣，不提供课表类功能",
+    "//shortcut_catalog": "全部可用快捷方式（设置页与「+」对话框从这里取）。Luminalium 是放映伴侣，不提供课表类功能。action 语法：open_settings[:<相对 ui 的页面路径>] = 打开设置窗口（可选落到某一页）；open_editor = 打开主界面编辑器独立窗口（ui/MainInterfaceEditor.qml）—— 由 application.py::_on_shortcut 分发",
     "shortcut_catalog": [
       { "id": "settings", "title": "设置", "icon": "ic_fluent_settings_20_regular", "action": "open_settings:settings/Home.qml" },
       { "id": "presentation", "title": "放映控制", "icon": "ic_fluent_slide_play_20_regular", "action": "open_settings:settings/Presentation.qml" },
-      { "id": "update", "title": "检查更新", "icon": "ic_fluent_arrow_sync_20_regular", "action": "open_settings:settings/Update.qml" }
+      { "id": "update", "title": "检查更新", "icon": "ic_fluent_arrow_sync_20_regular", "action": "open_settings:settings/Update.qml" },
+      { "id": "main_editor", "title": "主界面编辑器", "icon": "ic_fluent_window_edit_20_regular", "action": "open_editor" }
     ],
     "//shortcuts_locked": "true 时面板禁用编辑模式（策略锁定）",
     "shortcuts_locked": false,
@@ -66,7 +64,7 @@
     "default_page": "settings/Home.qml"
   },
   "presentation": {
-    "enabled": true,
+    "//enabled": "原「放映时显示控制条」总开关已于 2026-10-01 按用户指令删除：探测到放映就出控制条，不再有开关（windows.py::show_docks 也不再读它）",
     "poll_interval_ms": 400,
     "//page_turn_rate_limit": "1 秒窗口内最多接受的翻页次数，超出的直接丢弃（不发出去）。参考 Luminalium 1 的 PPT.PageTurnRateLimit 默认 2：放映中连点会不断推 PowerPoint 的 COM / 消息泵，它会开始拒绝调用（RPC_E_CALL_REJECTED）或把输入排队，用户看到的就是「点了没反应、然后突然跳好几页」",
     "page_turn_rate_limit": 2,
@@ -100,7 +98,7 @@
     "//padding": "左右 9：**同心嵌套**——外壳帽半径 31 − 分段帽半径 22 = 9，两弧圆心才对齐。上下 9（内容高 44）",
     "padding_x": 9,
     "padding_y": 9,
-    "//highlight": "CW2 小组件同款的「渐变边框高光」（lighting effect）：对角线渐变描边，两端亮白、中段隐去。工具栏与翻页 pill 都带；环宽与亮度在 Lumi.qml（dockHighlightWidth/dockHighlightColor）",
+    "//highlight": "CW2 小组件同款的「渐变边框高光」（lighting effect）：对角线渐变描边，两端亮白、中段隐去。工具栏与翻页 pill 都带；环宽 / 亮度 / 柔化模糊半径在 Lumi.qml（dockHighlightWidth / dockHighlightColor / dockHighlightBlur，blur=0 退回硬描边环）",
     "highlight": true,
       "shadow": {
         "enabled": true,
@@ -118,7 +116,7 @@
     "spacing": 4
   },
   "segment": {
-    "//description": "工具组是**圆的分段控件**（基类 RinUI 的 Segmented）：胶囊容器 + 两个圆形分页，选中的那页浮现一枚圆钮；Luminalium 1 里工具本来是散装圆钮，这里按用户要求恢复成「有容器」的分段，但语言是圆的（没有下划线）",
+    "//description": "工具组是**圆的分段控件**（基类 RinUI 的 Segmented）：胶囊容器 + 三个圆形分页（指针 / 笔 / 橡皮），选中的那页浮现一枚圆钮；Luminalium 1 里工具本来是散装圆钮，这里按用户要求恢复成「有容器」的分段，但语言是圆的（没有下划线）",
     "//padding_x": "必须为 0：分段帽要与外壳帽**同心**（外壳 padding 9 + 这里的 0 + 半径 22 = 31 = 外壳帽半径），这里再留白就会把圆心推偏、弧间空隙宽窄不一。上下为 0 —— 分页高 = 内容高 = 容器高（44）",
     "padding_x": 0,
     "//spacing": "两个分页之间的间距",
@@ -137,7 +135,9 @@
       "icon": "ic_fluent_more_horizontal_20_filled",
       "tooltip": "更多操作"
     },
+    "//tools": "分段的分页，**顺序即显示顺序（左 → 右）**。id 后端只认 pen / eraser / arrow（arrow = 鼠标指针，PP_POINTER_ARROW）；arrow 放第一个（2026-09-25 用户指令：指针要在最左，不然没法切回鼠标）",
     "tools": [
+      { "id": "arrow", "label": "鼠标指针", "icon": "ic_fluent_cursor_20_filled" },
       { "id": "pen", "label": "笔", "icon": "ic_fluent_pen_20_filled" },
       { "id": "eraser", "label": "橡皮", "icon": "ic_fluent_eraser_20_filled" }
     ],
@@ -158,7 +158,15 @@
     "//surface_padding_x": "翻页 pill 的左右留白。Luminalium 1 的圆钮只距 pill 边缘 4px（.flipper-btn margin: 0 4px）—— 比工具条的 12 紧凑得多，这是「翻页栏更小更聚拢」的关键",
     "surface_padding_x": 4,
     "icon_prev": "ic_fluent_chevron_left_20_filled",
-    "icon_next": "ic_fluent_chevron_right_20_filled"
+    "icon_next": "ic_fluent_chevron_right_20_filled",
+    "//side": "竖版两侧翻页（middle_left / middle_right 角落用，组件 SidePager.qml）＝**横版 pill 旋转 90° 的同款布局**：贴屏幕左右、垂直居中的竖直胶囊，尺寸由横版 180×62 直接转置成 62×180 —— 圆钮 44 / 间距 8 / 页码区 68 / 沿轴留白 4 全部与横版同档（pager.width / pager.spacing / pager.surface_padding_x 共用），只有 chevron 换成上下朝向（2026-09-30 用户指令：不要全抄 L1 的竖版比例）",
+    "side": {
+      "width": 62,
+      "height": 180,
+      "padding": 4,
+      "icon_prev": "ic_fluent_chevron_up_20_filled",
+      "icon_next": "ic_fluent_chevron_down_20_filled"
+    }
   },
   "exit": {
     "enabled": true,
@@ -168,16 +176,24 @@
     "style": "default"
   },
     "corners": {
-      "//": "控制条恒横向。工具栏是**独立的一套组**摆在下中部（tools/actions/exit）；翻页栏独立出来，左右各一只 pill。",
+      "//": "工具栏是**独立的一套组**摆在下中部（tools/actions/exit，恒横向）；翻页栏有两种形态，二选一（同时开会四个翻页栏）：bottom_left / bottom_right = 底部左右各一只横版 pill（.flipper-bottom）；middle_left / middle_right = 屏幕左右、垂直居中的**竖版** pill（SidePager.qml，L1 .flipper 默认形态）。默认竖版 —— 与 L1 一致；要横版就把 middle_* 关掉、bottom_* 打开",
       "bottom_center": {
         "enabled": true,
         "groups": ["tools", "actions", "exit"]
       },
       "bottom_left": {
-        "enabled": true,
+        "enabled": false,
         "groups": ["pager"]
       },
       "bottom_right": {
+        "enabled": false,
+        "groups": ["pager"]
+      },
+      "middle_left": {
+        "enabled": true,
+        "groups": ["pager"]
+      },
+      "middle_right": {
         "enabled": true,
         "groups": ["pager"]
       }

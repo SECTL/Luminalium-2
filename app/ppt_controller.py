@@ -11,10 +11,19 @@
    （新版 WPS / LibreOffice / 各种播放器）。条件：进程名在白名单里
    **且**该窗口可见、**无标题栏**（编辑器主窗口有）、**铺满整块屏幕**。
 3. **COM 自动化（需 pywin32）** —— ``GetActiveObject`` 依次尝试
-   ``PowerPoint.Application``（MS Office）与 ``Kwpp.Application``（WPS 演示），
-   读取当前页码 / 总页数；窗口类没探到但 COM 报告有放映窗口时
-   （例如窗口类改名 / 异常形态），用 COM 的 ``SlideShowWindows(1).HWND``
-   兜底判定为放映中。
+   ``PowerPoint.Application``（MS Office）、``Kwpp.Application``（WPS 演示）
+   与永中那套 ProgID，读取当前页码 / 总页数；窗口类没探到但 COM 报告有
+   放映窗口时（例如窗口类改名 / 异常形态），用 COM 的
+   ``SlideShowWindows(1).HWND`` 兜底判定为放映中。
+
+**软件族（kind）**：探测成功后会再判一次「这是哪家的放映」（``ppt`` / ``wps`` /
+``yozo``）。这不是锦上添花 —— 控制腿要靠它选路线：
+
+* ``View.PointerType`` 直写三族通用，是首选；
+* 失败后的快捷键回退**按族区分**：PowerPoint / WPS 用 ``Ctrl+P`` / ``Ctrl+E`` /
+  ``Ctrl+A``，永中只发它认得的 ``Ctrl+E`` / ``Ctrl+A``（给它发 ``Ctrl+P`` 是无效动作）；
+* 墨迹调色板（``InkColorPicker``）与「退出时保留墨迹」是 **PowerPoint 专属**，
+  对 WPS / 永中下发只会白等一轮。
 
 控制操作（翻页 / 退出 / 笔 / 清屏）COM 失败时回退为向放映窗口发按键。按键注入按
 **完整性级别**选路：同级 / 更低走 ``keybd_event``，本进程级别更高时 UIPI 会把
@@ -81,6 +90,40 @@ CONSOLE_WINDOW_CLASS_PREFIXES = ("PP97FrameClass", "PP12FrameClass", "PPTFrameCl
 # COM ProgID 候选：MS Office 在前，WPS 演示兜底（对象模型与 PowerPoint 同构）
 COM_PROG_IDS = ("PowerPoint.Application", "Kwpp.Application", "wpp.Application")
 
+# ---------------------------------------------------------------- 软件族（kind）
+# 「哪家的放映」决定控制腿怎么走（照 Luminalium 1 的 kind 区分）：
+# PowerPoint 有完整的 COM 指针控制 + InkColorPicker 调色板；
+# WPS / 永中要靠 Ctrl+P / Ctrl+E 那套快捷键，且别对它们下 PowerPoint 专属的 MSO 命令。
+# 每一族各自持有一份「类名 / 进程名」规则，探测时先定族、再用**该族**的规则复判，
+# 避免「用 PowerPoint 的规则去否掉一个 WPS 窗口」这类张冠李戴。
+APP_KIND_PPT = "ppt"
+APP_KIND_WPS = "wps"
+APP_KIND_YOZO = "yozo"
+
+KIND_CLASS_HINTS: dict[str, tuple[str, ...]] = {
+    APP_KIND_PPT: ("screenclass",),
+    APP_KIND_WPS: ("wppslideshowwindowclass", "wpp slideshow window",
+                   "wpp slideshow window 8.0", "wps"),
+    APP_KIND_YOZO: ("yozo",),
+}
+KIND_PROCESS_HINTS: dict[str, tuple[str, ...]] = {
+    APP_KIND_PPT: ("POWERPNT.EXE", "PPTVIEW.EXE"),
+    APP_KIND_WPS: ("WPP.EXE", "KWPP.EXE", "WPS.EXE"),
+    APP_KIND_YOZO: ("YOZO_IMPRESS.EXE", "YOZOPG.EXE", "YOZO_OFFICE.EXE"),
+}
+# 各族在自己的窗口上，**确实能用**的快捷键。Ctrl+P 开笔 / Ctrl+E 开橡皮 / Ctrl+A 回指针，
+# 这三个在 PowerPoint 与 WPS 演示上都成立（L1 的 set_pointer_type 用的就是它们）；
+# 永中只保证 A/E（笔要靠方向键那套，不稳，宁可不发）。
+KIND_TOOL_SHORTCUTS: dict[str, dict[str, int]] = {
+    APP_KIND_PPT: {"pen": ord("P"), "eraser": ord("E"), "arrow": ord("A")},
+    APP_KIND_WPS: {"pen": ord("P"), "eraser": ord("E"), "arrow": ord("A")},
+    APP_KIND_YOZO: {"eraser": ord("E"), "arrow": ord("A")},
+}
+# 调色板（InkColorPicker）只有 PowerPoint 认；WPS / 永中不走这条，只做 COM 直写。
+KIND_SUPPORTS_INK_PALETTE = {APP_KIND_PPT}
+# 退出前问「墨迹留不留」只有 PowerPoint 有原生那套（DisplayAlerts + InkAnnotations）。
+KIND_SUPPORTS_INK_PROMPT = {APP_KIND_PPT}
+
 # 进程名兜底：**窗口类名各家不统一且会随版本变，进程名反而是最稳的锚**。
 # 只有「可见 + 无标题栏 + 覆盖整屏 + 进程名命中」才判定为放映窗口，
 # 避免把最大化了的编辑器主窗口误判成放映。
@@ -140,6 +183,15 @@ TOOL_TO_POINTER = {
     "eraser": PP_POINTER_ERASER,
 }
 
+# 指针切换的重试阶梯 —— **逐字照抄 Luminalium 1 ``set_pointer_type``** 的
+# ``delays = (0.0, 0.08, 0.16, 0.28)``：每个间隔后面再试一次直写 COM。
+# 这个「多试几次」不是凑数：PowerPoint 在刚切完模式的瞬间会拒绝属性写入，
+# 立刻重试就成功，而单发一次失败后直接掉进键盘回退反而更容易出问题。
+L1_POINTER_RETRY_DELAYS = (0.0, 0.08, 0.16, 0.28)
+# 发快捷键前后的等待（L1 用 0.02 / 0.05；这里略放宽，放映窗口抢焦点本身有延迟）
+L1_SHORTCUT_GAP_S = 0.03
+L1_SHORTCUT_SETTLE_S = 0.06
+
 # 放映态按键（COM 不可用时的降级路径）
 VK_NEXT = 0x22  # PageDown
 VK_PRIOR = 0x21  # PageUp
@@ -163,6 +215,7 @@ class PresentationState:
     window_handle: int = 0
     title: str = ""
     source: str = ""  # "window" = 窗口类命中；"com" = COM 兜底
+    kind: str = ""    # "ppt" / "wps" / "yozo"：判定为放映的软件族，决定控制走哪条腿
 
     @property
     def marker(self) -> tuple:
@@ -309,6 +362,37 @@ def _title_looks_like_slideshow(title: str) -> bool:
     return any(hint in lowered for hint in SLIDESHOW_TITLE_HINTS)
 
 
+def _class_matches_kind(class_name: str, kind: str) -> bool:
+    """类名是否属于 ``kind`` 这一族。"""
+    lowered = str(class_name or "").lower()
+    return any(hint in lowered for hint in KIND_CLASS_HINTS.get(kind, ()))
+
+
+def _process_matches_kind(process_name: str, kind: str) -> bool:
+    """进程映像名是否属于 ``kind`` 这一族。"""
+    upper = str(process_name or "").upper()
+    return any(upper == hint or hint in upper
+               for hint in KIND_PROCESS_HINTS.get(kind, ()))
+
+
+def _kind_from_window(class_name: str, process_name: str, title: str) -> str:
+    """按「类名 → 进程名 → 标题」的顺序判定这个窗口是哪一族的放映。
+
+    返回 ``""`` 表示认不出（那就谁都不像，不猜）。判定顺序照 Luminalium 1：
+    类名最准，进程名次之，标题只在前两者都空时兜底。
+    """
+    for kind in (APP_KIND_PPT, APP_KIND_WPS, APP_KIND_YOZO):
+        if _class_matches_kind(class_name, kind):
+            return kind
+    for kind in (APP_KIND_PPT, APP_KIND_WPS, APP_KIND_YOZO):
+        if _process_matches_kind(process_name, kind):
+            return kind
+    if _title_looks_like_slideshow(title):
+        # 标题只说「这是放映」，说不出是哪家 —— 交给接下来的进程名/类名细节
+        return ""
+    return ""
+
+
 def _looks_like_slideshow(facts) -> bool:
     """单个窗口像不像放映窗口。
 
@@ -371,15 +455,18 @@ def _near_miss_reason(facts) -> Optional[str]:
     return "全部条件通过却未命中（逻辑矛盾，视为 bug）"
 
 
-def find_slideshow_window() -> tuple[int, str]:
-    """查找正在放映的窗口，返回 ``(hwnd, title)``；未找到返回 ``(0, "")``。
+def find_slideshow_window() -> tuple[int, str, str]:
+    """查找正在放映的窗口，返回 ``(hwnd, title, kind)``；未找到返回 ``(0, "", "")``。
+
+    ``kind`` 是软件族（``ppt`` / ``wps`` / ``yozo``，认不出为 ``""``）——
+    控制腿要靠它选路线（见 ``KIND_TOOL_SHORTCUTS``）。
 
     **前台窗口优先**（Luminalium 1 同款）：放映时放映窗口就是前台窗口，先看它
     既快又能避开「同名窗口挑错」的问题（双屏放映、演示者视图下会有多个候选）；
     前台不是再枚举全部顶层窗口逐个判定。
     """
     if not hasattr(ctypes, "windll"):
-        return (0, "")
+        return (0, "", "")
     user32 = ctypes.windll.user32
     try:
         foreground = int(user32.GetForegroundWindow() or 0)
@@ -389,7 +476,7 @@ def find_slideshow_window() -> tuple[int, str]:
         try:
             facts = _window_facts(foreground)
             if _looks_like_slideshow(facts):
-                return (int(facts[0]), facts[2])
+                return (int(facts[0]), facts[2], _facts_kind(facts))
         except OSError:  # pragma: no cover - 窗口在查询过程中销毁
             log.debug("读取前台窗口信息失败", exc_info=True)
 
@@ -397,12 +484,35 @@ def find_slideshow_window() -> tuple[int, str]:
         windows = _enum_windows()
     except OSError:  # pragma: no cover - 极端情况下的 Win32 失败
         log.debug("枚举窗口失败", exc_info=True)
-        return (0, "")
+        return (0, "", "")
 
     for facts in windows:
         if _looks_like_slideshow(facts):
-            return (int(facts[0]), facts[2])
-    return (0, "")
+            return (int(facts[0]), facts[2], _facts_kind(facts))
+    return (0, "", "")
+
+
+def _facts_kind(facts) -> str:
+    """由窗口事实推定软件族（认不出返回 ``""``）。
+
+    比 ``_kind_from_window`` 多做一步「兜底」：类名与进程名都认不出时，
+    按进程名在**全局白名单**里的位置猜 —— 我们只会在白名单窗口上调这个函数，
+    所以哪怕是很旧的 WPS 变体（进程名不在族规则里）也能归到最近的族，
+    不至于因为认不出族而把控制腿退化成「什么都控制不了」。
+    """
+    _hwnd, class_name, title, pid, _visible, _rect = facts
+    process = _process_name(pid)
+    kind = _kind_from_window(class_name, process, title)
+    if kind:
+        return kind
+    upper = str(process or "").upper()
+    if any(token in upper for token in ("WPP", "WPS", "KWPP")):
+        return APP_KIND_WPS
+    if "YOZO" in upper:
+        return APP_KIND_YOZO
+    if process:
+        return APP_KIND_PPT
+    return ""
 
 
 def find_powerpoint_console_window() -> int:
@@ -416,6 +526,73 @@ def find_powerpoint_console_window() -> int:
     except OSError:  # pragma: no cover
         log.debug("枚举演示主窗口失败", exc_info=True)
     return 0
+
+
+# --------------------------------------------------------------------------- 前台激活
+
+
+# 前台锁定（foreground lock）允许「谁在最近 N 毫秒内拥有过前台」再次夺回前台。
+# 演示软件本来就是用户正在看的窗口，这条时限内把它拉回前台是允许的；
+# 超过时限才会被系统拒绝（返回 0 但不抛异常）。
+_FOREGROUND_LOCK_MS = 0x20000000
+
+
+def focus_slideshow_window(hwnd: int) -> bool:
+    """把放映窗口拉到前台，**这是切换指针的必要前提**。
+
+    ⚠️ 真机踩过（Luminalium 1 ``_try_apply_pointer_type`` 里的关键一句，
+    我们上一版漏了）：PowerPoint 的 ``View.PointerType`` **只对处于前台的放映
+    窗口生效**。窗口不在前台时：
+
+    * ``view.PointerType = 2`` 不抛异常 —— 看起来「写成功了」；
+    * 但 PowerPoint 内部**根本不切指针**，读回仍是旧值；
+    * 于是走 Ctrl+P / Ctrl+E 回退，而 ``keybd_event`` 又要求窗口在前台，
+      ``SetForegroundWindow`` 若被前台锁定拒绝，整条链路**静默全灭**。
+
+    用户看到的就是「橡皮点了没反应」。
+
+    这里是三条腿，按可靠性递进：
+
+    1. ``AllowSetForegroundWindow(ASFW_ANY)`` + ``SetForegroundWindow``；
+    2. ``SetWindowPos(HWND_TOPMOST)`` 顶一下再 ``SetForegroundWindow``
+       （有些全屏放映窗口只认这条，与我们的穿透塑形逻辑不冲突）；
+    3. ``SetActiveWindow`` 兜底。
+
+    只负责「尝试」，不保证成功 —— 返回是否已经在前台，调用方不必据此分枝，
+    照常往下走即可（写属性本身有读回校验兜着）。
+    """
+    if not hwnd or not hasattr(ctypes, "windll"):
+        return False
+    user32 = ctypes.windll.user32
+    try:
+        handle = wintypes.HWND(int(hwnd))
+        if int(user32.GetForegroundWindow() or 0) == int(hwnd):
+            return True
+    except OSError:  # pragma: no cover
+        return False
+    try:
+        # 允许本进程把任意窗口设成前台（否则前台锁定会拒绝跨进程调用）
+        user32.AllowSetForegroundWindow(wintypes.HWND(-1))
+    except (OSError, AttributeError):  # pragma: no cover
+        pass
+    for attempt in (
+        lambda: user32.SetForegroundWindow(handle),
+        lambda: (
+            user32.SetWindowPos(handle, wintypes.HWND(-1), 0, 0, 0, 0, 0x0003),  # NOMOVE|NOSIZE
+            user32.SetForegroundWindow(handle),
+        ),
+        lambda: user32.SetActiveWindow(handle),
+    ):
+        try:
+            attempt()
+        except OSError:  # pragma: no cover - 窗口销毁竞态
+            continue
+        try:
+            if int(user32.GetForegroundWindow() or 0) == int(hwnd):
+                return True
+        except OSError:  # pragma: no cover
+            pass
+    return False
 
 
 # --------------------------------------------------------------------------- 按键回退
@@ -501,6 +678,56 @@ def send_slideshow_key(vk_code: int, hwnd: int = 0) -> bool:
         return _post_key_to_window(hwnd, vk_code)
 
 
+VK_CONTROL = 0x11  # Ctrl
+
+
+def _post_ctrl_key_to_window(hwnd: int, vk: int) -> bool:
+    """Ctrl+<vk> 组合键直投窗口（``send_slideshow_key`` 的 Ctrl 版）。"""
+    if not hwnd or not hasattr(ctypes, "windll"):
+        return False
+    user32 = ctypes.windll.user32
+    try:
+        handle = wintypes.HWND(int(hwnd))
+        for message, vk_code, up in (
+            (WM_KEYDOWN, VK_CONTROL, False),
+            (WM_KEYDOWN, int(vk), False),
+            (WM_KEYUP, int(vk), True),
+            (WM_KEYUP, VK_CONTROL, True),
+        ):
+            user32.PostMessageW(handle, message, vk_code, _key_lparam(vk_code, up))
+        return True
+    except OSError:  # pragma: no cover
+        return False
+
+
+def send_slideshow_ctrl_key(vk: int, hwnd: int = 0) -> bool:
+    """把 ``Ctrl+<vk>`` 送到放映窗口（切换笔 / 橡皮 / 指针用的降级腿）。
+
+    为什么要发 Ctrl 组合而不是单键：放映态下 ``P`` / ``E`` / ``A`` 单键在很多
+    版本里被当成导航（``P`` 是上一页、``A`` 是自动播放），**Ctrl+P / Ctrl+E /
+    Ctrl+A** 才是标注工具的标准快捷键 —— Luminalium 1 ``set_pointer_type``
+    走的正是这一组。选路规则与 :func:`send_slideshow_key` 完全一致。
+    """
+    if not hasattr(ctypes, "windll"):
+        return False
+    user32 = ctypes.windll.user32
+    target = _window_pid(hwnd) if hwnd else 0
+    if target and _integrity_rank(target) < _self_integrity_rank():
+        log.debug("目标进程完整性级别更低，改用 PostMessage 投递 Ctrl 组合")
+        return _post_ctrl_key_to_window(hwnd, vk)
+    try:
+        if hwnd:
+            user32.SetForegroundWindow(wintypes.HWND(int(hwnd)))
+        user32.keybd_event(VK_CONTROL, 0, 0, 0)
+        user32.keybd_event(int(vk), 0, 0, 0)
+        user32.keybd_event(int(vk), 0, 0x0002, 0)
+        user32.keybd_event(VK_CONTROL, 0, 0x0002, 0)
+        return True
+    except OSError:  # pragma: no cover
+        log.debug("Ctrl 组合注入失败，改用 PostMessage", exc_info=True)
+        return _post_ctrl_key_to_window(hwnd, vk)
+
+
 # --------------------------------------------------------------------------- COM 后端
 
 
@@ -515,6 +742,23 @@ class _ComBackend:
         self._client = None
         self._pywin32_missing = False
         self._prog_id: Optional[str] = None  # 已 attach 的 ProgID
+
+    @property
+    def kind(self) -> str:
+        """当前连上的 COM 实例属于哪一族（``ppt`` / ``wps`` / ``yozo``）。
+
+        靠已 attach 的 ProgID 反推：``Kwpp.Application`` 是 WPS 演示，
+        永中那套有 ``Yozo`` 字样，其余（``PowerPoint.Application``）算 PowerPoint。
+        窗口通道认不出族时（WPS 放映窗口类名随版本变），这一份是最可靠的补充。
+        """
+        prog_id = (self._prog_id or "").lower()
+        if not prog_id:
+            return ""
+        if "kwpp" in prog_id or "wpp" in prog_id or "wps" in prog_id:
+            return APP_KIND_WPS
+        if "yozo" in prog_id:
+            return APP_KIND_YOZO
+        return APP_KIND_PPT
 
     # -- 生命周期 -----------------------------------------------------------
 
@@ -531,18 +775,26 @@ class _ComBackend:
             self._client = win32com.client
         return self._client
 
-    def _attached(self):
+    def _attached(self, force_refresh: bool = False):
         """拿到正在运行的演示软件实例；没有则返回 ``None``。
 
         依次尝试各 ProgID；某个 ProgID 一旦 attach 成功就记住，
         避免每 400ms 把三个都试一遍。应用退出后 ProgID 会失效，
         失效时清空缓存重新探测。
+
+        ``force_refresh=True`` 时**忽略 ``_prog_id`` 缓存**、把全部 ProgID 重试
+        一遍。用于「拿到的对象模型是半吊子」的场景：真机上遇到过 ROT 里的
+        ``PowerPoint.Application`` 引用**不暴露 ``SlideShowWindows``**
+        （抛 ``AttributeError``），此时重新 ``GetActiveObject`` 往往能拿到一个
+        完整的引用 —— 缓存本身没错，是那一次拿到的东西不对。
         """
         client = self._get_client()
         if client is None:
             return None
 
-        candidates = (self._prog_id,) if self._prog_id else COM_PROG_IDS
+        candidates = COM_PROG_IDS if force_refresh else (
+            (self._prog_id,) if self._prog_id else COM_PROG_IDS
+        )
         for prog_id in candidates:
             try:
                 app = client.GetActiveObject(prog_id)
@@ -552,7 +804,7 @@ class _ComBackend:
                 log.info("COM 已连接: %s", prog_id)
             self._prog_id = prog_id
             return app
-        if self._prog_id is not None:
+        if self._prog_id is not None and not force_refresh:
             # 之前连上的实例已退出
             log.info("COM 连接失效（%s 已退出），重新探测", self._prog_id)
             self._prog_id = None
@@ -564,28 +816,87 @@ class _ComBackend:
 
     # -- 读取 ---------------------------------------------------------------
 
-    def _slideshow_window(self):
-        """返回正在放映的 ``SlideShowWindow``，没有则 ``None``。"""
+    @staticmethod
+    def _safe_count(collection) -> int:
+        """集合的 ``Count``；集合为 ``None`` 或对象模型不暴露该属性时返回 0。
+
+        照 L1 ``_safe_count``。这是与 PowerPoint 动态绑定打交道时**必须**的
+        一层保护：绑不上的属性抛的是 ``AttributeError``（不是返回空集合），
+        直接写 ``app.SlideShowWindows.Count`` 会一炸一个准。
+        """
+        try:
+            return int(getattr(collection, "Count", 0) or 0)
+        except Exception:
+            return 0
+
+    def _slideshow_windows(self, retry: bool = True):
+        """``app.SlideShowWindows`` 集合；**取不到一律返回 ``None``**。
+
+        ⚠️ 真机日志里反复出现的 ``AttributeError:
+        PowerPoint.Application.SlideShowWindows`` 就出在这里 —— ROT 里取到的
+        ``Application`` 对象在动态绑定下**不一定暴露 ``SlideShowWindows``**
+        （PowerPoint 未进入放映、或该 COM 引用是"半吊子"对象时都会）。
+        以前这里直接 ``app.SlideShowWindows.Count``，一抛异常就被外层
+        ``except`` 吞成「没有放映窗口」，于是：页码永远 0/0、橡皮等所有需要
+        ``View`` 的操作全部静默失效。
+
+        现在：先 ``getattr`` 安全取；属性不可用时（且 ``retry`` 为真）**换一个
+        新鲜的 ``Application`` 引用再试一次** —— 这是真机上唯一有效的补救。
+        """
         app = self._attached()
         if app is None:
             return None
         try:
-            if app.SlideShowWindows.Count == 0:
-                return None
-            window = app.SlideShowWindows(1)
-            # 放映窗口对象可能还挂着，但放映其实已经结束（State = ppSlideShowDone）。
-            # 这时若仍算「放映中」，退出放映后控制条会赖着不走。
-            # Luminalium 1 用 ``view.State in (1, 2)`` 判定，代价是按 B/W 键
-            # 黑屏(3)/白屏(4) 时也会被判成没在放映；这里只排除「已结束」。
-            try:
-                if int(window.View.State) == PP_SHOW_DONE:
-                    return None
-            except Exception:
-                pass  # 读不到 State 就不下判断，退回「有窗口即在放映」
-            return window
+            windows = getattr(app, "SlideShowWindows", None)
         except Exception:
-            log.debug("读取 SlideShowWindows 失败", exc_info=True)
+            windows = None
+        if windows is not None:
+            return windows
+        if retry:
+            # 换一个引用再试：半吊子 COM 引用重新 GetActiveObject 常能修好
+            fresh = self._attached(force_refresh=True)
+            if fresh is not None and fresh is not app:
+                try:
+                    windows = getattr(fresh, "SlideShowWindows", None)
+                except Exception:
+                    windows = None
+                if windows is not None:
+                    log.info("重新获取 PowerPoint.Application 后 SlideShowWindows 可用了")
+                    return windows
+            log.debug("Application 对象不暴露 SlideShowWindows（未放映或引用不完整）")
+        return None
+
+    def _slideshow_window(self):
+        """返回正在放映的 ``SlideShowWindow``，没有则 ``None``。"""
+        window = self._slideshow_window_from(self._slideshow_windows(retry=False))
+        if window is not None:
+            return window
+        # 第一个引用说不清（属性不可用 / 集合为空）时，换新引用再判一次 ——
+        # 「明明在放映却读不到」多半是第一次拿到的 COM 引用不完整。
+        fresh = self._slideshow_windows(retry=True)
+        if fresh is None:
             return None
+        return self._slideshow_window_from(fresh)
+
+    def _slideshow_window_from(self, windows):
+        """从 ``SlideShowWindows`` 集合里取放映窗口并过滤「已结束」。"""
+        if windows is None or self._safe_count(windows) <= 0:
+            return None
+        try:
+            window = windows(1)
+        except Exception:
+            log.debug("取 SlideShowWindow(1) 失败", exc_info=True)
+            return None
+        # 放映窗口对象可能还挂着，但放映其实已经结束（State = ppSlideShowDone）。
+        # 这时若仍算「放映中」，退出放映后控制条会赖着不走。
+        # Luminalium 1 用 ``view.State in (1, 2)`` 判定，代价是按 B/W 键
+        # 黑屏(3)/白屏(4) 时也会被判成没在放映；这里只排除「已结束」。
+        try:
+            if int(window.View.State) == PP_SHOW_DONE:
+                return None
+        except Exception:
+            pass  # 读不到 State 就不下判断，退回「有窗口即在放映」
+        return window
 
     def read_state(self) -> Optional[tuple[int, int, int]]:
         """返回 ``(当前页, 总页数, 放映窗口句柄)``，无法读取时返回 ``None``。
@@ -652,6 +963,31 @@ class _ComBackend:
             log.debug("页码与总页数都没读到（COM 对象模型不兼容？）")
         return (slide_index, total, hwnd)
 
+    def read_position(self) -> Optional[tuple[int, int]]:
+        """**轻量**读当前页 —— 只取 ``CurrentShowPosition``，不碰总页数。
+
+        总页数在一场放映里是**常量**，每次刷新都去读只是白白多两次跨进程调用
+        （``Presentation.Slides.Count`` 走的是完整对象模型，比读一个整数慢得多）。
+        所以翻页后的即时刷新走这条：页码要快，总页数由常规刷新（或首次进入
+        放映时）补上。返回 ``None`` 表示读不到放映窗口。
+        """
+        window = self._slideshow_window()
+        if window is None:
+            return None
+        try:
+            view = window.View
+        except Exception:
+            return None
+        try:
+            position = int(view.CurrentShowPosition)
+        except Exception:
+            return None
+        try:
+            hwnd = int(window.HWND)
+        except Exception:
+            hwnd = 0
+        return (position, hwnd)
+
     def is_presenting(self) -> bool:
         """COM 视角：是否有放映窗口存在（页码读不出来也算）。"""
         return self._slideshow_window() is not None
@@ -669,12 +1005,18 @@ class _ComBackend:
         try:
             presentations = int(getattr(app, "Presentations", None).Count or 0)
         except Exception:
-            presentations = -1
-        try:
-            shows = int(app.SlideShowWindows.Count or 0)
-        except Exception:
-            shows = -1
-        return f"COM 已连接 {self._prog_id}：演示文稿 {presentations} 个，放映窗口 {shows} 个"
+            presentations = None
+        # 用 _safe_count 而不是直接取属性：动态绑定下 SlideShowWindows 可能
+        # 整个不存在（抛 AttributeError），那种情况要说「属性不可用」而不是
+        # 含混地报「0 个」—— 这两者排查方向完全不同。
+        windows = self._slideshow_windows()
+        if windows is None:
+            shows = "属性不可用"
+        else:
+            shows = f"{self._safe_count(windows)}"
+        shown_presentations = "属性不可用" if presentations is None else str(presentations)
+        return (f"COM 已连接 {self._prog_id}：演示文稿 {shown_presentations} 个，"
+                f"放映窗口 {shows}")
 
     # -- 操作 ---------------------------------------------------------------
 
@@ -726,16 +1068,90 @@ class _ComBackend:
             log.debug("退出放映失败", exc_info=True)
             return False
 
-    def set_pointer(self, pointer_type: int) -> bool:
+    def set_pointer(self, pointer_type: int, hwnd: int = 0) -> bool:
+        """切换放映指针（笔 / 橡皮 / 箭头）。
+
+        这里照 Luminalium 1 ``_try_apply_pointer_type`` 做了两件容易被省掉、
+        但**缺一不可**的事：
+
+        1. **先把放映窗口拉到前台**（``focus_slideshow_window``）。这是 L1 里的
+           ``self._focus_slideshow_window(hwnd)`` —— PowerPoint 的
+           ``View.PointerType`` 只对前台放映窗口生效，窗口不在前台时写属性不抛
+           异常却**不会真正切指针**。上一版漏了这一步，「橡皮点了没反应」就是
+           这个原因（写"成功"了 → 读回不符 → 走快捷键 → 快捷键又要求前台 →
+           前台锁定拒绝 → 全链静默失败）。
+        2. **先无条件设一次「箭头」再设目标值**。PowerPoint 的
+           ``View.PointerType`` 在「已经处于某个标注模式」时，直接写同一个族的
+           值有时不生效（橡皮 → 笔尤其明显）；先回落到箭头清掉模式，目标值才
+           落得下。
+
+        写完还要**读回校验**，因为写属性失败在这条通道上同样不抛异常。
+        """
         view = self._view()
         if view is None:
             return False
+        if hwnd:
+            focus_slideshow_window(int(hwnd))
+        pointer_type = int(pointer_type)
+        if pointer_type != PP_POINTER_ARROW:
+            try:  # 先清模式（L1: force_arrow_reset）
+                view.PointerType = PP_POINTER_ARROW
+            except Exception:
+                pass
         try:
             view.PointerType = pointer_type
-            return True
         except Exception:
             log.debug("切换指针失败", exc_info=True)
             return False
+        try:
+            current = getattr(view, "PointerType", None)
+            if callable(current):
+                current = current()
+            if current is not None and int(current) != pointer_type:
+                log.debug("指针切换后读回不符：期望 %s，实际 %s", pointer_type, current)
+                return False
+        except Exception:
+            pass  # 读不回来就当它成功了（有些对象模型不暴露可读的 PointerType）
+        return True
+
+    def read_pointer_color(self) -> Optional[tuple[int, int, int]]:
+        """当前墨迹颜色的 ``(r, g, b)``；读不到返回 ``None``。
+
+        注意 COM 的 ``Color.RGB`` 是 **BGR** 打包（``r | g<<8 | b<<16``）。
+        """
+        view = self._view()
+        if view is None:
+            return None
+        try:
+            color = getattr(view, "PointerColor", None)
+            if color is None:
+                return None
+            rgb = getattr(color, "RGB", None)
+            if callable(rgb):
+                rgb = rgb()
+            if rgb is None:
+                return None
+            value = int(rgb) & 0xFFFFFF
+            return (value & 0xFF, (value >> 8) & 0xFF, (value >> 16) & 0xFF)
+        except Exception:
+            return None
+
+    def set_pointer_color(self, r: int, g: int, b: int) -> bool:
+        """直接写 ``View.PointerColor.RGB``（L1 ``_try_apply_pointer_color``）。
+
+        写完**读回校验**：这条通道的失败同样不抛异常，只看返回码会把
+        「压根没写进去」当成成功。
+        """
+        view = self._view()
+        if view is None:
+            return False
+        r, g, b = int(r) & 0xFF, int(g) & 0xFF, int(b) & 0xFF
+        try:
+            view.PointerColor.RGB = r + (g << 8) + (b << 16)
+        except Exception:
+            log.debug("写入墨迹颜色失败", exc_info=True)
+            return False
+        return self.read_pointer_color() == (r, g, b)
 
     def erase_drawings(self) -> bool:
         """擦除当前页的墨迹（对应放映态快捷键 ``E``）。"""
@@ -748,6 +1164,52 @@ class _ComBackend:
         except Exception:
             log.debug("COM 擦除墨迹失败，将回退到按键方案", exc_info=True)
             return False
+
+    def execute_mso_command(self, command_id: str) -> bool:
+        """执行 Office 的 MSO 命令（``Application.CommandBars.ExecuteMso``）。
+
+        只有 PowerPoint 认这套（L1 ``_execute_mso_command``）；换墨迹颜色时
+        要先 ``AnnotInkPen`` 让调色板命令变为可用，再 ``InkColorPicker`` 打开调色板。
+        """
+        app = self._attached()
+        if app is None:
+            return False
+        try:
+            commandbars = getattr(app, "CommandBars", None)
+            execute = getattr(commandbars, "ExecuteMso", None)
+            if not callable(execute):
+                return False
+            execute(str(command_id))
+            return True
+        except Exception:
+            log.debug("执行 MSO 命令 %s 失败", command_id, exc_info=True)
+            return False
+
+    def read_ink_annotations(self):
+        """当前页的墨迹批注集合（退出时问「留不留」用）；取不到返回 ``None``。"""
+        view = self._view()
+        if view is None:
+            return None
+        try:
+            return getattr(view, "InkAnnotations", None)
+        except Exception:
+            return None
+
+    def set_display_alerts(self, value: int) -> Optional[int]:
+        """临时改 ``Application.DisplayAlerts``（1=ppAlertsNone，压掉 PowerPoint
+        自带的墨迹提示框）；返回原值以便还原，失败返回 ``None``。"""
+        app = self._attached()
+        if app is None:
+            return None
+        try:
+            original = int(app.DisplayAlerts)
+        except Exception:
+            original = None
+        try:
+            app.DisplayAlerts = int(value)
+        except Exception:
+            return None
+        return original
 
 
 # --------------------------------------------------------------------------- 控制器
@@ -949,6 +1411,8 @@ class _ComSnapshot:
     slide_total: int = 0
     window_handle: int = 0
     status: str = "尚未探测"
+    kind: str = ""        # COM 连上的是哪一族（ppt / wps / yozo），窗口认不出族时用它补
+    pen_color: Optional[tuple] = None  # 墨迹颜色 (r, g, b)，顺带读的
     at: float = 0.0       # 采集时刻（time.monotonic）
     ok_at: float = 0.0    # 最后一次「确认在放映」的时刻
 
@@ -1037,35 +1501,74 @@ class _ComThread(QThread):
                 except Exception:  # pragma: no cover
                     pass
 
-    def _refresh_snapshot(self) -> None:
-        """读一次页码 / 放映窗口并整体替换快照（只在 COM 线程调用）。"""
+    def _refresh_snapshot(self, light: bool = False) -> None:
+        """读一次页码 / 放映窗口并整体替换快照（只在 COM 线程调用）。
+
+        ``light=True`` 时**只读页码**，跳过 ``describe()`` / ``read_pointer_color()``
+        这两次纯诊断性的跨进程属性读取。翻页命令执行完会立刻用 ``light`` 刷一次
+        —— 页码要第一时间跟上手势，而诊断字段晚一拍无所谓（这正是「页码识别
+        迟钝」的病灶：一次命令后的刷新被两个诊断调用拖长了）。
+        """
         started = time.perf_counter()
         previous = self._snapshot
-        try:
-            numbers = self._com.read_state()
-        except Exception:
-            log.debug("读取放映页码失败", exc_info=True)
-            numbers = None
-        if numbers is not None:
-            presenting = True
-            slide_index, slide_total, hwnd = numbers
-        else:
+        if light and previous.presenting:
+            # 轻量路径：只读当前页（一次跨进程整数读），总页数沿用上一份。
+            # 总页数在场内是常量，没必要每次翻页都重读对象模型。
             try:
-                presenting = self._com.is_presenting()
+                position = self._com.read_position()
             except Exception:
+                log.debug("轻量读取当前页失败", exc_info=True)
+                position = None
+            if position is not None:
+                slide_index, hwnd = position
+                slide_total = previous.slide_total
+                presenting = True
+            else:
+                slide_index = previous.slide_index
+                slide_total = previous.slide_total
+                hwnd = previous.window_handle
                 presenting = False
-            slide_index = slide_total = hwnd = 0
-
-        # 状态文本只服务诊断，却要额外两次跨进程属性读取（也是最容易排队的调用），
-        # 所以每 5 个周期刷新一次即可 —— 卡住时诊断会同时给出「静默 N 秒」。
-        self._ticks += 1
-        if self._ticks % 5 == 1 or presenting != previous.presenting or not previous.status:
-            try:
-                status = self._com.describe()
-            except Exception:  # pragma: no cover - 只服务诊断
-                status = "COM 状态读取失败"
         else:
-            status = previous.status
+            try:
+                numbers = self._com.read_state()
+            except Exception:
+                log.debug("读取放映页码失败", exc_info=True)
+                numbers = None
+            if numbers is not None:
+                presenting = True
+                slide_index, slide_total, hwnd = numbers
+            else:
+                try:
+                    presenting = self._com.is_presenting()
+                except Exception:
+                    presenting = False
+                slide_index = slide_total = hwnd = 0
+
+        self._ticks += 1
+        if light:
+            # 轻量刷新：沿用上一次诊断字段，只把页码换新
+            status = previous.status or "COM 已连接"
+            pen_color = previous.pen_color if presenting else None
+        else:
+            # 状态文本只服务诊断，却要额外两次跨进程属性读取（也是最容易排队的
+            # 调用），所以每 5 个周期刷新一次即可 —— 卡住时诊断会同时给出
+            # 「静默 N 秒」。
+            if self._ticks % 5 == 1 or presenting != previous.presenting or not previous.status:
+                try:
+                    status = self._com.describe()
+                except Exception:  # pragma: no cover - 只服务诊断
+                    status = "COM 状态读取失败"
+            else:
+                status = previous.status
+
+            # 墨迹颜色同理：只服务设置页的色板回显，没必要每个周期都跨进程读一次
+            if presenting and self._ticks % 5 == 2:
+                try:
+                    pen_color = self._com.read_pointer_color()
+                except Exception:
+                    pen_color = previous.pen_color
+            else:
+                pen_color = previous.pen_color if presenting else None
 
         now = time.monotonic()
         self._snapshot = _ComSnapshot(
@@ -1074,6 +1577,8 @@ class _ComThread(QThread):
             slide_total=int(slide_total or 0),
             window_handle=int(hwnd or 0),
             status=status,
+            kind=self._com.kind,
+            pen_color=pen_color,
             at=now,
             ok_at=now if presenting else previous.ok_at,
         )
@@ -1098,9 +1603,11 @@ class _ComThread(QThread):
         except Exception:
             log.exception("执行「%s」失败", name)
         finally:
-            # 命令执行完立刻刷一次，页码不必再等一个周期
+            # 命令执行完立刻刷一次，页码不必再等一个周期。
+            # 用轻量刷新：命令（尤其是翻页）后页码要马上跟上手势，但诊断字段
+            # 可以晚一拍 —— 两次跨进程诊断读会把「点击 → 页码更新」拉长成几百毫秒。
             try:
-                self._refresh_snapshot()
+                self._refresh_snapshot(light=True)
             except Exception:  # pragma: no cover
                 pass
 
@@ -1121,24 +1628,91 @@ class _ComThread(QThread):
         if not self._com.goto_slide(index):
             log.info("跳转页码失败，目标 %s", index)
 
-    def _cmd_exit(self, hwnd: int) -> None:
+    def _cmd_exit(self, hwnd: int, keep_ink: bool = False, kind: str = "") -> None:
+        """退出放映。``keep_ink`` 为真时先把墨迹「留下」再退（L1 的保留墨迹语义）。
+
+        L1 退出前会弹「墨迹留不留」并据此调 ``InkAnnotations.Save`` /
+        ``EraseDrawing``；这个 UI 目前不做，但**留墨迹那条路要留着**：
+        默认退出会把 PowerPoint 自带的「保留墨迹」提示框压掉（``DisplayAlerts``），
+        否则退出放映时用户会莫名多挨一个模态框。
+        """
+        if keep_ink:
+            self._apply_ink_keep()
         if not self._com.exit_slideshow():
             send_slideshow_key(VK_ESCAPE, hwnd)
+
+    def _cmd_pen_color(self, r: int, g: int, b: int, kind: str = "") -> None:
+        if kind and kind != APP_KIND_PPT:
+            log.info("墨迹颜色只支持 PowerPoint（当前 %s），忽略", kind)
+            return
+        if not self._com.set_pointer_color(r, g, b):
+            log.info("设置墨迹颜色 #%02X%02X%02X 失败（该 Office 状态可能不暴露颜色入口）",
+                     r, g, b)
+
+    def _apply_ink_keep(self) -> None:
+        """把当前页墨迹保存下来（L1 ``_apply_ink_keep``：``InkAnnotations.Save``）。"""
+        annotations = self._com.read_ink_annotations()
+        if annotations is None:
+            return
+        try:
+            save = getattr(annotations, "Save", None)
+            if callable(save):
+                save()
+        except Exception:
+            log.debug("保存墨迹失败", exc_info=True)
 
     def _cmd_clear(self, hwnd: int) -> None:
         if not self._com.erase_drawings():
             send_slideshow_key(VK_ERASE, hwnd)
 
-    def _cmd_tool(self, hwnd: int, tool: str) -> None:
+    def _cmd_tool(self, hwnd: int, tool: str, kind: str = "") -> None:
+        """切换笔 / 橡皮 / 指针 —— 腿的**顺序照 Luminalium 1 ``set_pointer_type``**。
+
+        L1 的实测经验：光写一次 ``view.PointerType`` 经常「看起来成功了但没换」。
+        它用的是**递进式重试**：先直写 COM（第 0 次带一次箭头复位），不行再写一次、
+        再不行补一次，仍不行才发快捷键。这里照抄这个阶梯，只是把「发快捷键」那步
+        按**软件族**分开：PowerPoint / WPS 用 Ctrl+P / Ctrl+E / Ctrl+A，
+        永中只发它认得的两个 —— 给 WPS 下 PowerPoint 专属的 MSO 命令是无效动作，
+        只会白等一轮。
+
+        ⚠️ 在 COM 线程里 ``time.sleep`` 会阻塞快照刷新（页码就靠它），所以阶梯的
+        总睡眠压到 L1 同量级后就**不再多等**；真正让它生效的是 ``set_pointer``
+        里的「先拉前台」。
+        """
         pointer = TOOL_TO_POINTER.get(tool)
         if pointer is None:
             log.warning("未知工具: %s", tool)
             return
-        if not self._com.set_pointer(pointer):
-            fallback_keys = {"pen": 0x50, "arrow": 0x41, "eraser": 0x45}
-            vk = fallback_keys.get(tool)
-            if vk is not None:
-                send_slideshow_key(vk, hwnd)
+
+        # 第一件事就是拉前台：后面无论是写 PointerType 还是发 Ctrl 快捷键都要求
+        # 放映窗口在前台，这一步失败则整条链路都不会生效（L1 同款前置动作）。
+        if hwnd:
+            focus_slideshow_window(int(hwnd))
+
+        for attempt, delay in enumerate(L1_POINTER_RETRY_DELAYS):
+            if delay > 0:
+                time.sleep(delay)
+            if self._com.set_pointer(pointer, hwnd):
+                return
+
+        shortcut = KIND_TOOL_SHORTCUTS.get(kind or APP_KIND_PPT, {}).get(tool)
+        if shortcut is None:
+            log.info("切换 %s 失败：COM 拒绝且 %s 族没有可靠的快捷键通道",
+                     tool, kind or "?")
+            return
+        # 橡皮在有些版本里嵌在笔模式内，先回指针再切（L1 对 pointer_type==2 的处理）
+        if tool == "pen" and "arrow" in KIND_TOOL_SHORTCUTS.get(kind or APP_KIND_PPT, {}):
+            send_slideshow_ctrl_key(
+                KIND_TOOL_SHORTCUTS[kind or APP_KIND_PPT]["arrow"], hwnd
+            )
+            time.sleep(L1_SHORTCUT_GAP_S)
+        if not send_slideshow_ctrl_key(shortcut, hwnd):
+            log.info("切换 %s 失败：COM 与快捷键通道都没送出去", tool)
+            return
+        time.sleep(L1_SHORTCUT_SETTLE_S)
+        if self._com.set_pointer(pointer, hwnd):
+            return
+        log.info("切换 %s：快捷键已发出但读回不符（演示软件可能没响应）", tool)
 
 
 class _ProbeThread(QThread):
@@ -1153,7 +1727,7 @@ class _ProbeThread(QThread):
     """
 
     # 用基本类型而不是 object：跨线程排队连接不需要 Python 对象做元类型转换
-    stateReady = Signal(bool, int, int, int, str, str)
+    stateReady = Signal(bool, int, int, int, str, str, str)
 
     def __init__(
         self,
@@ -1218,7 +1792,7 @@ class _ProbeThread(QThread):
                     self._last = state
                     self.stateReady.emit(
                         state.active, state.slide_index, state.slide_total,
-                        state.window_handle, state.title, state.source,
+                        state.window_handle, state.title, state.source, state.kind,
                     )
                 if not state.active:
                     self._report_near_miss()
@@ -1232,13 +1806,16 @@ class _ProbeThread(QThread):
 
     def _probe_once(self) -> PresentationState:
         """单次探测：**窗口通道说了算，COM 只补页码**。只在窗口线程调用。"""
-        hwnd, title = find_slideshow_window()
+        hwnd, title, kind = find_slideshow_window()
         snapshot = self._com.snapshot if self._com is not None else _ComSnapshot()
         if hwnd:
             slide_index = slide_total = 0
             # 快照里还留着上一场放映的页码时不要串页
             if not snapshot.window_handle or snapshot.window_handle == hwnd:
                 slide_index, slide_total = snapshot.slide_index, snapshot.slide_total
+            # 窗口认不出族时，用 COM 连上的 ProgID 补一个（WPS 系最常走这条：
+            # 它的放映窗口类名随版本变，但 COM 一 attach 就知道是 Kwpp 还是 PowerPoint）
+            resolved_kind = kind or snapshot.kind
             return PresentationState(
                 active=True,
                 slide_index=slide_index,
@@ -1246,6 +1823,7 @@ class _ProbeThread(QThread):
                 window_handle=hwnd,
                 title=title,
                 source="window",
+                kind=resolved_kind,
             )
         # 窗口类没探到：COM 报告有放映窗口也算放映中
         if snapshot.presenting:
@@ -1256,6 +1834,7 @@ class _ProbeThread(QThread):
                 window_handle=max(int(snapshot.window_handle), 0),
                 title="",
                 source="com",
+                kind=snapshot.kind,
             )
         return PresentationState(active=False)
 
@@ -1336,7 +1915,7 @@ class PptController(QObject):
     ) -> None:
         super().__init__(parent)
         self._state = PresentationState()
-        self._com = _ComThread(max(600, int(interval_ms) * 2), self)
+        self._com = _ComThread(max(450, int(interval_ms * 1.5)), self)
         self._thread = _ProbeThread(interval_ms, self._com, self)
         self._thread.stateReady.connect(self._on_state_ready)
         self._watchdog = QTimer(self)
@@ -1392,9 +1971,15 @@ class PptController(QObject):
         self._watchdog.stop()
 
     def set_interval(self, interval_ms: int) -> None:
+        """探测间隔（窗口探测 / COM 各自一档）。
+
+        窗口探测用原值；COM 只负责补页码，跟随手势要够快 —— 但仍比窗口探测慢
+        一档，因为跨进程 COM 调用本身就贵，跟着 100ms 跑只会把 PowerPoint 拖住
+        （它一忙我们就集体排队）。经验值：窗口的 1.5 倍、下限 300ms。
+        """
+        interval_ms = int(interval_ms)
         self._thread.set_probe_interval(interval_ms)
-        # COM 比窗口探测慢一档：跨进程调用本身就贵，没必要跟着 400ms 跑
-        self._com.set_probe_interval(max(600, int(interval_ms) * 2))
+        self._com.set_probe_interval(max(300, int(interval_ms * 1.5)))
 
     def set_page_turn_limit(self, limit: int) -> None:
         """每秒最多放行多少次翻页（``presentation.page_turn_rate_limit``）。"""
@@ -1458,7 +2043,7 @@ class PptController(QObject):
 
     def _on_state_ready(
         self, active: bool, slide_index: int, slide_total: int,
-        window_handle: int, title: str, source: str,
+        window_handle: int, title: str, source: str, kind: str = "",
     ) -> None:
         """探测线程 -> 主线程。这里只组装对象再转发，不做任何阻塞操作。"""
         state = PresentationState(
@@ -1468,6 +2053,7 @@ class PptController(QObject):
             window_handle=int(window_handle),
             title=str(title),
             source=str(source),
+            kind=str(kind),
         )
         self._state = state
         self.stateChanged.emit(state)
@@ -1479,7 +2065,7 @@ class PptController(QObject):
         self._thread._last = state
         self._on_state_ready(
             state.active, state.slide_index, state.slide_total,
-            state.window_handle, state.title, state.source,
+            state.window_handle, state.title, state.source, state.kind,
         )
 
     def diagnose(self) -> str:
@@ -1509,6 +2095,7 @@ class PptController(QObject):
 
         lines.append(
             f"  当前状态: active={self._state.active} source={self._state.source!r} "
+            f"kind={self._state.kind or '?'} "
             f"hwnd=0x{self._state.window_handle:08X} "
             f"页码={self._state.slide_index}/{self._state.slide_total}"
         )
@@ -1519,8 +2106,8 @@ class PptController(QObject):
             + ("（还没刷新过）" if age < 0 else f"（距上次刷新 {age:.1f}s）")
         )
 
-        hwnd, title = find_slideshow_window()
-        lines.append(f"  窗口探测: hwnd=0x{hwnd:08X} title={title!r} "
+        hwnd, title, kind = find_slideshow_window()
+        lines.append(f"  窗口探测: hwnd=0x{hwnd:08X} title={title!r} kind={kind or '?'} "
                      f"(类名白名单 {sorted(SLIDESHOW_WINDOW_CLASSES)})")
         if not hasattr(ctypes, "windll"):
             return "\n".join(lines)
@@ -1641,14 +2228,43 @@ class PptController(QObject):
         return True
 
     def set_tool(self, tool: str, hwnd: int = 0) -> bool:
-        """切换笔 / 橡皮 / 箭头。``tool`` 取 ``pen``/``eraser``/``arrow``/``none``。"""
+        """切换笔 / 橡皮 / 箭头。``tool`` 取 ``pen``/``eraser``/``arrow``/``none``。
+
+        带上当前放映的 **kind** 一起投递 —— COM 线程靠它选快捷键回退通道
+        （PowerPoint / WPS 用 Ctrl+P/E/A，永中只发 E/A）。
+        """
         if tool not in TOOL_TO_POINTER:
             log.warning("未知工具: %s", tool)
             return False
-        self._com.request("tool", int(hwnd or 0), tool)
+        self._com.request("tool", int(hwnd or 0), tool, self._state.kind)
+        return True
+
+    def set_pen_color(self, r: int, g: int, b: int, hwnd: int = 0) -> bool:
+        """设置墨迹颜色（``View.PointerColor``，L1 ``set_pen_color``）。
+
+        只有 PowerPoint 走得通；WPS / 永中会直接返回失败（不报错，也不假装成功）。
+        """
+        for channel, value in (("r", r), ("g", g), ("b", b)):
+            if not 0 <= int(value) <= 255:
+                log.warning("墨迹颜色分量越界: %s=%s", channel, value)
+                return False
+        self._com.request("pen_color", int(r), int(g), int(b), self._state.kind)
+        return True
+
+    def exit_slideshow(self, hwnd: int = 0, keep_ink: bool = False) -> bool:
+        """退出放映。``keep_ink=True`` 时先留墨迹再退（PowerPoint 专属）。"""
+        self._com.request("exit", int(hwnd or 0), bool(keep_ink), self._state.kind)
         return True
 
     def clear_screen(self, hwnd: int = 0) -> bool:
         """清屏：擦除本页墨迹。"""
         self._com.request("clear", int(hwnd or 0))
         return True
+
+    def read_pen_color(self) -> Optional[tuple[int, int, int]]:
+        """当前墨迹颜色（``(r, g, b)``）；本进程不碰 COM，只读 COM 线程的快照。
+
+        颜色由 COM 线程在刷新快照时顺带读一次，主线程直接取用 ——
+        主线程**永远不碰 COM**（这是本模块的线程铁律）。
+        """
+        return self._com.snapshot.pen_color

@@ -17,7 +17,7 @@ import Luminalium
     自带胶囊容器，紧跟着再来一条竖线会显得「双层边」。
     某一区块在这个角落没被启用时，它连同它前后的分隔线一起消失::
 
-        groups = ["tools", "actions", "exit"]  →  [笔][橡皮] │ [清屏][⋯] │ [⏻]
+        groups = ["tools", "actions", "exit"]  →  [↑][笔][橡皮] │ [清屏][⋯] │ [⏻]
         groups = ["pager"]                     →  [ ‹  26/41  › ]  （独立小 pill）
 
     **工具栏与翻页栏是两套独立的条**：``bottom_center`` 是工具栏
@@ -334,7 +334,9 @@ Item {
                 onClicked: Backend.previousSlide()
             }
 
-            Item {
+            // 页码变化走透明度脉冲（与竖版同一套节奏，见 PagePulse.qml）
+            PagePulse {
+                page: Backend.slideIndex
                 width: dock.pagerWidth
                 height: dock.contentHeight
 

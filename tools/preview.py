@@ -8,12 +8,31 @@
 
 - ``quick_panel.png``      —— 快捷面板
 - ``top_window.png``       —— 「顶层窗口」（全屏叠加层）+ 内嵌的下中部工具栏与
-  左右两只翻页 pill（预览里用紧凑尺寸代替真实全屏，版式一致）
+  屏幕两侧的竖版翻页 pill（预览里用紧凑尺寸代替真实全屏，版式一致）
 - ``settings.png``         —— 设置窗口（主页）
+- ``splash.png``           —— 启动画面（版式照设计稿「启动画面 Dark / Light」，外观走
+  Fluent 2 令牌；用 ``DESIGN_STAGE`` 把进度钉在设计稿那一档，好跟原稿对照版式）
+- ``splash_light.png``     —— 同上，浅色版。用 ``LUMI_PREVIEW_THEME=light`` 跑；
+  此时别的窗口一律不截图（否则会把上面那些深色预览图覆盖成浅色的）
+- ``debug_window.png``     —— 调试窗口（入口是设置标题连点 10 次，不在导航里）
+- ``main_editor.png``      —— 主界面编辑器（入口是快捷面板的「主界面编辑器」
+  快捷方式）。正文是**顶层窗口的完整预览舞台**，抓图前会关掉 ``backdropEnabled``
+  以退回兜底底色 —— 离屏抓图看不到 DWM 亚克力层，真机效果得靠实机截屏确认
+- ``main_editor_edit.png`` —— 上面那个编辑器停在**编辑态**（``LUMI_PREVIEW_EDIT``
+  指定聚焦哪条控制条）
 - ``page_*.png``           —— 设置窗口里每个页面单独渲染一张（``NavigationView``
   只有在用户点进去时才创建页面，所以这里用临时宿主窗口把它们全跑一遍）
 
 窗口会被放到屏幕外（x = -6000）并强制渲染，因此**不会打扰桌面**。
+
+环境变量：
+
+- ``LUMI_PREVIEW_THEME=light`` —— 换成浅色主题，且**只**输出启动画面。
+- ``LUMI_PREVIEW_ONLY=splash`` —— 保留当前主题但同样只输出启动画面。
+- ``LUMI_PREVIEW_PAGE_HEIGHT=<px>`` —— 单页预览（``page_*.png``）的宿主窗口高度，
+  默认 640。页面长到一屏放不下时用它截全（例如「通用」页加内容之后）。
+- ``LUMI_PREVIEW_EDIT=<corner>`` —— 让主界面编辑器停在**编辑态**并聚焦这个角落
+  （如 ``bottom_center``），输出到 ``main_editor_edit.png``。默认输出全景态。
 """
 
 from __future__ import annotations
@@ -40,7 +59,17 @@ from app.ppt_controller import PresentationState  # noqa: E402
 OFFSCREEN_X = -6000
 OFFSCREEN_Y = -6000
 OUT_DIR = ROOT / "preview"
-CORNERS = ("bottom_left", "bottom_center", "bottom_right")
+#: 启动画面预览要钉死的进度：设计稿那张是「60% 创建托盘图标」，照抄好对照。
+DESIGN_STAGE = (0.60, "创建托盘图标")
+CORNERS = ("bottom_left", "bottom_center", "bottom_right", "middle_left", "middle_right")
+
+#: 浅色主题（对照设计稿的「启动画面 Light」）。见模块 docstring。
+IS_LIGHT = os.environ.get("LUMI_PREVIEW_THEME", "dark").lower().startswith("l")
+ONLY_SPLASH = IS_LIGHT or os.environ.get("LUMI_PREVIEW_ONLY", "") == "splash"
+#: 单页预览的宿主窗口高度。页面长到一屏放不下时调大它（见模块 docstring）。
+PAGE_HEIGHT = int(os.environ.get("LUMI_PREVIEW_PAGE_HEIGHT", "640") or 640)
+#: 主界面编辑器停在编辑态时要聚焦的角落（空 = 全景态）。见模块 docstring。
+PREVIEW_EDIT = os.environ.get("LUMI_PREVIEW_EDIT", "").strip()
 
 
 def main() -> int:
@@ -52,11 +81,15 @@ def main() -> int:
     backend.apply_state(
         PresentationState(active=True, slide_index=26, slide_total=41)
     )
+    backend.setSplashStage(*DESIGN_STAGE)
 
     rinui = RinUIWindow()
     rinui.engine.addImportPath(str(UI_DIR))
     rinui.theme_manager.set_theme_color(str(config.get("app.accent")))
-    rinui.setTheme(Theme.Dark)
+    # ⚠️ ``setTheme`` 会**持久化到 RinUI/config/rin_ui.json**，所以跑浅色那一版
+    # 必须记下原值、截完图再切回去 —— 否则开发机上整个应用的下次启动会变成浅色。
+    previous_theme = rinui.theme_manager.get_theme_name()
+    rinui.setTheme(Theme.Light if IS_LIGHT else Theme.Dark)
     rinui.engine.rootContext().setContextProperty("Backend", backend)
     rinui.load(UI_DIR / "QuickPanel.qml")
     # 预览图不需要 DWM 背景特效，关掉能拿到实色背景（结束后恢复，避免污染用户配置）
@@ -94,6 +127,12 @@ def main() -> int:
     if dock_component.isError():
         for error in dock_component.errors():
             print("DOCK ERROR:", error.toString())
+    side_component = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "presentation" / "SidePager.qml"))
+    )
+    if side_component.isError():
+        for error in side_component.errors():
+            print("SIDE PAGER ERROR:", error.toString())
 
     container = top_window.property("container") if top_window is not None else None
     margin_x = int(config.get("presentation.margin_x", 20))
@@ -102,12 +141,15 @@ def main() -> int:
     for corner in CORNERS:
         if not (corners_cfg.get(corner) or {}).get("enabled", False):
             continue
-        dock = dock_component.createWithInitialProperties({"corner": corner})
+        # 与 windows.py::_load_docks 同语义：middle_* 用竖版组件
+        vertical = corner.startswith("middle")
+        component = side_component if vertical else dock_component
+        dock = component.createWithInitialProperties({"corner": corner})
         if dock is None:
-            for error in dock_component.errors():
+            for error in component.errors():
                 print(f"DOCK {corner} ERROR:", error.toString())
             continue
-        dock._dock_component = dock_component  # 持有引用防引擎回收
+        dock._dock_component = component  # 持有引用防引擎回收
         dock.setParentItem(container)
         # 与 windows.py::_position_dock 同语义：margin 是**视觉距离**，
         # 要扣掉控制条自带的投影余量（否则预览里的间距会比真机大 24px）
@@ -118,8 +160,12 @@ def main() -> int:
             x = (PREVIEW_W - dock.width()) // 2
         else:
             x = PREVIEW_W - dock.width() - margin_x + shadow
+        if vertical:
+            # 竖版两侧翻页：垂直居中（L1 .flipper 默认形态）
+            dock.setY((PREVIEW_H - dock.height()) // 2)
+        else:
+            dock.setY(PREVIEW_H - dock.height() - margin_y + shadow)
         dock.setX(x)
-        dock.setY(PREVIEW_H - dock.height() - margin_y + shadow)
 
     # 设置窗口：默认页由 NavigationView 在 Component.onCompleted 里推入
     settings = None
@@ -138,18 +184,100 @@ def main() -> int:
             settings.setPosition(OFFSCREEN_X, OFFSCREEN_Y - 900)
             settings.show()
 
+    # 启动画面：设计稿还原结果。它是个**无边框透明窗口**（刻意不登记 RinUI），
+    # 所以只能单独建实例；尺寸由 QML 自己定（设计稿 2984×1679 等比缩到 1080 宽）。
+    splash = None
+    splash_component = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "SplashWindow.qml"))
+    )
+    if splash_component.isError():
+        for error in splash_component.errors():
+            print("SPLASH ERROR:", error.toString())
+    else:
+        splash = splash_component.createWithInitialProperties({"visible": True})
+        if splash is None:
+            for error in splash_component.errors():
+                print("SPLASH CREATE ERROR:", error.toString())
+        else:
+            splash._splash_component = splash_component  # 持有引用防引擎回收
+            splash.setPosition(OFFSCREEN_X - 1500, OFFSCREEN_Y)
+            splash.show()
+
+    # 调试窗口：隐藏入口（设置窗口标题连点 10 次），与设置窗口同属按需创建，
+    # 所以预览里也得单独建一个实例才看得到版式
+    debug = None
+    debug_component = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "DebugWindow.qml"))
+    )
+    if debug_component.isError():
+        for error in debug_component.errors():
+            print("DEBUG WINDOW ERROR:", error.toString())
+    else:
+        debug = debug_component.createWithInitialProperties({"visible": True})
+        if debug is None:
+            for error in debug_component.errors():
+                print("DEBUG WINDOW CREATE ERROR:", error.toString())
+        else:
+            debug._debug_component = debug_component  # 持有引用防引擎回收
+            debug.setPosition(OFFSCREEN_X, OFFSCREEN_Y - 1000)
+            debug.show()
+
+    # 主界面编辑器：入口是快捷面板的「主界面编辑器」快捷方式，与设置 / 调试窗口
+    # 一样是按需创建，预览里同样单独建一个实例。
+    #
+    # ⚠️ 建完要**关掉** ``backdropEnabled``：编辑器窗口的背景是「整窗透明 +
+    # DWM 亚克力」，而离屏抓图（``QQuickWindow.grabWindow``）拿的是 Qt 自己的
+    # 渲染结果，**不含 DWM 合成层** —— 不关的话抓到的是透明（白）底板，正文像
+    # 浮在半空中。关掉后 QML 会退回 Fluent 的亚克力兜底色，预览才有东西可看。
+    # 真机上的亚克力由 ``windows.py::_apply_acrylic`` 负责，与这个开关无关。
+    editor = None
+    editor_component = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "MainInterfaceEditor.qml"))
+    )
+    if editor_component.isError():
+        for error in editor_component.errors():
+            print("EDITOR ERROR:", error.toString())
+    else:
+        editor = editor_component.createWithInitialProperties({"visible": True})
+        if editor is None:
+            for error in editor_component.errors():
+                print("EDITOR CREATE ERROR:", error.toString())
+        else:
+            editor._editor_component = editor_component  # 持有引用防引擎回收
+            editor.setProperty("backdropEnabled", False)
+            editor.setPosition(OFFSCREEN_X - 1000, OFFSCREEN_Y - 900)
+            editor.show()
+            # 编辑态预览：钉一个聚焦目标，好核对「聚焦放大 + 暗罩 + 高亮 + 右侧面板」
+            # 这一整套编排（相机有 220ms 动画，抓图在 1.8s 后，早就停稳了）。
+            if PREVIEW_EDIT:
+                editor.setProperty("selectedCorner", PREVIEW_EDIT)
+
     # 各设置页单独渲染：用临时宿主窗口 + Loader 承载，逐页跑一遍
     page_hosts = _build_page_hosts(rinui.engine)
 
     OUT_DIR.mkdir(exist_ok=True)
 
     def capture() -> None:
-        targets = [("quick_panel.png", panel)]
-        if top_window is not None:
-            targets.append(("top_window.png", top_window))
-        if settings is not None:
-            targets.append(("settings.png", settings))
-        targets += page_hosts
+        splash_name = "splash_light.png" if IS_LIGHT else "splash.png"
+        if ONLY_SPLASH:
+            # 只出启动画面：别的窗口照旧建着（都摆在屏幕外），但不截图 ——
+            # 否则浅色那一版会把上面所有深色预览图覆盖掉。
+            targets = [] if splash is None else [(splash_name, splash)]
+        else:
+            targets = [("quick_panel.png", panel)]
+            if top_window is not None:
+                targets.append(("top_window.png", top_window))
+            if settings is not None:
+                targets.append(("settings.png", settings))
+            if splash is not None:
+                targets.append((splash_name, splash))
+            if debug is not None:
+                targets.append(("debug_window.png", debug))
+            if editor is not None:
+                targets.append(
+                    ("main_editor_edit.png" if PREVIEW_EDIT else "main_editor.png", editor)
+                )
+            targets += page_hosts
 
         for name, window in targets:
             try:
@@ -163,6 +291,10 @@ def main() -> int:
                 continue
             image.save(str(path))
             print(f"[OK] {name} -> {path} ({image.width()}x{image.height()})")
+        # 主题要等所有窗口都截完才切回去（切主题会触发窗口重绘/重建）
+        if rinui.theme_manager.get_theme_name() != previous_theme:
+            rinui.theme_manager.toggle_theme(previous_theme)
+            print(f"[OK] 主题已还原为 {previous_theme}")
         qt_app.quit()
 
     QTimer.singleShot(1800, capture)
@@ -175,9 +307,10 @@ import RinUI as Rin
 Rin.Window {
     id: host
     property url pageUrl: ""
+    property int hostHeight: 640
 
     width: 780
-    height: 640
+    height: hostHeight
     titleBarHeight: 0
     titleEnabled: false
     closeVisible: false
@@ -217,6 +350,7 @@ def _build_page_hosts(engine) -> list[tuple[str, object]]:
         window = component.createWithInitialProperties(
             {
                 "pageUrl": QUrl.fromLocalFile(str(page)),
+                "hostHeight": PAGE_HEIGHT,
                 "visible": True,
             }
         )

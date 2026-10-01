@@ -2091,10 +2091,13 @@ def main() -> int:
             if hover_tile is not None:
                 hc = hover_tile.mapToScene(
                     QPointF(hover_tile.width() / 2, hover_tile.height() / 2))
-                QTest.mouseMove(overlay, QPoint(int(round(hc.x())), int(round(hc.y()))))
-                # hover 事件偶发晚到一拍（鼠标投递是异步的）—— 轮询到位再断言
+                # hover 事件偶发不生成（enter 只在「位置变化」时派发；窗口
+                # 曝光时序 / 前一次点击残留位置都可能让它丢一拍）—— 每拍
+                # 重发一次 mouseMove，最多等 300ms。
                 hover_settled = False
                 for _ in range(10):
+                    QTest.mouseMove(overlay,
+                                    QPoint(int(round(hc.x())), int(round(hc.y()))))
                     if hover_tile.property("hovered") is True:
                         hover_settled = True
                         break
@@ -2667,6 +2670,25 @@ def main() -> int:
              ppt_controller.TOOL_TO_POINTER["pen"],
              ppt_controller.TOOL_TO_POINTER["eraser"]) == (0, 1, 2, 5),
             str(ppt_controller.TOOL_TO_POINTER),
+        )
+        # 清屏的「补发 E」：``View.EraseDrawing()`` 是**隐藏**墨迹（已知 bug，
+        # 下一笔会把隐藏 undo 回来 —— 用户实锤「清屏后再写新东西旧残余显形」；
+        # 键盘 E 才是真删）。PowerPoint 族 COM 擦除后必须补发一次 E。
+        # 真机行为进不了 smoke，这里钉源码形态：``clear_screen`` 要把 kind
+        # 传进 COM 线程、``_cmd_clear`` 里要有「PPT 族补发按键」这一步。
+        clear_src = (ROOT / "app" / "ppt_controller.py").read_text(encoding="utf-8")
+        clear_body = clear_src.split("def _cmd_clear", 1)[-1].split("\n    def ", 1)[0]
+        kind_passed = 'self._com.request("clear", int(hwnd or 0), self._state.kind)' \
+            in clear_src
+        clear_ok = (kind_passed
+                    and "kind == APP_KIND_PPT" in clear_body
+                    and "send_slideshow_key(VK_ERASE" in clear_body)
+        check(
+            "清屏在 PowerPoint 族补发键盘 E（EraseDrawing 只是隐藏墨迹）",
+            clear_ok,
+            "" if clear_ok else
+            ("clear_screen 未传 kind" if not kind_passed
+             else "_cmd_clear 里找不到「PPT 族补发 E」"),
         )
         # 笔选单的色板：2026-10-01 起**配置是唯一来源**（选单从
         # ``presentation.pen.palette`` 建格子，QML 里那张 ``inkPalette`` 已删）。

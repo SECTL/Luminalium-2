@@ -1665,8 +1665,24 @@ class _ComThread(QThread):
         except Exception:
             log.debug("保存墨迹失败", exc_info=True)
 
-    def _cmd_clear(self, hwnd: int) -> None:
+    def _cmd_clear(self, hwnd: int, kind: str = "") -> None:
+        """清屏。
+
+        ⚠️ PowerPoint 的 ``View.EraseDrawing()`` 是「**隐藏**墨迹」不是「删除」
+        —— Microsoft Q&A 实锤的已知 bug（隐藏态会被**下一笔 undo 回来**，
+        症状正是用户报的「清屏后再写新东西，旧残余显形」；VBA 社区的
+        ``GotoSlide`` 重进页之类的绕法都有闪烁）。而键盘 ``E`` 走的是放映
+        原生「擦除所有墨迹」动作，**真删** —— 用户实测 E 没有这个问题。
+
+        所以 PowerPoint 族在 COM 擦除成功后**补发一次 E**：E 送达则墨迹真删
+        （隐藏态随之无关紧要）；E 没送达也不比原来差 —— 双发无害（对空墨迹
+        按 E 是 no-op）。COM 擦除失败则维持原来的纯按键回退。其他族没有
+        这个 bug 的实锤（WPS 的 COM 是自家实现），维持原样不发按键。
+        """
         if not self._com.erase_drawings():
+            send_slideshow_key(VK_ERASE, hwnd)
+            return
+        if kind == APP_KIND_PPT:
             send_slideshow_key(VK_ERASE, hwnd)
 
     def _cmd_tool(self, hwnd: int, tool: str, kind: str = "") -> None:
@@ -2262,7 +2278,7 @@ class PptController(QObject):
 
     def clear_screen(self, hwnd: int = 0) -> bool:
         """清屏：擦除本页墨迹。"""
-        self._com.request("clear", int(hwnd or 0))
+        self._com.request("clear", int(hwnd or 0), self._state.kind)
         return True
 
     def read_pen_color(self) -> Optional[tuple[int, int, int]]:

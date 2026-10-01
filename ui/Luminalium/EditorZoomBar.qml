@@ -16,11 +16,16 @@ import Luminalium
     胶囊本体在 ``shadowMargin`` 处），所以调用方按 ``implicit*`` 摆就行，不必
     手工扣 —— 与 ``ui/presentation/FlyoutSurface.qml`` 是同一套约定。
 
+    2026-10-01（第七轮）用户指令：「缩放应该放在预览区右上方」—— 原先摆在预览区
+    **底边居中**（离视口下沿 16），本轮挪到**右上角**（离视口上沿 / 右沿各 16）。
+    两个理由：① 底边居中会跟「横版两侧下部」那类贴着屏幕下沿的翻页栏擦边；
+    ② 右上角是视野里最闲的地方，放大后的控制条几乎不会去到那儿。
+
     ## 用法
 
         EditorZoomBar {
-            anchors.horizontalCenter: viewport.horizontalCenter
-            anchors.bottom: viewport.bottom
+            anchors.right: viewport.right
+            anchors.top: viewport.top
             percent: viewport.scalePercent
             autoMode: editorWindow.autoScale
             onZoomInRequested: viewport.zoomBy(Lumi.editorZoomStep)
@@ -75,11 +80,20 @@ Item {
         y: root.shadowMargin
         width: row.width + root.paddingX * 2
         height: Lumi.editorZoomBarHeight
-        // 全圆胶囊：圆角拉满，比 Fluent 控件的 buttonRadius 更「浮」。
-        radius: height / 2
+        // 圆角矩形，**不是药丸**（2026-10-01 第七轮用户指令「不该是大圆角」）。
+        // 早先是 ``height / 2``，那是 L1 的胶囊语言；编辑器里的工具浮出层走
+        // Fluent 的 OverlayCornerRadius。
+        radius: Lumi.editorFloatRadius
         color: Lumi.editorPanelBg
         border.width: 1
-        border.color: Lumi.panelCardBorder
+        // ⚠️ 不能用 ``panelCardBorder``：深色档它是黑 10%，压在 #303030 的底板上
+        //    等于没有（这个坑见 ``Lumi.hairline``）。
+        border.color: Lumi.hairline
+
+        /*! 描边色经 ``border`` 分组属性拿不到（PySide 侧没有 ``QQuickPen*`` 的
+            转换器），复制一份给自检读 —— 深色下「描边消失」是这块浮出层最容易
+            回退的地方（用户 2026-10-01 的反馈就是它）。 */
+        readonly property color surfaceBorderColor: border.color
     }
 
     /*! 吞掉落在胶囊**内边距**上的点击。

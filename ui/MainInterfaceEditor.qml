@@ -42,7 +42,7 @@ import Luminalium
     | 缩放 | ``fitScale`` —— 整屏等比装进舞台 | 聚焦放大到被点中的那条 |
     | 画面 | 原样 | 面板左边的**整块区域**压一层暗罩、选中项套强调色描边 |
     | 右侧 | 收起的设置面板 | 滑出的组件设置面板 |
-    | 预览区 | 只有画面 | 底边居中多一枚悬浮缩放缓（``EditorZoomBar``） |
+    | 预览区 | 只有画面 | 右上角多一枚悬浮缩放缓（``EditorZoomBar``） |
 
     缩放**只动相机**（``scale`` / 位移），不改任何布局尺寸 —— 控制条副本始终活在
     1:1 的屏幕坐标系里。相机三件套：
@@ -950,12 +950,18 @@ Rin.FluentWindowBase {
             y: planeLayer.y
             width: Math.round(viewport.screenWidth * planeLayer.scale)
             height: Math.round(viewport.screenHeight * planeLayer.scale)
-            color: "transparent"
-            radius: Rin.Theme.currentTheme.appearance.windowRadius
-            border.width: 1
-            border.color: Rin.Theme.currentTheme.colors.controlBorderColor
-            z: 5
-        }
+        color: "transparent"
+        radius: Rin.Theme.currentTheme.appearance.windowRadius
+        border.width: 1
+        // ⚠️ 不能用 ``controlBorderColor``：深色档它是**黑 9%**，压在 #2C2C2C 的
+        //    亚克力上等于没有 —— 屏幕框在深色下整条消失（用户 2026-10-01 反馈
+        //    「整体的编辑器对暗色模式适配有点问题」里的其中一条）。
+        border.color: Lumi.hairline
+        z: 5
+
+        /*! 描边色经 ``border`` 分组属性拿不到，复制一份给自检读。 */
+        readonly property color frameBorderColor: border.color
+    }
 
         /*! 选中项的强调色描边。同样在视口坐标里 —— 2px 恒为 2px。
             几何取 ``planeLayer`` 的**实时**值（正在动画）而不是目标值，
@@ -999,8 +1005,9 @@ Rin.FluentWindowBase {
     //   · 挂在**内容区**上、与视口是**兄弟** —— 不放进视口，是因为视口
     //     ``clip: true``，投影会被它的矩形裁成硬边；``anchors`` 取视口当基准
     //     是合法的（跨兄弟锚点）。
-    //   · **底边居中**、离视口下沿 16（``editorZoomBarMargin``）—— 相机的取景
-    //     目标恒在视口中央，两者互不打架。
+    //   · **右上角**、离视口上沿与右沿各 16（``editorZoomBarMargin``）。
+    //     2026-10-01（第七轮）用户指令「缩放应该放在预览区右上方」—— 原先摆的
+    //     是底边居中，那儿会跟「横版两侧下部」那类贴着屏幕下沿的翻页栏擦边。
     //   · ``z: 12`` —— 压在编辑态暗罩（10）之上、右侧面板（20）之下。
     //   · 只在编辑态出现（跟着 ``inspectorReveal`` 淡入淡出）：全景态相机恒为
     //     ``fitScale``，手动档位在那儿本来就不生效（见 ``viewport.stageScale``），
@@ -1009,12 +1016,13 @@ Rin.FluentWindowBase {
         id: editorZoomBar
         objectName: "editorZoomBar"
 
-        anchors.horizontalCenter: viewport.horizontalCenter
-        anchors.bottom: viewport.bottom
-        /*! 16 是量到**胶囊边缘**的视觉距离；组件盒子外面还留了投影余量
+        anchors.right: viewport.right
+        anchors.top: viewport.top
+        /*! 16 是量到**底板边缘**的视觉距离；组件盒子外面还留了投影余量
             （``shadowMargin``），所以这里把它扣掉 —— 与 ``FlyoutSurface``
             那套「margin 是视觉距离」的约定一致。 */
-        anchors.bottomMargin: 16 - editorZoomBar.shadowMargin
+        anchors.rightMargin: 16 - editorZoomBar.shadowMargin
+        anchors.topMargin: 16 - editorZoomBar.shadowMargin
         z: 12
 
         opacity: editorWindow.inspectorReveal
@@ -1032,16 +1040,13 @@ Rin.FluentWindowBase {
 
     // ========================================================== 右侧设置面板
     //
-    // 编辑态的侧栏，三段式（2026-10-01 用户指令：「右侧的设置面板应该是实色背景，
-    // 组件信息就放在右侧设置面板的下部始终置着展示：工具栏 318x62，上面的信息
-    // 不要了，缩放的话也是放在下部置着，右侧面板其他地方是用来排设置项的」；
-    // 同日追加「（右上角那个 ×）加大移到左边改为返回按钮」+「删掉」顶部那块
-    // 设置项标题与占位文案）：
+    // 编辑态的侧栏（2026-10-01 用户指令：「右侧的设置面板应该是实色背景，组件信息
+    // 就放在右侧设置面板的下部始终置着展示：工具栏 318x62」；同日「（右上角那个 ×）
+    // 加大移到左边改为返回按钮」+「删掉」顶部那块设置项标题与占位文案）。**两段式**：
     //
-    //   · 顶部 —— **返回键**（``inspectorNav``，40px，离开编辑态，和 Esc 同一个出口）；
-    //   · 中部 —— **设置项区**（``inspectorBody``，可滚动，待接入）；
+    //   · 中部 —— **设置项区**（``inspectorBody``，可滚动，按选中的组件摆）；
     //   · 下部 —— **常驻条**（``inspectorFooter``，不滚动）：组件信息
-    //     「工具栏 318 × 62」+ 缩放缓。
+    //     「工具栏 318 × 62」。
     //
     // 2026-10-01（第六轮）用户指令：「把返回按钮删掉 加一个圆按钮放在侧面板的中部，
     // 缩放作为一个悬浮组件放在左侧的主界面预览区域」。于是：
@@ -1091,14 +1096,17 @@ Rin.FluentWindowBase {
             anchors.bottomMargin: -inspector.edgeBleed
             color: Lumi.editorPanelBg
 
-            /*! 左沿 1px 分隔线 —— 面板与舞台之间要有一条边。 */
+            /*! 左沿 1px 分隔线 —— 面板与舞台之间要有一条边。
+                ⚠️ 用 ``Lumi.hairline`` 而不是 ``panelCardBorder``：后者深色档是
+                黑 10%，压在 #303030 的面板上等于没有（用户 2026-10-01 反馈
+                「暗色模式适配」时查出来的其中一条）。 */
             Rectangle {
                 objectName: "editorInspectorEdge"
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
                 width: 1
-                color: Lumi.panelCardBorder
+                color: Lumi.hairline
             }
         }
 
@@ -1135,10 +1143,14 @@ Rin.FluentWindowBase {
             radius: width / 2
             color: Lumi.editorPanelBg
             border.width: 1
-            border.color: Lumi.panelCardBorder
+            // 同「面板左沿那条线」：深色下 ``panelCardBorder`` 会消失。
+            border.color: Lumi.hairline
             padding: 0
             // 和 Esc 同一个出口
             onClicked: editorWindow.clearSelection()
+
+            /*! 描边色经 ``border`` 分组属性拿不到，复制一份给自检读。 */
+            readonly property color handleBorderColor: border.color
 
             /*! 图标指向面板收起的方向（向右滑出）。 */
             Rin.Icon {
@@ -1314,11 +1326,13 @@ Rin.FluentWindowBase {
             height: Lumi.editorPanelFooterHeight
 
             Rectangle {
+                objectName: "editorFooterEdge"
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.top: parent.top
                 height: 1
-                color: Lumi.panelCardBorder
+                // 同面板左沿那条线：深色下 ``panelCardBorder`` 会消失。
+                color: Lumi.hairline
             }
 
             // ---- 组件信息：名字（左）+ 自身尺寸（右）

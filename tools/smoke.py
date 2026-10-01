@@ -33,11 +33,13 @@
 10. 编辑器的**编辑态**（2026-10-01 用户指令）：默认全景（整屏等比 + 面板收起）、
    点中一条控制条 → 聚焦放大并居中 / **面板左边整块**压暗罩（铺满、不留一圈
    亚克力）/ 选中项套强调色描边 / 右侧滑出**实色**设置面板并挤窄舞台（组件信息
-   与缩放**常驻在下部**，上部留给设置项）、手动档位与平移钳制、退出后回到全景；
+   **常驻在下部**，其余留给设置项）、手动档位与平移钳制、退出后回到全景；
    设置项跟着组件走（工具栏 = 显示按钮文本；翻页组件 = 翻页组件位置，竖版两侧
    中间 / 横版两侧下部二选一，切形态时预览与真机一起换、编辑对象跟着挪）；
    设置项区是**平铺**版式（名称独占一行、控件排在下面，一个 ``SettingCard`` 都没有
-   —— 2026-10-01 第五轮用户指令 + Win11 截屏）
+   —— 2026-10-01 第五轮用户指令 + Win11 截屏）；缩放缓是预览区**右上角**的浮出层
+   （圆角矩形、不是药丸 —— 第六 / 七轮用户指令）；面板的**细边全员可见且按主题翻**
+   （第七轮用户指令「暗色模式适配有点问题」查出来的：黑基描边压在深色面板上会消失）
 11. 设置页「关于」的**流光英雄区**（L1 同款）：英雄区高 320、Logo 四层齐全、
     **页面不带大标题**（头部塌成 0）、流光的自转**真的在动**（⚠️ ``RotationAnimator``
     在本环境静默失效）、呼吸缩放落在 1.0~1.1、Logo 星心亮度贴近 L1 参考图
@@ -70,7 +72,7 @@ os.chdir(ROOT)
 
 from PySide6.QtCore import Q_ARG, QMetaObject, QPoint, QPointF, Qt, QTimer  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtGui import QCursor, QGuiApplication  # noqa: E402
+from PySide6.QtGui import QColor, QCursor, QGuiApplication  # noqa: E402
 
 from app import ppt_controller  # noqa: E402
 from app.application import LuminaliumApplication  # noqa: E402
@@ -622,8 +624,11 @@ def _check_editor(app) -> None:
     PANEL_FOOTER_H = 48
     #: 面板左沿中线那枚**圆按钮**的直径（收起面板）。
     PANEL_HANDLE = 40
-    #: 预览区上那枚悬浮缩放缓：胶囊高度、离视口下沿的**视觉**距离、投影余量。
+    #: 预览区上那枚悬浮缩放缓：底板高度 / 圆角、离视口的**视觉**距离、投影余量。
+    #: 圆角 8 = Fluent 的 ``OverlayCornerRadius``（2026-10-01 第七轮用户指令
+    #: 「不该是大圆角」—— 早先是 ``height / 2`` 的药丸）。
     ZOOM_BAR_H = 40
+    ZOOM_BAR_RADIUS = 8
     ZOOM_BAR_MARGIN = 16
     FLOAT_SHADOW_MARGIN = 14
     FOCUS_PAD_X, FOCUS_PAD_Y = 72, 56
@@ -864,7 +869,8 @@ def _check_editor(app) -> None:
     # ------------------------------------------------- 预览区上的悬浮缩放缓
     # 2026-10-01（第六轮）用户指令：「缩放作为一个悬浮组件放在左侧的主界面预览
     # 区域」。原先缩放缓长在面板下部常驻条里（与组件信息同一块），现在整块搬去
-    # 预览区。这里守三件事：**位置**（预览区里、底边居中、离视口下沿 16）、
+    # 预览区。这里守四件事：**位置**（预览区**右上角**、离视口上沿 / 右沿各 16）、
+    # **形状**（圆角矩形而**不是药丸** —— 第七轮用户指令「不该是大圆角」）、
     # **归属**（不再是面板 / 常驻条的孩子）、**层序**（在暗罩之上、面板之下）。
     zoom_bar = _find_named(content_root, "editorZoomBar")
     zoom_surface = _find_named(content_root, "editorZoomBarSurface")
@@ -879,8 +885,8 @@ def _check_editor(app) -> None:
         f"常驻条里还有缩放={_find_named(footer, 'editorZoomRow') is not None}",
     )
     if zoom_bar is not None and zoom_surface is not None:
-        # 几何：胶囊落在**视口**里、水平居中、底边离视口下沿 16（视觉距离，
-        # 组件盒子外面那圈投影余量已经在调用方扣掉了）。
+        # 几何：底板落在**视口右上角**，离上沿 / 右沿各 16（视觉距离，组件盒子
+        # 外面那圈投影余量已经在调用方扣掉了）。
         vs_x = viewport.mapToItem(content_root, 0, 0).x()
         vs_y = viewport.mapToItem(content_root, 0, 0).y()
         bar_x = zoom_bar.mapToItem(content_root, 0, 0).x()
@@ -888,15 +894,32 @@ def _check_editor(app) -> None:
         surf_x = zoom_surface.mapToItem(content_root, 0, 0).x()
         surf_y = zoom_surface.mapToItem(content_root, 0, 0).y()
         check(
-            "缩放缓压在预览区里：底边居中、离视口下沿一个边距",
-            abs((surf_x + zoom_surface.width() / 2) - (vs_x + viewport.width() / 2)) <= 1.5
-            and abs((surf_y + zoom_surface.height())
-                    - (vs_y + viewport.height() - ZOOM_BAR_MARGIN)) <= 1.5
+            "缩放缓压在预览区**右上角**：离视口上沿 / 右沿各一个边距",
+            abs((surf_x + zoom_surface.width())
+                - (vs_x + viewport.width() - ZOOM_BAR_MARGIN)) <= 1.5
+            and abs(surf_y - (vs_y + ZOOM_BAR_MARGIN)) <= 1.5
             and abs(zoom_surface.height() - ZOOM_BAR_H) <= 1
-            and bar_x > vs_x - FLOAT_SHADOW_MARGIN,
-            f"胶囊=({surf_x:.1f},{surf_y:.1f}) {zoom_surface.width():.0f}x"
+            # 组件盒子 = 底板 + 四周一圈投影余量（摆放时按它扣，见组件头注释）；
+            # 这条把那套约定也钉住 —— 少了它，「margin 是视觉距离」就无从验起。
+            and abs((zoom_bar.width() - zoom_surface.width())
+                    - FLOAT_SHADOW_MARGIN * 2) <= 1
+            and bar_x + zoom_bar.width() <= vs_x + viewport.width() + 1
+            and bar_y >= vs_y - 1,
+            f"底板=({surf_x:.1f},{surf_y:.1f}) {zoom_surface.width():.0f}x"
             f"{zoom_surface.height():.0f} 视口=({vs_x:.1f},{vs_y:.1f}) "
-            f"{viewport.width():.0f}x{viewport.height():.0f}",
+            f"{viewport.width():.0f}x{viewport.height():.0f} "
+            f"（期望右上角内缩 {ZOOM_BAR_MARGIN}）",
+        )
+        # 形状（2026-10-01 第七轮用户指令「不该是大圆角」）：早先是 ``height / 2``
+        # 的**药丸**。这里既钉住「就是 8」也钉住「不是胶囊」这件事本身 —— 后者是
+        # 用户真正的意图，前者只是当前取值。
+        zoom_radius = float(zoom_surface.property("radius") or 0)
+        check(
+            "缩放缓是**圆角矩形**而不是药丸（圆角 8，远小于高的一半）",
+            abs(zoom_radius - ZOOM_BAR_RADIUS) <= 0.5
+            and zoom_radius <= zoom_surface.height() / 2 - 8,
+            f"radius={zoom_radius:.1f} 高={zoom_surface.height():.0f} "
+            f"（药丸会是 {zoom_surface.height() / 2:.0f}）",
         )
         check(
             "缩放缓的层序对：在编辑态暗罩之上、右侧面板之下",
@@ -948,6 +971,73 @@ def _check_editor(app) -> None:
         and abs(body.y() + body.height() - footer.y()) <= 1,
         f"body={None if body is None else (body.y(), body.height())} "
         f"footer.y={footer.y():.1f}",
+    )
+
+    # ------------------------------------------------ 暗色模式适配：细边（2026-10-01 第七轮）
+    # 用户指令：「感觉整体的编辑器对暗色模式适配有点问题」。
+    #
+    # 查出来的根因是**边线在深色下全员消失**：面板左沿 / 常驻条分隔线 / 圆按钮描边 /
+    # 缩放缓描边用的是 ``cardBorderColor``、屏幕框用的是 ``controlBorderColor``，
+    # 而 RinUI 的**深色档把这两个都定义成「黑 9~10%」**（``themes/dark.qml``）——
+    # 黑边压在 #303030 的面板 / #2C2C2C 的亚克力上，等于没有。浅色档看不出问题，
+    # 所以只有拿深色预览图逐像素扫才露馅（面板左沿本该是 #414141，实测 #2B2B2B）。
+    #
+    # 现在五处一律走 ``Lumi.hairline``（主题的 ``dividerBorderColor``：深色**白**
+    # 8.37% / 浅色**黑** 8.03%）。这里守两件事：
+    #   ① **五处同源** —— 谁要是单独换回一个「深色下会消失」的令牌就红；
+    #   ② **基色按主题翻** —— 深色档必须是**白基**、浅色档必须是**黑基**。
+    #      ② 是钉住根因的那一条：它不看当前渲染，两个主题下都成立（深色档跑就查
+    #      白基、浅色档跑就查黑基），所以不必中途切主题就能拦住回归。
+    def _blend_over(fore, back):
+        """把半透明的前景色压到后景上（等效实色）。"""
+        alpha = fore.alphaF()
+        return QColor.fromRgbF(
+            fore.redF() * alpha + back.redF() * (1 - alpha),
+            fore.greenF() * alpha + back.greenF() * (1 - alpha),
+            fore.blueF() * alpha + back.blueF() * (1 - alpha))
+
+    def _luminance(color):
+        return (0.2126 * color.redF() + 0.7152 * color.greenF()
+                + 0.0722 * color.blueF())
+
+    screen_frame = _find_named(content_root, "editorScreenFrame")
+    panel_edge = _find_named(content_root, "editorInspectorEdge")
+    footer_edge = _find_named(content_root, "editorFooterEdge")
+    hairlines = {
+        "屏幕框": None if screen_frame is None
+        else screen_frame.property("frameBorderColor"),
+        "面板左沿": None if panel_edge is None else panel_edge.property("color"),
+        "常驻条分隔线": None if footer_edge is None else footer_edge.property("color"),
+        "面板圆按钮": None if handle is None else handle.property("handleBorderColor"),
+        "缩放缓": None if zoom_surface is None
+        else zoom_surface.property("surfaceBorderColor"),
+    }
+    missing = [name for name, value in hairlines.items() if value is None]
+    values = [QColor(value) for value in hairlines.values() if value is not None]
+    dark_now = bool(app.rinui.theme_manager.is_dark_theme())
+    hairline = values[0] if values else QColor(0, 0, 0, 0)
+    # 基色判定：深色档细边必须是**白基**（黑基在深色面板上等于没有），浅色档反之。
+    # ⚠️ PySide 的浮点取色器叫 ``redF()/greenF()/blueF()``（没有 ``rF()``）。
+    channels = {"r": "redF", "g": "greenF", "b": "blueF"}
+    toward = ((lambda ch: getattr(hairline, ch)() > 0.9) if dark_now
+              else (lambda ch: getattr(hairline, ch)() < 0.1))
+    base_ok = all(toward(channels[ch]) for ch in "rgb")
+    # 压到面板底色上还得真的看得出来（方向对 + 幅度够）。
+    panel_bg = surface.property("color") if surface is not None else QColor("#808080")
+    delta = _luminance(_blend_over(hairline, panel_bg)) - _luminance(panel_bg)
+    check(
+        "编辑器细边五处同源、且**按主题翻基色**（深色白基 / 浅色黑基）",
+        not missing
+        and len({value.rgba() for value in values}) == 1
+        and base_ok
+        and 0.03 <= hairline.alphaF() <= 0.25
+        and (delta >= 0.03 if dark_now else delta <= -0.03),
+        ("缺部件：" + ", ".join(missing)) if missing else
+        f"{hairline.name()} alpha={hairline.alphaF():.3f} "
+        f"主题={'dark' if dark_now else 'light'} "
+        f"（期望{'白' if dark_now else '黑'}基）"
+        f" 压面板底色的亮度差={delta:+.3f}"
+        + ("" if len({v.rgba() for v in values}) == 1 else " ⚠️ 五处不同源"),
     )
 
     # ---------------------------------------------------- 平铺版式（2026-10-01 第五轮）

@@ -72,6 +72,21 @@ QtObject {
     readonly property color cardBorder: themeColors
         ? themeColors.cardBorderColor : "#1A000000"
 
+    /*! **细边**（hairline）—— 面板边线 / 分隔线 / 浮出层描边 / 屏幕框这类 1px
+        的分界。深色档也看得见的那一支。
+
+        ⚠️⚠️ 别拿 ``cardBorderColor`` 当它用：深色主题下那是 ``#000000`` @10%
+        （见 ``RinUI/themes/dark.qml``）—— **黑色细边压在 #303030 的面板上等于
+        没有**，与 ``splashBorder`` 是同一个坑。2026-10-01 用户反馈「整体的编辑器
+        对暗色模式适配有点问题」时查出来的就是它：面板左沿、常驻条分隔线、浮出层
+        描边、屏幕框**在深色下全部消失**，面板与舞台糊成一片。
+
+        这里改用主题里**按主题翻**的那一支 ``dividerBorderColor``
+        （Fluent ``DividerStrokeColorDefault``）：深色 = 白 8.37%、浅色 = 黑 8.03%，
+        两边都是「比底色亮 / 暗一点点」，任何一个主题下都成立。 */
+    readonly property color hairline: themeColors
+        ? themeColors.dividerBorderColor : "#15FFFFFF"
+
     // ------------------------------------------------------------------ 文本
     readonly property color textPrimary: themeColors ? themeColors.textColor : "#FFFFFF"
     readonly property color textSecondary: themeColors
@@ -437,6 +452,17 @@ QtObject {
         与 ``editorPanelHandleSize`` 同档，但两者不是一回事：那个是面板把手，
         这个是预览区的浮出层 —— 别互相引用。 */
     readonly property int editorZoomBarHeight: 40
+
+    /*! 悬浮缩放缓的**圆角**。
+
+        2026-10-01（第七轮）用户指令：「缩放应该放在预览区右上方 且不该是大圆角」
+        —— 原先照 L1 的语言把圆角拉满（``height / 2`` = 20，一枚**药丸**），
+        现在收到 Fluent 的 ``OverlayCornerRadius``（8）：还是一眼看出是「一块浮
+        起来的板」，但不再圆头圆脑。
+
+        ⚠️ 与 ``dockSurfaceRadius``(999) 不是一回事：那个是放映控制条的底板
+        （L1 的胶囊语言，**刻意**保留），这里是编辑器里的工具浮出层。别顺手统一。 */
+    readonly property int editorFloatRadius: 8
 
     /*! 悬浮组件（缩放缓）的投影 —— 与启动画面同源（Fluent flyout 档），但收小
         一档：它只有 40 高，flyout 那档（blur 24 / offsetY 8）的影子会比本体

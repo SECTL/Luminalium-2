@@ -30,14 +30,12 @@
     "//shortcuts": "已启用的快捷方式 id，顺序即显示顺序；可选来源是 shortcut_catalog",
     "shortcuts": [
       "settings",
-      "presentation",
       "update",
       "main_editor"
     ],
-    "//shortcut_catalog": "全部可用快捷方式（设置页与「+」对话框从这里取）。Luminalium 是放映伴侣，不提供课表类功能。action 语法：open_settings[:<相对 ui 的页面路径>] = 打开设置窗口（可选落到某一页）；open_editor = 打开主界面编辑器独立窗口（ui/MainInterfaceEditor.qml）—— 由 application.py::_on_shortcut 分发",
+    "//shortcut_catalog": "全部可用快捷方式（设置页与「+」对话框从这里取）。Luminalium 是放映伴侣，不提供课表类功能。action 语法：open_settings[:<相对 ui 的页面路径>] = 打开设置窗口（可选落到某一页）；open_editor = 打开主界面编辑器独立窗口（ui/MainInterfaceEditor.qml）—— 由 application.py::_on_shortcut 分发。⚠️ 2026-10-01（第四轮）用户指令「删除放映设置页面」：原来那一项「放映控制」（action 指向已删的放映设置页）**已随页面一起删除** —— 它唯一的作用就是打开那个页面，页面没了它就是死链。别再往回加（自检钉了「目录不含 presentation」+ 源码残留扫描；⚠️ 连注释里都别再写出那个页面的路径，残留扫描扫的就是这个字符串）",
     "shortcut_catalog": [
       { "id": "settings", "title": "设置", "icon": "ic_fluent_settings_20_regular", "action": "open_settings:settings/Home.qml" },
-      { "id": "presentation", "title": "放映控制", "icon": "ic_fluent_slide_play_20_regular", "action": "open_settings:settings/Presentation.qml" },
       { "id": "update", "title": "检查更新", "icon": "ic_fluent_arrow_sync_20_regular", "action": "open_settings:settings/Update.qml" },
       { "id": "main_editor", "title": "主界面编辑器", "icon": "ic_fluent_window_edit_20_regular", "action": "open_editor" }
     ],
@@ -123,7 +121,7 @@
     "spacing": 4
   },
  "divider": {
-  "//enabled": "组分隔线（动作 / 翻页 / 退出之间的细竖线）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（放映页那个开关）—— 配置键仍然生效、默认 true，想关就在这里写 false；别的键（width / height / gap）也是纯配置项",
+  "//enabled": "组分隔线（动作 / 翻页 / 退出之间的细竖线）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（原放映页那个开关；放映页本身已于同日第四轮删除）—— 配置键仍然生效、默认 true，想关就在这里写 false；别的键（width / height / gap）也是纯配置项",
   "enabled": true,
     "width": 1,
     "//height": "L1 .separator 24px；放大档 28",
@@ -151,7 +149,7 @@
       }
     ],
  "pager": {
-  "//enabled": "翻页区块的总开关（关掉则控制条上不出现翻页 pill）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（放映页那个「页码切换」开关）—— 翻页组件的**形态与位置**改由 ``position`` 管（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」），这一项保留为纯配置项、默认 true",
+  "//enabled": "翻页区块的总开关（关掉则控制条上不出现翻页 pill）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（原放映页那个「页码切换」开关；放映页本身已于同日第四轮删除）—— 翻页组件的**形态与位置**改由 ``position`` 管（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」），这一项保留为纯配置项、默认 true",
   "enabled": true,
     "//position": "翻页组件的形态与位置（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」，2026-10-01 用户指令）。side = **竖版两侧中间**（middle_left / middle_right，组件 SidePager.qml）；bottom = **横版两侧下部**（bottom_left / bottom_right，与底部同款的横版 pill）。⚠️ 两种形态**二选一**（同时开会变成四个翻页栏），改它会连带开关 corners 里这四个角的 enabled —— 真实生效的仍是 corners，这一项只是它的人话开关",
     "position": "side",

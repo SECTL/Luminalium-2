@@ -13,6 +13,11 @@
    「失去焦点时收起」已按用户指令删除**（2026-10-01 第二轮：「托盘整组连着相关的
    逻辑和代码一块删掉」/「失焦收起作为默认行为」），且覆盖 UI / ``SETTING_PATHS`` /
    默认配置 / 源码残留四层守卫
+5b. 设置页**增减**（2026-10-01 第四轮用户指令：「把外观那一块除了界面语言改到新的
+   个性化 / 删除放映设置页面」）：新建「个性化」页承接「应用主题 + 强调色」
+   （含卡内控件：下拉与 8 个色板圆点 + 当前色标记），「通用」页只剩 2 张卡；
+   「放映」页**整页删除** —— 导航层 / 页面层 / 文件层 / 源码残留四层守卫；
+   快捷方式目录里的 ``presentation`` 项随页面一起删（否则成了死链）
 6. 配置读取与日志写入正常
 7. 启动画面（设计稿还原）：按 2984:1679 比例居中、无标题栏且**刻意不登记 RinUI**、
    各元素落在设计稿位置（按 ``k = 宽/2984`` 缩放）、描边贴住外沿、进度填充与
@@ -1413,6 +1418,19 @@ def _check_editor(app) -> None:
         f"titles={titles}",
     )
     check("设置导航已无「外观」项", "外观" not in titles, f"titles={titles}")
+    # 2026-10-01（第四轮）：新建「个性化」页承接主题 / 强调色；「放映」页删除。
+    # 导航是这两件事唯一的外部引用点，字面量最容易改一半（删了页面没删导航项，
+    # 表现是点进去一片空白 / 控制台报找不到 qml），所以两头都钉。
+    check(
+        "设置导航含「个性化」且指向 Personalization.qml",
+        "个性化" in titles and any("Personalization.qml" in p for p in pages),
+        f"titles={titles}",
+    )
+    check(
+        "设置导航已无「放映」项、也不剩 Presentation.qml 路径",
+        "放映" not in titles and not any("Presentation.qml" in p for p in pages),
+        f"titles={titles} pages={pages}",
+    )
 
 
 def main() -> int:
@@ -2163,16 +2181,21 @@ def main() -> int:
             app.backend.settingsCloseRequested.emit()
             check("设置窗口可关闭", not settings.isVisible())
 
-            # 打开指定设置页（快捷方式「放映控制」走的路径）
+            # 打开指定设置页（``open_settings:<相对路径>`` 那条路径 —— 快捷方式
+            # 「设置」就是这么落到 ``settings/Home.qml`` 的）。
             #
             # ⚠️ 这里**必须**用 ``_wait_named`` 等页面真的换过来，再关窗：
             # ① push 是异步的，固定时长会假失败（见 ``_wait_named`` 注释）；
             # ② 别在 push 还没落地时就把窗口隐藏 —— 转场靠渲染推进，窗口一隐，
             #    初始页的转场就悬着，后面那次 push 会被拖到很久之后才生效
             #    （2026-10-01 这一条把「关于页英雄区」整段自检拖挂）。
-            app.windows.show_settings("settings/Presentation.qml")
+            #
+            # 2026-10-01（第四轮）拿**新建的「个性化」页**跑这条：它最年轻、
+            # 最可能因为路径写错 / 少了 import 而整页加载失败（那种失败在这一条
+            # 里表现为「窗口可见但没切页」，比渲染一张图更容易看出来）。
+            app.windows.show_settings("settings/Personalization.qml")
             QTest.qWait(120)  # 先让窗口出一帧，push 才走得动
-            page_switched = _wait_named(settings.contentItem(), "Presentation") is not None
+            page_switched = _wait_named(settings.contentItem(), "Personalization") is not None
             check(
                 "能跳到指定设置页（页面真的换过来了）",
                 settings.isVisible() and page_switched,
@@ -2774,15 +2797,18 @@ def main() -> int:
                     f"{app.config.get('presentation.margin_x')} 期望 {prev_margin}",
                 )
 
-            # ---- 放映页：设置项已全部搬走 / 删除 ----
-            app.windows.show_settings("settings/Presentation.qml")
-            QTest.qWait(500)  # 换页是异步的（页面组件要重新加载）
-            left = _collect_type(settings.contentItem(), "SettingCard")
+            # ---- 放映设置页：**整页删除**（2026-10-01 第四轮用户指令）----
+            # 页内的设置项早在本轮之前就搬空了（位置 / 外观 → 主界面，退出键样式
+            # → 编辑器，组分隔线与页码切换直接删）；这次连**空壳页面本身**也删掉。
+            # 导航项那一条在上面「设置导航」里钉了，这里钉**文件**：两者都可能
+            # 单独漏（删了文件没删导航 → 点进去空白；删了导航没删文件 → 页面还
+            # 会被 preview.py 的 glob 渲染出来，看着像没删干净）。
+            page_gone = not (ROOT / "ui" / "settings" / "Presentation.qml").exists()
             check(
-                "「放映」页已没有设置项（位置/外观→主界面、退出键样式→编辑器、"
-                "组分隔线与页码切换已删除）",
-                len(left) == 0,
-                f"还剩 {len(left)} 项",
+                "「放映」设置页文件已删除（ui/settings/Presentation.qml）",
+                page_gone,
+                # detail 无论成败都会打印 —— 只在失败时给「为什么」
+                "" if page_gone else "文件还在（preview.py 会把它一起渲染出来）",
             )
             # ---- 通用页：托盘设置组与「失去焦点时收起」已删除 ----
             # 2026-10-01（第二轮）用户指令：「托盘」整组连着相关的逻辑和代码一块
@@ -2816,19 +2842,80 @@ def main() -> int:
                 )
                 cards = _collect_type(general, "SettingCard")
                 keep = [
-                    title for title in ("快捷方式锁定", "应用主题", "强调色", "界面语言")
+                    title for title in ("快捷方式锁定", "界面语言")
                     if _find_text(general, title) is not None
                 ]
                 check(
-                    "通用页只剩 4 张卡（快捷方式锁定 + 外观 3 张）",
-                    len(cards) == 4 and len(keep) == 4,
+                    "通用页只剩 2 张卡（快捷方式锁定 + 界面语言）",
+                    len(cards) == 2 and len(keep) == 2,
                     f"卡数={len(cards)} 找到={keep}",
+                )
+                moved_away = [
+                    title for title in ("应用主题", "强调色")
+                    if _find_text(general, title) is not None
+                ]
+                check(
+                    "通用页已无「应用主题 / 强调色」（第四轮搬去「个性化」）",
+                    not moved_away,
+                    f"还找到 {moved_away}",
                 )
                 check(
                     "「快捷方式锁定」的开关还在（本次没动它）",
                     len(_collect_type(general, "Switch")) == 1,
                     f"Switch={len(_collect_type(general, 'Switch'))}",
                 )
+
+            # ---- 个性化页：承接「应用主题 / 强调色」（第四轮新建）----
+            # 搬整块时最容易漏的是**控件**（卡片搬走了、里面的下拉 / 色板没搬 →
+            # 有这一项但点不动），所以按 objectName 找到卡后再往里数控件。
+            app.windows.show_settings("settings/Personalization.qml")
+            fancy = _wait_named(settings.contentItem(), "Personalization")
+            check(
+                "个性化页能打开（页面根按文件名 Personalization 找得到）",
+                fancy is not None,
+                "页面没落地（可能只是 push 还没跑完）" if fancy is None else "",
+            )
+            if fancy is not None:
+                theme_card = _find_named(fancy, "personalizationTheme")
+                accent_card = _find_named(fancy, "personalizationAccent")
+                check(
+                    "个性化页有「应用主题」「强调色」两张卡",
+                    theme_card is not None and accent_card is not None,
+                    f"theme={theme_card is not None} accent={accent_card is not None}",
+                )
+                check(
+                    "「界面语言」留在通用页、没被一起搬过来",
+                    _find_text(fancy, "界面语言") is None,
+                )
+                if theme_card is not None:
+                    combos = _collect_type(theme_card, "ComboBox")
+                    check(
+                        "「应用主题」带下拉，且选中项跟着配置走",
+                        len(combos) == 1
+                        and int(combos[0].property("currentIndex"))
+                        == {"auto": 0, "light": 1, "dark": 2}.get(
+                            str(app.config.get("app.theme")), 0),
+                        f"ComboBox={len(combos)} "
+                        f"currentIndex={combos[0].property('currentIndex') if combos else None}"
+                        f" theme={app.config.get('app.theme')!r}",
+                    )
+                if accent_card is not None:
+                    swatches = _collect_type(accent_card, "Clip")
+                    # 当前色由「勾 + 描边」标记：勾是色块里的 ``Rin.Icon``，
+                    # ``visible`` 绑在 ``Backend.settings.accent === modelData`` 上
+                    # —— 数出**恰好一个**可见的勾，就证明色板接上了实时配置
+                    # （⚠️ 描边 ``border.width`` 是分组属性，PySide 侧读不到，
+                    # 只能靠勾来判）。
+                    marked = [
+                        s for s in swatches
+                        if any(c.isVisible() for c in _collect_type(s, "Icon"))
+                    ]
+                    check(
+                        "「强调色」色板 = 8 个圆点，当前色恰有一个被标记",
+                        len(swatches) == 8 and len(marked) == 1,
+                        f"圆点={len(swatches)} 标记={len(marked)} "
+                        f"accent={app.backend.accent}",
+                    )
 
             app.backend.settingsCloseRequested.emit()
             QTest.qWait(150)
@@ -2867,6 +2954,20 @@ def main() -> int:
             "源码 / 配置里没有已删托盘设置键、tray 配置读取、set_tooltip 的残留引用",
             not stale_refs,
             "; ".join(stale_refs[:6]),
+        )
+
+        # 已删「放映」设置页的残留引用（2026-10-01 第四轮）。
+        # ⚠️ 用**带目录**的字面量 ``settings/Presentation.qml``：不带前缀的话
+        # 本函数里的 check 标题也会命中（虽然本文件已在 skip 里，但收窄一点更稳）。
+        page_refs = _scan_symbols(
+            ("settings/Presentation.qml",),
+            roots=(ROOT / "ui", ROOT / "app", ROOT / "config", ROOT / "tools"),
+            skip=(Path(__file__),),
+        )
+        check(
+            "源码 / 配置里没有指向已删「放映」页的残留引用",
+            not page_refs,
+            "; ".join(page_refs[:6]),
         )
 
         # ---- 快捷方式增删 / 排序 ----

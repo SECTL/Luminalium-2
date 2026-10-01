@@ -42,6 +42,7 @@ import Luminalium
     | 缩放 | ``fitScale`` —— 整屏等比装进舞台 | 聚焦放大到被点中的那条 |
     | 画面 | 原样 | 面板左边的**整块区域**压一层暗罩、选中项套强调色描边 |
     | 右侧 | 收起的设置面板 | 滑出的组件设置面板 |
+    | 预览区 | 只有画面 | 底边居中多一枚悬浮缩放缓（``EditorZoomBar``） |
 
     缩放**只动相机**（``scale`` / 位移），不改任何布局尺寸 —— 控制条副本始终活在
     1:1 的屏幕坐标系里。相机三件套：
@@ -61,8 +62,14 @@ import Luminalium
 
     面板是**挤窄舞台**而不是浮在舞台上面（``anchors.rightMargin`` 跟着
     ``inspectorInset`` 走）—— 聚焦的组件要落在真正可见的那块区域中央。
-    底色**实色**（``Lumi.editorPanelBg``），三段式：顶部返回键（``inspectorNav``）/
-    中部设置项区（可滚动，按选中的组件摆）/ 下部常驻条（组件信息 + 缩放）。
+    底色**实色**（``Lumi.editorPanelBg``），**两段式**：设置项区（可滚动，按选中的
+    组件摆）/ 下部常驻条（组件信息）；出口是**左沿中线上那枚圆按钮**
+    （``inspectorHandle``，圆心压在面板左沿，与 Esc 同一个动作）。
+
+    2026-10-01（第六轮）用户指令「把返回按钮删掉 加一个圆按钮放在侧面板的中部，
+    缩放作为一个悬浮组件放在左侧的主界面预览区域」之后：顶部那条只放返回键的
+    ``inspectorNav`` 整条撤掉、常驻条只剩一行读数（84 → 48）、缩放缓搬去预览区
+    上的浮出层（``ui/Luminalium/EditorZoomBar.qml``）。
 
     设置项**跟着选中的组件变**（2026-10-01 三项）：
 
@@ -982,6 +989,47 @@ Rin.FluentWindowBase {
         }
     }
 
+    // ================================================== 预览区上的悬浮缩放缓
+    //
+    // 2026-10-01（第六轮）用户指令：「缩放作为一个悬浮组件放在左侧的主界面预览
+    // 区域」。原先它长在右侧面板的下部常驻条里（和组件信息挤一行），现在整块搬
+    // 出来，压在预览区上。组件本体见 ``ui/Luminalium/EditorZoomBar.qml``，这里
+    // 只负责**摆**：
+    //
+    //   · 挂在**内容区**上、与视口是**兄弟** —— 不放进视口，是因为视口
+    //     ``clip: true``，投影会被它的矩形裁成硬边；``anchors`` 取视口当基准
+    //     是合法的（跨兄弟锚点）。
+    //   · **底边居中**、离视口下沿 16（``editorZoomBarMargin``）—— 相机的取景
+    //     目标恒在视口中央，两者互不打架。
+    //   · ``z: 12`` —— 压在编辑态暗罩（10）之上、右侧面板（20）之下。
+    //   · 只在编辑态出现（跟着 ``inspectorReveal`` 淡入淡出）：全景态相机恒为
+    //     ``fitScale``，手动档位在那儿本来就不生效（见 ``viewport.stageScale``），
+    //     摆一排按不动的按钮只会误导。
+    EditorZoomBar {
+        id: editorZoomBar
+        objectName: "editorZoomBar"
+
+        anchors.horizontalCenter: viewport.horizontalCenter
+        anchors.bottom: viewport.bottom
+        /*! 16 是量到**胶囊边缘**的视觉距离；组件盒子外面还留了投影余量
+            （``shadowMargin``），所以这里把它扣掉 —— 与 ``FlyoutSurface``
+            那套「margin 是视觉距离」的约定一致。 */
+        anchors.bottomMargin: 16 - editorZoomBar.shadowMargin
+        z: 12
+
+        opacity: editorWindow.inspectorReveal
+        visible: opacity > 0.004
+        Behavior on opacity {
+            NumberAnimation { duration: Lumi.editorAnimMs; easing.type: Easing.OutCubic }
+        }
+
+        percent: viewport.scalePercent
+        autoMode: editorWindow.autoScale
+        onZoomOutRequested: viewport.zoomBy(1 / Lumi.editorZoomStep)
+        onZoomInRequested: viewport.zoomBy(Lumi.editorZoomStep)
+        onResetRequested: viewport.resetZoom()
+    }
+
     // ========================================================== 右侧设置面板
     //
     // 编辑态的侧栏，三段式（2026-10-01 用户指令：「右侧的设置面板应该是实色背景，
@@ -994,6 +1042,17 @@ Rin.FluentWindowBase {
     //   · 中部 —— **设置项区**（``inspectorBody``，可滚动，待接入）；
     //   · 下部 —— **常驻条**（``inspectorFooter``，不滚动）：组件信息
     //     「工具栏 318 × 62」+ 缩放缓。
+    //
+    // 2026-10-01（第六轮）用户指令：「把返回按钮删掉 加一个圆按钮放在侧面板的中部，
+    // 缩放作为一个悬浮组件放在左侧的主界面预览区域」。于是：
+    //
+    //   · 顶部那条 ``inspectorNav``（只有一枚返回键 + 一条分隔线）**整条撤掉** ——
+    //     面板回到**两段式**：设置项区 + 常驻条；
+    //   · 出口改成**左沿中线上的圆按钮**（``inspectorHandle``，圆心压在面板左沿上，
+    //     一半悬在舞台上，读作「把面板收回去」的把手），动作仍是 ``clearSelection``
+    //     （与 Esc 同一个出口）；
+    //   · 缩放缓搬去**预览区上的浮出层**（``EditorZoomBar``），常驻条只剩
+    //     「现在在编谁」那行读数，高度 84 → 48。
     //
     // 底板**一路铺到窗口边**（``edgeBleed``，见 ``inspector`` 的说明）—— 否则右沿与
     // 下沿会露出内容区那 5px 的窗口拖动热区（一圈比面板还亮的亚克力）。
@@ -1043,74 +1102,74 @@ Rin.FluentWindowBase {
             }
         }
 
-        // ------------------------------------------------------------ 顶部导航
+        // -------------------------------------------------- 左沿中线的圆按钮
         //
-        // 面板最上面一条，只放**返回键**。
+        // 面板唯一的出口：与 Esc 同一个动作（``clearSelection``）。
         //
-        // 2026-10-01 用户指令：「（右上角那个 ×）加大移到左边改为返回按钮」，
-        // 同时把顶部那块「设置项」标题 + 占位文案**删掉**。于是原来的
-        // 「右上角浮动的 32px ×」变成了「左上角 40px 的返回键」，顶部不再有任何
-        // 文字信息 —— 组件名与尺寸在下部常驻条里，本来就够。
-        Item {
-            id: inspectorNav
-            objectName: "editorInspectorNav"
+        // 2026-10-01（第六轮）用户指令：「把返回按钮删掉 加一个圆按钮放在侧面板的
+        // 中部」。原先它是顶部导航条上那枚 40px 的**方形**返回键 —— 本轮把整条
+        // ``inspectorNav`` 撤掉，换成这枚**正圆**、**圆心压在面板左沿**、**垂直
+        // 居中**的按钮：一半悬在舞台上，读作「把面板收回去」的把手。
+        //
+        // ⚠️ ``x: -width / 2`` 是刻意的**负值** —— 面板是 ``Item`` 且不 ``clip``，
+        //    悬出去的那一半才画得出来。别为了「不越界」把它挪进面板里：那样它就
+        //    压在设置项上了（中部正是设置项区）。
+        //
+        // ⚠️⚠️ ``z: 1`` **不能省**。它下面（``y`` 中线上）正好压着**设置项区**
+        //    （``inspectorBody``，一只 ``Flickable``），而那个 Flickable 是**后
+        //    声明**的 —— 后声明者在同一父级里叠得更上，于是它会把这枚按钮的右半边
+        //    （**连圆心在内**）的鼠标事件全部吃掉。症状特别阴：按钮画得好好的、
+        //    ``isVisible()`` 也是 True、``onClicked`` 就是不触发，点上去**什么都
+        //    不发生**（自检里「点面板左沿的圆按钮 → 退出编辑态」那条就是这么抓到
+        //    的）。Flickable 自己会抢按下来做拖动，所以事件也不会继续往下传。
+        Rin.Clip {
+            id: inspectorHandle
+            objectName: "editorInspectorHandle"
 
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            height: Lumi.editorPanelHeaderHeight
+            width: Lumi.editorPanelHandleSize
+            height: width
+            x: -width / 2
+            y: Math.round((parent.height - height) / 2)
+            z: 1
+            // 圆心压在左沿上 → 半径即圆角，读作正圆。
+            radius: width / 2
+            color: Lumi.editorPanelBg
+            border.width: 1
+            border.color: Lumi.panelCardBorder
+            padding: 0
+            // 和 Esc 同一个出口
+            onClicked: editorWindow.clearSelection()
 
-            Rin.Clip {
-                id: inspectorBack
-                objectName: "editorInspectorBack"
-
-                width: Lumi.editorBackButtonSize
-                height: width
-                anchors.left: parent.left
-                anchors.leftMargin: 16
-                anchors.verticalCenter: parent.verticalCenter
-                radius: Lumi.controlRadius
-                color: Lumi.controlHoverFill
-                padding: 0
-                // 和 Esc 同一个出口
-                onClicked: editorWindow.clearSelection()
-
-                Rin.Icon {
-                    objectName: "editorInspectorBackIcon"
-                    anchors.centerIn: parent
-                    icon: "ic_fluent_arrow_left_20_regular"
-                    size: 20
-                    color: Lumi.textPrimary
-                }
-            }
-
-            /*! 与下部常驻条同款的 1px 分隔线：顶部导航与设置项区之间要有一条边。 */
-            Rectangle {
-                objectName: "editorInspectorNavEdge"
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: 1
-                color: Lumi.panelCardBorder
+            /*! 图标指向面板收起的方向（向右滑出）。 */
+            Rin.Icon {
+                objectName: "editorInspectorHandleIcon"
+                anchors.centerIn: parent
+                icon: "ic_fluent_chevron_right_20_regular"
+                size: 20
+                color: Lumi.textPrimary
             }
         }
 
         // ------------------------------------------------------------ 设置项区
         //
-        // 顶部导航条之下、下部常驻条之上，**整块**留给设置项（可滚动）。
+        // 面板顶端之下、下部常驻条之上，**整块**留给设置项（可滚动）。
         // 每一项自己绑 ``visible``（比如工具栏的设置项只在选中工具栏时出现），
         // 布局器会跳过不可见项。
+        //
+        // 2026-10-01（第六轮）：顶部导航条撤掉后，这里**顶到面板自己的上沿**
+        // （``anchors.top: parent.top``）—— 面板之外就是标题栏，间距靠
+        // ``bodyColumn.y`` 自己留。
         Flickable {
             id: inspectorBody
             objectName: "editorInspectorBody"
 
             anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: inspectorNav.bottom
+            anchors.top: parent.top
             anchors.bottom: inspectorFooter.top
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            contentHeight: bodyColumn.implicitHeight + 28
+            contentHeight: bodyColumn.implicitHeight + 36
 
             /*! 设置项的落点：``x/y`` 与 ``width`` 已经排好版，往里加设置项即可。
 
@@ -1121,7 +1180,9 @@ Rin.FluentWindowBase {
             ColumnLayout {
                 id: bodyColumn
                 x: 16
-                y: 14
+                // 面板顶端不再有导航条挡着，第一项的名称要自己留出与窗口标题栏的
+                // 呼吸量（14 → 18），下面 ``contentHeight`` 也同步改成 +36。
+                y: 18
                 width: parent.width - 32
                 spacing: 18
 
@@ -1238,7 +1299,11 @@ Rin.FluentWindowBase {
 
         // ------------------------------------------------------------ 常驻条
         //
-        // 「现在在编谁、看多大一块、放大到几成」—— 三条读数 + 缩放缓，常显不滚动。
+        // 「现在在编谁、它多大一块」—— 一行读数，常显不滚动。
+        //
+        // 2026-10-01（第六轮）：缩放缓搬去预览区的浮出层（``EditorZoomBar``），
+        // 这里只剩组件信息一行，于是从「上行读数 + 下行缩放缓」的两行收到**一行**
+        // （高度 84 → 48，居中摆）。
         Item {
             id: inspectorFooter
             objectName: "editorInspectorFooter"
@@ -1262,10 +1327,9 @@ Rin.FluentWindowBase {
                 objectName: "editorFooterInfoRow"
                 anchors.left: parent.left
                 anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                anchors.topMargin: 14
                 height: 20
 
                 Rin.Text {
@@ -1288,82 +1352,6 @@ Rin.FluentWindowBase {
                     color: Lumi.textSecondary
                     text: editorWindow.focusSizeText()
                 }
-            }
-
-            // ---- 缩放缓：− / 百分比（点它回自动档）/ ＋
-            Row {
-                id: zoomRow
-                objectName: "editorZoomRow"
-                anchors.left: parent.left
-                anchors.leftMargin: 16
-                anchors.top: footerInfoRow.bottom
-                anchors.topMargin: 10
-                spacing: 4
-
-                Rin.Clip {
-                    objectName: "editorZoomOut"
-                    width: Lumi.editorMiniButtonSize
-                    height: width
-                    radius: Lumi.controlRadius
-                    color: Lumi.controlHoverFill
-                    padding: 0
-                    onClicked: viewport.zoomBy(1 / Lumi.editorZoomStep)
-
-                    Rin.Icon {
-                        anchors.centerIn: parent
-                        icon: "ic_fluent_subtract_20_regular"
-                        size: 16
-                        color: Lumi.textPrimary
-                    }
-                }
-
-                /*! 百分比 —— 也是「回到自动档」的按钮（自动档时底色点亮）。 */
-                Rin.Clip {
-                    objectName: "editorZoomReset"
-                    width: 64
-                    height: Lumi.editorMiniButtonSize
-                    radius: Lumi.controlRadius
-                    color: editorWindow.autoScale ? Lumi.controlHoverFill : "transparent"
-                    padding: 0
-                    onClicked: viewport.resetZoom()
-
-                    Rin.Text {
-                        objectName: "editorZoomLabel"
-                        anchors.centerIn: parent
-                        typography: Rin.Typography.Body
-                        text: viewport.scalePercent + "%"
-                    }
-                }
-
-                Rin.Clip {
-                    objectName: "editorZoomIn"
-                    width: Lumi.editorMiniButtonSize
-                    height: width
-                    radius: Lumi.controlRadius
-                    color: Lumi.controlHoverFill
-                    padding: 0
-                    onClicked: viewport.zoomBy(Lumi.editorZoomStep)
-
-                    Rin.Icon {
-                        anchors.centerIn: parent
-                        icon: "ic_fluent_add_20_regular"
-                        size: 16
-                        color: Lumi.textPrimary
-                    }
-                }
-            }
-
-            Rin.Text {
-                objectName: "editorZoomMode"
-                anchors.left: zoomRow.right
-                anchors.leftMargin: 10
-                anchors.right: parent.right
-                anchors.rightMargin: 16
-                anchors.verticalCenter: zoomRow.verticalCenter
-                typography: Rin.Typography.Caption
-                color: Lumi.textTertiary
-                elide: Text.ElideRight
-                text: editorWindow.autoScale ? qsTr("自动适应") : qsTr("手动档位")
             }
         }
     }

@@ -618,8 +618,14 @@ def _check_editor(app) -> None:
     # 下面这些常量**与 ui/Luminalium/Lumi.qml 的「主界面编辑器」一节同源**
     # （那边是权威），改一处要改两处。
     PANEL_W = 340
-    PANEL_HEADER_H = 56
-    BACK_BUTTON = 40
+    #: 面板下部常驻条的高度（2026-10-01 第六轮：缩放缓搬走后 84 → 48）。
+    PANEL_FOOTER_H = 48
+    #: 面板左沿中线那枚**圆按钮**的直径（收起面板）。
+    PANEL_HANDLE = 40
+    #: 预览区上那枚悬浮缩放缓：胶囊高度、离视口下沿的**视觉**距离、投影余量。
+    ZOOM_BAR_H = 40
+    ZOOM_BAR_MARGIN = 16
+    FLOAT_SHADOW_MARGIN = 14
     FOCUS_PAD_X, FOCUS_PAD_Y = 72, 56
     FOCUS_MAX = 2.0
     ZOOM_MAX = 4.0
@@ -844,53 +850,104 @@ def _check_editor(app) -> None:
         f"window={editor.width():.0f}x{editor.height():.0f}",
     )
     check(
-        "组件信息与缩放**常驻**在面板下部（贴底，不跟着设置项滚动）",
+        "组件信息**常驻**在面板下部（贴底，不跟着设置项滚动）",
         abs(footer.y() + footer.height() - inspector.height()) <= 1
         and abs(footer.width() - inspector.width()) <= 1
-        and _find_named(footer, "editorZoomRow") is not None
+        and abs(footer.height() - PANEL_FOOTER_H) <= 1
+        and _find_named(footer, "editorFooterInfoRow") is not None
         and _find_named(footer, "editorInspectorName") is not None,
         f"footer=({footer.x():.0f},{footer.y():.0f}) "
-        f"{footer.width():.0f}x{footer.height():.0f} "
+        f"{footer.width():.0f}x{footer.height():.0f}（期望高 {PANEL_FOOTER_H}）"
         f"panel={inspector.width():.0f}x{inspector.height():.0f}",
     )
-    # 面板顶部导航（2026-10-01 用户指令：「（右上角那个 ×）加大移到左边改为返回按钮」，
-    # 同时把顶部那块「设置项」标题 + 占位文案「删掉」）。
+
+    # ------------------------------------------------- 预览区上的悬浮缩放缓
+    # 2026-10-01（第六轮）用户指令：「缩放作为一个悬浮组件放在左侧的主界面预览
+    # 区域」。原先缩放缓长在面板下部常驻条里（与组件信息同一块），现在整块搬去
+    # 预览区。这里守三件事：**位置**（预览区里、底边居中、离视口下沿 16）、
+    # **归属**（不再是面板 / 常驻条的孩子）、**层序**（在暗罩之上、面板之下）。
+    zoom_bar = _find_named(content_root, "editorZoomBar")
+    zoom_surface = _find_named(content_root, "editorZoomBarSurface")
+    check(
+        "缩放缓成了预览区上的**浮出层**（不再长在面板下部常驻条里）",
+        zoom_bar is not None and zoom_surface is not None
+        and zoom_bar.isVisible()
+        and _find_named(footer, "editorZoomRow") is None
+        and _find_named(footer, "editorZoomLabel") is None
+        and _find_named(inspector, "editorZoomRow") is None,
+        f"bar={zoom_bar is not None} surface={zoom_surface is not None} "
+        f"常驻条里还有缩放={_find_named(footer, 'editorZoomRow') is not None}",
+    )
+    if zoom_bar is not None and zoom_surface is not None:
+        # 几何：胶囊落在**视口**里、水平居中、底边离视口下沿 16（视觉距离，
+        # 组件盒子外面那圈投影余量已经在调用方扣掉了）。
+        vs_x = viewport.mapToItem(content_root, 0, 0).x()
+        vs_y = viewport.mapToItem(content_root, 0, 0).y()
+        bar_x = zoom_bar.mapToItem(content_root, 0, 0).x()
+        bar_y = zoom_bar.mapToItem(content_root, 0, 0).y()
+        surf_x = zoom_surface.mapToItem(content_root, 0, 0).x()
+        surf_y = zoom_surface.mapToItem(content_root, 0, 0).y()
+        check(
+            "缩放缓压在预览区里：底边居中、离视口下沿一个边距",
+            abs((surf_x + zoom_surface.width() / 2) - (vs_x + viewport.width() / 2)) <= 1.5
+            and abs((surf_y + zoom_surface.height())
+                    - (vs_y + viewport.height() - ZOOM_BAR_MARGIN)) <= 1.5
+            and abs(zoom_surface.height() - ZOOM_BAR_H) <= 1
+            and bar_x > vs_x - FLOAT_SHADOW_MARGIN,
+            f"胶囊=({surf_x:.1f},{surf_y:.1f}) {zoom_surface.width():.0f}x"
+            f"{zoom_surface.height():.0f} 视口=({vs_x:.1f},{vs_y:.1f}) "
+            f"{viewport.width():.0f}x{viewport.height():.0f}",
+        )
+        check(
+            "缩放缓的层序对：在编辑态暗罩之上、右侧面板之下",
+            abs(float(zoom_bar.property("z")) - 12) <= 0.01
+            and 12 > float(dim.property("z"))
+            and 12 < float(inspector.property("z")),
+            f"zoom.z={zoom_bar.property('z')} dim.z={dim.property('z')} "
+            f"panel.z={inspector.property('z')}",
+        )
+
+    # 面板顶部导航（2026-10-01 用户指令：「（右上角那个 ×）加大移到左边改为返回
+    # 按钮」→ 同日第六轮又改口：「把返回按钮删掉 加一个圆按钮放在侧面板的中部」）。
+    # 于是顶部那条 ``inspectorNav``（只有一枚返回键 + 一条分隔线）**整条撤掉**，
+    # 出口换成圆心压在面板左沿、垂直居中的圆按钮。
     nav = _find_named(content_root, "editorInspectorNav")
     back = _find_named(content_root, "editorInspectorBack")
+    handle = _find_named(content_root, "editorInspectorHandle")
     stale = {
         name: _find_named(content_root, name) is not None
         for name in ("editorInspectorHeader", "editorInspectorTitle",
                      "editorViewBar", "editorInspectorClose",
-                     "editorInspectorPlaceholder")
+                     "editorInspectorPlaceholder", "editorInspectorNavEdge",
+                     "editorInspectorBackIcon")
     }
     check(
-        "面板顶部是导航条（旧的标题行 / 视图栏 / 右上角 × / 设置项占位全撤）",
-        nav is not None and back is not None
-        and abs(nav.y()) <= 1
-        and abs(nav.width() - inspector.width()) <= 1
-        and abs(nav.height() - PANEL_HEADER_H) <= 1
-        and not any(stale.values()),
+        "面板已无顶部导航条与返回键（旧的标题行 / 视图栏 / 右上角 × / 占位一并撤）",
+        nav is None and back is None and not any(stale.values()),
         f"nav={nav is not None} back={back is not None} "
         + " ".join(f"{k}={v}" for k, v in stale.items()),
     )
     check(
-        "返回键已加大并挪到面板左上（40 > 原来那枚 × 的 32）",
-        back.isVisible()
-        and abs(back.width() - BACK_BUTTON) <= 1
-        and abs(back.height() - BACK_BUTTON) <= 1
-        and back.x() < inspector.width() / 2
-        and abs(back.y() + back.height() / 2 - nav.height() / 2) <= 1,
-        f"back=({back.x():.1f},{back.y():.1f}) "
-        f"{back.width():.0f}x{back.height():.0f} "
-        f"nav={nav.width():.0f}x{nav.height():.0f}",
+        "出口改成**面板左沿中线**上的圆按钮（正圆 + 圆心压在左沿上）",
+        handle is not None
+        and handle.isVisible()
+        and abs(handle.width() - PANEL_HANDLE) <= 1
+        and abs(handle.height() - PANEL_HANDLE) <= 1
+        and abs(handle.width() - handle.height()) <= 1
+        and abs(handle.x() + handle.width() / 2) <= 1
+        and abs((handle.y() + handle.height() / 2) - inspector.height() / 2) <= 1,
+        f"handle={None if handle is None else (handle.x(), handle.y())} "
+        f"{None if handle is None else handle.width():.0f}x"
+        f"{None if handle is None else handle.height():.0f} "
+        f"面板高 {inspector.height():.0f}（中线 {inspector.height() / 2:.0f}）",
     )
     check(
-        "面板中部整块留给设置项（顶到导航条下沿、压住常驻条上沿）",
+        "设置项区顶到面板上沿（导航条撤掉后不再有 56px 的头部空档）",
         body is not None
-        and abs(body.y() - (nav.y() + nav.height())) <= 1
+        and abs(body.y()) <= 1
         and abs(body.y() + body.height() - footer.y()) <= 1,
         f"body={None if body is None else (body.y(), body.height())} "
-        f"nav.bottom={nav.y() + nav.height():.1f} footer.y={footer.y():.1f}",
+        f"footer.y={footer.y():.1f}",
     )
 
     # ---------------------------------------------------- 平铺版式（2026-10-01 第五轮）
@@ -1019,6 +1076,7 @@ def _check_editor(app) -> None:
     name_label = _find_named(content_root, "editorInspectorName")
     size_label = _find_named(content_root, "editorInspectorSize")
     zoom_label = _find_named(content_root, "editorZoomLabel")
+    mode_label = _find_named(content_root, "editorZoomMode")
     check(
         "常驻条写着被点中的组件名与自身尺寸（如「工具栏 318 × 62」）",
         name_label is not None and str(name_label.property("text")) != ""
@@ -1029,11 +1087,19 @@ def _check_editor(app) -> None:
         f"期望尺寸={round(sw)} × {round(sh)}",
     )
     check(
-        "常驻条百分比 = 相机比例（屏幕坐标系 1:1，100% 即真实像素）",
-        zoom_label is not None
+        "悬浮缩放缓的百分比 = 相机比例（屏幕坐标系 1:1，100% 即真实像素）",
+        zoom_label is not None and zoom_label.isVisible()
         and str(zoom_label.property("text")) == f"{round(plane.scale() * 100)}%",
         f"label={None if zoom_label is None else zoom_label.property('text')!r} "
         f"scale={plane.scale():.4f}",
+    )
+    check(
+        "悬浮缩放缓写着当前档位（自动适应 / 手动档位）",
+        mode_label is not None and mode_label.isVisible()
+        and str(mode_label.property("text"))
+        == ("自动适应" if bool(editor.property("autoScale")) else "手动档位"),
+        f"mode={None if mode_label is None else mode_label.property('text')!r} "
+        f"autoScale={editor.property('autoScale')}",
     )
 
     # ---------------------------------------------- 显示按钮文本（工具栏设置项）
@@ -1132,7 +1198,7 @@ def _check_editor(app) -> None:
     )
 
     # ---------------------------------------------------------------- 退出编辑态
-    editor.clearSelection()  # 走真实出口（面板 × / Esc 也调它）
+    editor.clearSelection()  # 走真实出口（面板左沿那枚圆按钮 / Esc 也调它）
     _settle()
     _wait_cam(lambda: abs(float(plane.scale()) - fit) <= 1e-3)
     check(
@@ -1155,19 +1221,26 @@ def _check_editor(app) -> None:
         QTest.mouseClick(editor, Qt.LeftButton, Qt.NoModifier,
                          QPoint(int(round(origin.x() + vx)), int(round(origin.y() + vy))))
 
-    # 同上：这一步也可能撞上「选中被打回全景」那个偶发（见上面 selectCorner 的说明）
-    for _attempt in range(3):
-        _click_viewport(plane.x() + (sx + sw / 2) * plane.scale(),
-                        plane.y() + (sy + sh / 2) * plane.scale())
-        _settle()
-        if str(editor.property("selectedCorner")) == corner_name:
-            break
+    def _select_dock() -> int:
+        """点画面里那条控制条 → 进编辑态；返回用掉的尝试次数（0 = 没成）。
+
+        ⚠️ 这一步会撞上「选中被打回全景」那个偶发（见上面 ``selectCorner`` 的
+        说明），所以照原样重试 3 次。
+        """
+        for attempt in range(3):
+            _click_viewport(plane.x() + (sx + sw / 2) * plane.scale(),
+                            plane.y() + (sy + sh / 2) * plane.scale())
+            _settle()
+            if str(editor.property("selectedCorner")) == corner_name:
+                return attempt + 1
+        return 0
+
+    select_attempts = _select_dock()
     check(
         "在窗口上真的点一下控制条 → 进入编辑态",
-        str(editor.property("selectedCorner")) == corner_name
-        and editor.property("editing") is True,
+        select_attempts > 0 and editor.property("editing") is True,
         f"selectedCorner={editor.property('selectedCorner')!r}（期望 {corner_name!r}）"
-        f" 尝试={_attempt + 1}",
+        f" 尝试={select_attempts}",
     )
 
     _click_viewport(viewport.width() / 2, viewport.height() / 2)
@@ -1179,6 +1252,29 @@ def _check_editor(app) -> None:
         and abs(plane.scale() - fit) <= 1e-3,
         f"selectedCorner={editor.property('selectedCorner')!r} "
         f"scale={plane.scale():.4f} fit={fit:.4f}",
+    )
+
+    # ---- 面板左沿那枚圆按钮（2026-10-01 第六轮）
+    # 它**一半悬在舞台上**（``x: -width/2``），「点在它的中心」正好压在
+    # 「面板 ↔ 舞台」这条边界上 —— 必须由面板那一层接住（面板 ``z: 20``），
+    # 不能穿到底下的舞台屏蔽层去：穿过去动作看着一样（都是回全景），链路其实不同，
+    # 而且意味着这枚按钮的一半是**点不着**的。
+    select_attempts = _select_dock()
+    handle_item = _find_named(content_root, "editorInspectorHandle")
+    if select_attempts > 0 and handle_item is not None:
+        hp = handle_item.mapToItem(
+            content_root,
+            QPointF(handle_item.width() / 2, handle_item.height() / 2))
+        QTest.mouseClick(editor, Qt.LeftButton, Qt.NoModifier,
+                         QPoint(int(round(hp.x())), int(round(hp.y()))))
+        _settle()
+    check(
+        "点面板左沿的圆按钮 → 退出编辑态（与 Esc 同一个出口）",
+        select_attempts > 0
+        and str(editor.property("selectedCorner")) == ""
+        and editor.property("editing") is False,
+        f"selectedCorner={editor.property('selectedCorner')!r} "
+        f"handle={handle_item is not None} 进编辑态尝试={select_attempts}",
     )
 
     # 快捷键：Esc 退出编辑态、Ctrl+= / Ctrl+- 调档、Ctrl+0 回自动档

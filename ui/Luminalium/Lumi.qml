@@ -383,12 +383,14 @@ QtObject {
         ? flatten(themeColors.layerColor, themeColors.backgroundAcrylicColor)
         : "#303030"
 
-    /*! 面板**顶部导航条**的高度：只放返回键（离开编辑态）。 */
-    readonly property int editorPanelHeaderHeight: 56
+    /*! 面板下部**常驻条**的高度：只剩组件信息（「工具栏 318 × 62」）。
+        常驻条不参与滚动 —— 它是「现在在编谁」的常显读数。
 
-    /*! 面板下部**常驻条**的高度：组件信息（「工具栏 318 × 62」）+ 缩放缓。
-        常驻条不参与滚动 —— 它是「现在在编谁、看多大一块」的常显读数。 */
-    readonly property int editorPanelFooterHeight: 84
+        2026-10-01（第六轮）用户指令「把返回按钮删掉 / 缩放作为一个悬浮组件放在
+        左侧的主界面预览区域」：顶部的导航条（``editorPanelHeaderHeight``）整条
+        撤掉 —— 面板回到「设置项区 + 常驻条」两段式；缩放缓搬去预览区，
+        这里只剩一行读数，所以 84 → 48。 */
+    readonly property int editorPanelFooterHeight: 48
 
     /*! 聚焦取景的留白（**视口像素**，不随缩放变化）：让被编辑的组件周围
         留一圈上下文，不至于顶满视口。 */
@@ -423,12 +425,27 @@ QtObject {
     /*! 面板里小按钮（缩放 ± / 百分比）的边长。 */
     readonly property int editorMiniButtonSize: 28
 
-    /*! 面板**返回键**的边长 —— 比小按钮大一档。
-        2026-10-01 用户指令「（右上角那个 ×）加大移到左边改为返回按钮」：
-        它已经不是角落里那个不起眼的关闭键，而是面板的导航键，所以按 Fluent
-        的大按钮档（40）来，图标仍是 20（40 配 20 是 Fluent 的标准配对，
-        再大的图标在 40 的方框里会顶边）。 */
-    readonly property int editorBackButtonSize: 40
+    /*! 面板**中部圆按钮**（收起面板）的直径。
+
+        2026-10-01（第六轮）用户指令：「把返回按钮删掉 / 加一个圆按钮放在侧面板的
+        中部」—— 原先那枚 40 的方形返回键在**顶部**，现在换成**圆心压在面板左沿、
+        垂直居中**的圆钮：一半悬在舞台上，读作「把面板收回去」的把手（与
+        ``editorBackButtonSize`` 同尺寸，只是从方角换成正圆、从顶边挪到中线）。 */
+    readonly property int editorPanelHandleSize: 40
+
+    /*! 预览区上那枚**悬浮缩放缓**的高度（``EditorZoomBar``）。
+        与 ``editorPanelHandleSize`` 同档，但两者不是一回事：那个是面板把手，
+        这个是预览区的浮出层 —— 别互相引用。 */
+    readonly property int editorZoomBarHeight: 40
+
+    /*! 悬浮组件（缩放缓）的投影 —— 与启动画面同源（Fluent flyout 档），但收小
+        一档：它只有 40 高，flyout 那档（blur 24 / offsetY 8）的影子会比本体
+        还大一圈。``editorFloatShadowMargin`` 是给影子留的余量（``EditorZoomBar``
+        的容器外撑这么多），摆放时按它扣。 */
+    readonly property int editorFloatShadowBlur: 10
+    readonly property int editorFloatShadowOffsetY: 3
+    readonly property int editorFloatShadowMargin: editorFloatShadowBlur
+        + editorFloatShadowOffsetY + 1
 
     /*! 设置页「主界面」里那张**推广卡**（「编辑主界面的新方式」）的版式 ——
         照搬 Class Widgets 2 的 ``ClassWidgets/Components/Introduction.qml``

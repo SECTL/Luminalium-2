@@ -41,6 +41,9 @@
   ``PAGE_WIDTH`` 的推导。太窄会让页面里的并排卡片换行，看着像版式坏了。
 - ``LUMI_PREVIEW_EDIT=<corner>`` —— 让主界面编辑器停在**编辑态**并聚焦这个角落
   （如 ``bottom_center``），输出到 ``main_editor_edit.png``。默认输出全景态。
+  **配** ``LUMI_PREVIEW_THEME=light`` 时改出编辑器的**浅色**版
+  （``main_editor_edit_light.png``，只出这一张）—— 右侧面板 / 面板左沿的圆按钮 /
+  预览区上的悬浮缩放缓都取主题色，浅色下的对比度只能靠它核验。
 - ``LUMI_PREVIEW_LABELS=1`` —— 打开「显示按钮文本」（``presentation.buttons.
   show_labels``，**只在内存里改、抓完图还原**），控制条按名称文本撑宽。
   输出文件名带 ``_labels`` 后缀，不覆盖常态那两张。
@@ -82,7 +85,13 @@ IS_LIGHT = os.environ.get("LUMI_PREVIEW_THEME", "dark").lower().startswith("l")
 #: 只渲染设置页（``page_*.png``）。用来核验**浅色主题**下的页面版式 ——
 #: 浅色那一版默认只出启动画面（见 ``ONLY_SPLASH``），单独跑这档才看得到页面。
 PAGE_ONLY = os.environ.get("LUMI_PREVIEW_PAGE_ONLY", "") not in ("", "0")
-ONLY_SPLASH = (IS_LIGHT and not PAGE_ONLY) or os.environ.get(
+#: 主界面编辑器停在编辑态时要聚焦的角落（空 = 全景态）。见模块 docstring。
+PREVIEW_EDIT = os.environ.get("LUMI_PREVIEW_EDIT", "").strip()
+#: 浅色主题 **+** 编辑态 = 只出编辑器的**浅色**版（``main_editor_edit_light.png``）。
+#: 编辑器里的右侧面板、面板左沿的圆按钮、预览区上的悬浮缩放缓都取主题色，
+#: 浅色那一档的对比度只能靠这张图核验 —— 浅色主题默认只出启动画面，得单独开口子。
+EDITOR_LIGHT = IS_LIGHT and bool(PREVIEW_EDIT)
+ONLY_SPLASH = (IS_LIGHT and not PAGE_ONLY and not EDITOR_LIGHT) or os.environ.get(
     "LUMI_PREVIEW_ONLY", "") == "splash"
 #: 单页预览的文件名后缀 —— 浅色那次不能把深色的常态图覆盖掉。
 THEME_TAG = "light" if IS_LIGHT else "dark"
@@ -106,8 +115,6 @@ PAGE_HEIGHT = int(os.environ.get("LUMI_PREVIEW_PAGE_HEIGHT", "940") or 940)
 #: ``measure_hero.py`` 量预览图）。
 #: 历史值 1000（内容列 846）是「窗口还开 900」那个年代定的，窗口改宽后偏宽 5%，故重算。
 PAGE_WIDTH = int(os.environ.get("LUMI_PREVIEW_PAGE_WIDTH", "961") or 961)
-#: 主界面编辑器停在编辑态时要聚焦的角落（空 = 全景态）。见模块 docstring。
-PREVIEW_EDIT = os.environ.get("LUMI_PREVIEW_EDIT", "").strip()
 #: 控制条「显示按钮文本」的预览开关。**只在内存里改配置**（``persist=False``），
 #: 抓完图还原 —— 预览工具不该动用户的 ``config/config.json``。
 PREVIEW_LABELS = os.environ.get("LUMI_PREVIEW_LABELS", "") not in ("", "0")
@@ -357,6 +364,10 @@ def main() -> int:
                 (name.replace(".png", f"_{THEME_TAG}.png"), window)
                 for name, window in page_hosts
             ]
+        elif EDITOR_LIGHT:
+            # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
+            targets = ([] if editor is None
+                       else [("main_editor_edit_light.png", editor)])
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
@@ -377,6 +388,18 @@ def main() -> int:
 
         for name, window in targets:
             try:
+                # ⚠️ 抓**两帧、留第二帧**。
+                #
+                # ``grabWindow()`` 是同步渲染，但**待处理的场景图更新**（刚被 QML
+                # 创建出来的项、刚跑完动画写进去的属性）要等下一次同步才会落进画面 ——
+                # 于是第一次抓到的可能是「还差几块」的那一帧。
+                #
+                # 2026-10-01 实测（浅色编辑态那一档，编辑器是唯一的目标窗口）：
+                # 第一次跑出来的图里右侧面板、面板贴边、暗罩都在，**预览区里那条
+                # 控制条与底部的悬浮缩放缓整块不见**；同一份代码再跑一次就全了 ——
+                # 典型的「抓早了」，与 ``PREVIEW_EDIT`` 那个 ``raise_()`` 补丁同源。
+                # 先抓一帧丢掉，等于手动把待处理的更新推完，第二帧才是当前状态。
+                window.grabWindow()
                 image = window.grabWindow()
             except RuntimeError as exc:  # 窗口已被 QML 引擎回收
                 print(f"[FAIL] {name}: {exc}")

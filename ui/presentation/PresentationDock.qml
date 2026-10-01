@@ -71,6 +71,7 @@ Item {
     readonly property var exitCfg: cfg.exit !== undefined ? cfg.exit : ({})
     readonly property var toolsCfg: cfg.tools !== undefined ? cfg.tools : []
     readonly property var actionsCfg: cfg.actions !== undefined ? cfg.actions : []
+    readonly property var penCfg: cfg.pen !== undefined ? cfg.pen : ({})
 
     // ---- 尺寸（默认值就是 Lumi 里按实测比例定的那一档）----
     readonly property int barHeight: cfg.bar_height !== undefined ? cfg.bar_height : 56
@@ -232,18 +233,79 @@ Item {
         return (index >= 0 && index < toolsCfg.length) ? toolsCfg[index].id : ""
     }
 
+    // ----------------------------------------------------------- 笔的选单
+    // 2026-10-01 用户指令：「当目前工具已经是笔的时候弹出如图的选单」——
+    // 第一下点「笔」是**切工具**，已经切过去了再点一下才弹选单（与 Figma /
+    // PowerPoint 自己的工具按钮同一种习惯：二次点击 = 打开这个工具的选项）。
+    /*! 色板（``presentation.pen.palette``，缺省 30 色）。
+        ⚠️ 只有**带工具组的**控制条才给色板：翻页 pill 也挂着本组件，给了就是
+        白建 30 个色点（它们永远不可见）。空数组 → ``Repeater`` 一个项都不建。 */
+    readonly property var penPaletteColors: present("tools") && penCfg.palette !== undefined
+        ? penCfg.palette : []
+    readonly property int penPaletteColumns: penCfg.columns !== undefined
+        ? penCfg.columns : 10
+    /*! 还没选过颜色时预点亮的那一格（只是选单的初始焦点，不会写进 PowerPoint）。 */
+    readonly property color penDefaultColor: penCfg.default !== undefined
+        ? penCfg.default : "transparent"
+    /*! 选单该点亮哪一格：后端记着的墨迹色；没选过时用配置的默认色。
+        ⚠️ 它只反映「用户在我们这儿选过的色」—— 用户若在 PowerPoint 自带的
+        UI 里改笔色，这里不会跟着变（那要跨线程回读 COM 快照，见
+        ``ppt_controller._refresh_snapshot`` 里 pen_color 的节流读取）。 */
+    readonly property color penSelectedColor: Backend.penColor !== ""
+        ? Backend.penColor : penDefaultColor
+    /*! 选单展开着没有（``interactiveRect`` 与真机区域塑形都看它）。 */
+    readonly property bool paletteOpened: penPalette.opened
+
+    /*! 按下分页时选的是谁 —— ``clicked`` 落地时 TabBar 早把 ``currentIndex``
+        换好了，那时再读 ``Backend.activeTool`` 分不清「切工具」和「再点一次」。 */
+    property string toolBeforePress: ""
+
+    function noteToolPress() {
+        toolBeforePress = Backend.activeTool
+    }
+
+    function activateTool(toolId) {
+        var was = toolBeforePress
+        toolBeforePress = ""
+        if (toolId !== "pen" || was !== "pen") {
+            // 这一下是「切工具」（或点了别的），选单跟着收起来
+            penPalette.opened = false
+            return
+        }
+        penPalette.opened = !penPalette.opened
+    }
+
     // ------------------------------------------------------------- 控制条本体
     // 根节点是 Item（不再是独立窗口）：所有角落的控制条都挂在
     // TopWindow.qml（全屏「顶层窗口」）的容器里，由 Python 定位。
     // 窗口级属性（置顶 / 无边框 / 点击穿透）由顶层窗口统一负责。
 
     /*! 本条表面（不含投影余量）的交互矩形，坐标相对本 Item。
-        顶层窗口用它计算「鼠标何时落在工具栏上」（其余区域点击穿透）。 */
-    readonly property rect interactiveRect: Qt.rect(
-        bar.margin, bar.margin,
-        Math.max(width - bar.margin * 2, 0),
-        Math.max(height - bar.margin * 2, 0)
-    )
+        顶层窗口用它计算「鼠标何时落在工具栏上」（其余区域点击穿透）。
+
+        ⚠️ 它是**动态**的：笔选单展开时，卡片浮在工具栏**上方**（dock Item 的
+        包围盒之外），必须一并包进来 —— 否则那块区域既画不出来（``SetWindowRgn``
+        裁掉）也点不动（点击直接穿透到 PowerPoint，在幻灯片上乱画一笔）。
+        变化时会发 ``hitRectChanged``，Python 侧（``windows.py``）据此**立刻**
+        重算窗口区域，不用等 800ms 一拍的 ``_assert_topmost``。 */
+    readonly property rect interactiveRect: {
+        // 控制条底板表面：围在投影余量内侧
+        var left = bar.x + bar.margin
+        var right = bar.x + bar.implicitWidth - bar.margin
+        var top = bar.y + bar.margin
+        var bottom = bar.y + bar.implicitHeight - bar.margin
+        if (paletteOpened && penPalette.visible) {
+            left = Math.min(left, penPalette.x)
+            right = Math.max(right, penPalette.x + penPalette.width)
+            top = Math.min(top, penPalette.y)
+        }
+        return Qt.rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
+    }
+
+    /*! 命中矩形变了（笔选单开合）。Python 侧连这个信号去重算窗口区域。 */
+    signal hitRectChanged()
+
+    onInteractiveRectChanged: hitRectChanged()
 
     implicitWidth: bar.implicitWidth
     implicitHeight: bar.implicitHeight
@@ -288,12 +350,22 @@ Item {
                 model: dock.toolsCfg
 
                 delegate: ToolSegmentItem {
+                    // 名字带 id，自检与调试找得到具体是哪一个工具（「指针 / 笔 /
+                    // 橡皮」三个项长得一模一样）
+                    objectName: "dockTool_" + (modelData.id !== undefined
+                                               ? modelData.id : "?")
                     itemHeight: dock.contentHeight
                     glyphSize: dock.iconSize
                     tooltip: modelData.label !== undefined ? modelData.label : ""
                     icon.name: modelData.icon !== undefined ? modelData.icon : ""
                     label: modelData.label !== undefined ? modelData.label : ""
                     showLabel: dock.showLabels
+                    // 选单正开着时给「笔」描一圈（见 ``expanded``）
+                    expanded: dock.paletteOpened && modelData.id === "pen"
+                    // 按下时就记住「选的是谁」（见 ``noteToolPress``），
+                    // 抬起后 ``clicked`` 里才判得出是切工具还是再点一次。
+                    onPressed: dock.noteToolPress()
+                    onClicked: dock.activateTool(modelData.id)
                 }
             }
         }
@@ -405,6 +477,44 @@ Item {
         }
     }
 
+    // ==================================================== 笔的选单（浮出层）
+    // 声明在 ``bar`` **之后** → 绘制、命中都在控制条之上。
+    //
+    // ⚠️ 它**不进** dock 的 ``implicitWidth/Height``（见组件头注释）：dock 一
+    //    改尺寸，``windows.py::_position_dock`` 就要重摆，条会在「长大 / 归位」
+    //    之间闪一帧。尺寸不动、纯靠绘制溢出，是这个交互最省事的形态 ——
+    //    代价是 ``interactiveRect`` 必须自己把它包进来（上面那段就是）。
+    PenPaletteCard {
+        id: penPalette
+        objectName: "penPalette"
+
+        opened: false
+        palette: dock.penPaletteColors
+        columns: dock.penPaletteColumns
+        selectedColor: dock.penSelectedColor
+
+        // 贴着工具栏底板上沿往上摆：卡片**本体**（不含投影余量）的底边距底板上
+        // 沿 ``Lumi.dockPaletteGap``。卡片自己的坐标含 shadowMargin，所以两边都
+        // 要各扣/加一次。
+        y: bar.y + bar.margin - Lumi.dockPaletteGap
+           - penPalette.shadowMargin - penPalette.cardHeight
+        // 左沿与底板的左沿对齐；卡片比条还宽，贴右下的角落会溢出屏幕 ——
+        // 这时整块往左收（可用宽度从父级拿：父级是铺满整屏的容器）。
+        x: {
+            var want = bar.margin - penPalette.shadowMargin
+            var limit = dock.parent ? dock.parent.width - dock.x : 0
+            if (limit > 0 && want + penPalette.width > limit) {
+                want = limit - penPalette.width
+            }
+            return want
+        }
+
+        onColorPicked: function (value) {
+            // ⚠️ 必须转字符串：``color`` 直接喂给 ``@Slot(str)`` 过不了类型转换。
+            Backend.setPenColor(value.toString())
+        }
+    }
+
     // 用户点击后 currentIndex 的绑定被打断；后端发起的工具切换
     // （快捷键 / 托盘菜单）由这里继续同步到选中页。
     Connections {
@@ -414,6 +524,18 @@ Item {
             var index = dock.toolIndex(Backend.activeTool)
             if (toolSegment.currentIndex !== index) {
                 toolSegment.currentIndex = index
+            }
+            // 选单属于「笔」这个工位：换成指针 / 橡皮就收起来（否则它会跟着
+            // 挂在条上方，而那时已经没有「笔的选项」可言了）。
+            if (Backend.activeTool !== "pen") {
+                penPalette.opened = false
+            }
+        }
+
+        // 退出放映 → 收起选单：下一次放映进来时不该看到上次遗留的一块卡片。
+        function onPresentationActiveChanged() {
+            if (!Backend.presentationActive) {
+                penPalette.opened = false
             }
         }
     }

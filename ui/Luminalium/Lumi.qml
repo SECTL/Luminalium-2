@@ -243,17 +243,48 @@ QtObject {
     /*! 竖版沿轴（上下）留白 = 横版翻页 pill 的 surface_padding_x（4）。 */
     readonly property int dockSidePagerPadding: 4
 
-    // ---- 墨迹颜色调色板（PowerPoint 的 InkColorPicker 网格，L1 原表）----
-    // 这张表**顺序即 PowerPoint 调色板里的行列坐标**：从 (0,0) 白色起、
-    // 每行 10 格往下数。键盘走位要靠这个坐标（上 3 下 row、左 12 右 col 再回车），
-    // 所以数组顺序不能改；缺的格子（row1 col2 等）在 Office 里本来就不存在。
-    // 深色底板上的笔色预览也取这里的值。
-    readonly property var inkPalette: [
-        "#FFFFFF", "#000000", "#E7E6E6", "#44546A", "#4472C4",
-        "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47",
-        "#C00000", "#FF0000", "#FFFF00", "#92D050", "#00B050",
-        "#00B0F0", "#0070C0", "#002060", "#7030A0"
-    ]
+    // ---- 工具选单（笔的色板浮出层，``presentation/PenPaletteCard.qml``）----
+    // 2026-10-01 用户指令：「当目前工具已经是笔的时候弹出如图的选单，图片的只供
+    // 参考，实际的颜色列表要更多更丰富」。色板本身**不在这里**（30 色、可配置，
+    // 见 ``config/default_config.json`` 的 ``presentation.pen.palette``），
+    // 这里只放尺寸与配色。
+    /*! 选单卡片与工具栏底板之间的竖直间距。 */
+    readonly property int dockPaletteGap: 10
+    /*! 卡片内边距（四周同档）。 */
+    readonly property int dockPalettePadding: 16
+    /*! 卡片圆角。**不是胶囊**（L1 的圆语言只用在控制条本体上）：这是一块独立
+        浮出的大表面，走 Fluent 的 OverlayCornerRadius 一档。 */
+    readonly property int dockPaletteRadius: 14
+    /*! 卡片投影余量 —— 与 ``dockShadowMargin`` 同一个用途（留出画阴影的地方），
+        但卡片是从零起的一块矩形，不需要那么大的余量。 */
+    readonly property int dockPaletteShadowMargin: 20
+    /*! 色板圆点的直径 / 圆点间距。 */
+    readonly property int dockSwatchSize: 30
+    readonly property int dockSwatchSpacing: 10
+    /*! 选中色点周围那圈白环的宽度，以及白环与色点之间的空隙 —— 就是截图里
+        「选中的黄点外面套一圈白」的那个样子。
+
+        ⚠️ 环色**跟着主题文本色走**（深色=白、浅色=黑），别写死白色：浅色档
+        卡片底色本身就是白的，白环压在白色卡片上等于没有，选中态只剩「色点
+        缩了一圈」这一个线索（2026-10-01 浅色预览实锤）。 */
+    readonly property int dockSwatchRingWidth: 2
+    readonly property int dockSwatchRingGap: 2
+    readonly property color dockSwatchRingColor: textPrimary
+    /*! 预览区高度（波浪笔迹画在它里面）。 */
+    readonly property int dockPalettePreviewHeight: 54
+    /*! 预览笔迹的粗细 —— 比 PowerPoint 的实际笔迹细一点：这里是「看颜色」的
+        示意图，太粗会糊成一团反而看不清色调。 */
+    readonly property real dockPalettePreviewStroke: 5
+    /*! 卡片底色：**不跟控制条底板共用 65% 那档** —— 色板要能读出真实颜色，
+        底下透出放映画面会让每个色点都偏色。这里按「实底」压到 92%。 */
+    readonly property color dockPaletteBg: fade(surfaceBg, 0.92)
+    /*! 卡片描边：``hairline`` 同源（主题的 DividerStrokeColorDefault）——
+        深色下 ``cardBorderColor`` 是黑 10%，压在深底板上等于没有。 */
+    readonly property color dockPaletteBorder: hairline
+    /*! 卡片里两个小标题（「颜色」「预览」）的字体色。 */
+    readonly property color dockPaletteLabel: textSecondary
+    /*! 还没选中任何一格时，预览笔迹用的颜色（= 卡片底色上一道中性线）。 */
+    readonly property color dockPaletteIdleStroke: fade(textPrimary, 0.35)
 
     // ================================================================== 快捷面板
     //

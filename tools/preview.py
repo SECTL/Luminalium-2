@@ -50,6 +50,9 @@
 - ``LUMI_PREVIEW_PAGER=side|bottom`` —— 切「翻页组件位置」（``presentation.pager.
   position``，同样只在内存里改、抓完图还原）：side = 竖版两侧中间，bottom = 横版
   两侧下部。输出文件名带 ``_pager_<值>`` 后缀。
+- ``LUMI_PREVIEW_PEN=1`` —— 把工具切到「笔」并**展开笔的选单**（PenPaletteCard），
+  输出 ``top_window_pen.png``；``LUMI_PREVIEW_PEN_COLOR`` 指定预点亮的颜色
+  （默认 ``#EC4899``，故意跟配置默认的黄色错开，好核对「选中环 + 预览笔迹」）。
 """
 
 from __future__ import annotations
@@ -124,6 +127,19 @@ PREVIEW_PAGER = os.environ.get("LUMI_PREVIEW_PAGER", "").strip().lower()
 if PREVIEW_PAGER not in ("", "side", "bottom"):
     print(f"[WARN] LUMI_PREVIEW_PAGER 只认 side / bottom，收到 {PREVIEW_PAGER!r}，忽略")
     PREVIEW_PAGER = ""
+#: 笔的选单（PenPaletteCard）预览：把工具切到「笔」并展开选单，输出
+#: ``top_window_pen.png``。同样只改内存。
+PREVIEW_PEN = os.environ.get("LUMI_PREVIEW_PEN", "") not in ("", "0")
+#: 选单预览里预点亮的颜色（``presentation.pen.default`` 之外另挑一个，
+#: 好把「选中环 + 预览笔迹跟着变」一起看掉）。
+PREVIEW_PEN_COLOR = os.environ.get("LUMI_PREVIEW_PEN_COLOR", "#EC4899")
+#: 浅色主题 **+** 笔选单 = 只出那一张（``top_window_pen_light.png``）。
+#: 浅色档默认只出启动画面，看选单得单独开口子 —— 与 ``EDITOR_LIGHT`` 同一个理由：
+#: 色板底色、描边、小标题都取主题色，浅色下「白点/黑点会不会与底色糊在一起」
+#: 只有这张图能核验。
+PEN_LIGHT = IS_LIGHT and PREVIEW_PEN
+if PEN_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 见上：把「浅色只出启动画面」让开
 #: 翻页组件位置 → 该形态下**启用**的角落（与 bridge.py 的常量同一份口径）
 PAGER_POSITION_CORNERS = {
     "side": ("middle_left", "middle_right"),
@@ -142,6 +158,17 @@ def preview_name(name: str) -> str:
     if PREVIEW_PAGER:
         stem += f"_pager_{PREVIEW_PAGER}"
     return stem + ext
+
+
+def _find_by_name(item, name: str):
+    """在 QQuickItem 树里按 objectName 找一项（``smoke.py`` 同名辅助的精简版）。"""
+    for child in item.childItems():
+        if child.objectName() == name:
+            return child
+        found = _find_by_name(child, name)
+        if found is not None:
+            return found
+    return None
 
 
 def main() -> int:
@@ -253,6 +280,18 @@ def main() -> int:
         else:
             dock.setY(PREVIEW_H - dock.height() - margin_y + shadow)
         dock.setX(x)
+
+    # 笔的选单预览：把工具切到「笔」（分段高亮成笔）并展开底中那条工具栏上的
+    # 选单 —— 一并设好一个「已选中的颜色」，好把「选中环 + 预览笔迹同色」看掉。
+    if PREVIEW_PEN and container is not None:
+        backend.selectTool("pen")
+        backend.setPenColor(PREVIEW_PEN_COLOR)
+        center_dock = _find_by_name(container, "penPalette")
+        # 底中那条工具栏才有工具组；找不到就不管（角落配置里没有它）
+        if center_dock is not None:
+            center_dock.setProperty("opened", True)
+        else:
+            print("[WARN] 没找到 penPalette（底中工具栏没启用工具组？）")
 
     # 设置窗口：默认页由 NavigationView 在 Component.onCompleted 里推入
     settings = None
@@ -368,10 +407,19 @@ def main() -> int:
             # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
             targets = ([] if editor is None
                        else [("main_editor_edit_light.png", editor)])
+        elif PEN_LIGHT:
+            # 浅色主题 + 笔选单：只出顶层窗口那一张（见 ``PEN_LIGHT``）
+            targets = ([] if top_window is None
+                       else [("top_window_pen_light.png", top_window)])
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
-                targets.append((preview_name("top_window.png"), top_window))
+                # 笔选单那一档单独一个文件名：常态那张（选单收起）要留着对照
+                targets.append((
+                    preview_name("top_window_pen.png" if PREVIEW_PEN
+                                 else "top_window.png"),
+                    top_window,
+                ))
             if settings is not None:
                 targets.append(("settings.png", settings))
             if splash is not None:

@@ -81,6 +81,8 @@ class Backend(QObject):
     presentationActiveChanged = Signal()
     slideChanged = Signal()
     activeToolChanged = Signal()
+    #: 墨迹颜色变了（QML 侧的笔选单靠它回显选中的那一格）
+    penColorChanged = Signal()
     shortcutsChanged = Signal()
     presentationConfigChanged = Signal()
     presentationScreenChanged = Signal()
@@ -117,7 +119,17 @@ class Backend(QObject):
         self._presentation_active = False
         self._slide_index = 0
         self._slide_total = 0
-        self._active_tool = "pen"
+        #: 默认工具是**鼠标指针**（``arrow``）。
+        #:
+        #: ⚠️ 2026-10-01 用户指令「顶层窗口的工具栏的 Segmented 默认工具不应该
+        #: 是鼠标指针吗？」—— 这里原本是 ``pen``，与配置里 ``presentation.tools``
+        #: 的排布意图（``arrow`` 放第一个，见该段注释）自相矛盾：控制条一出来
+        #: 就高亮着「笔」，用户得先点一下指针才能正常放映，等于默认把放映
+        #: 变成书写。默认必须是「什么都不做」的那个工具。
+        self._active_tool = "arrow"
+        #: 墨迹颜色（``#RRGGBB``）。空串 = 还没有选过 —— QML 侧据此决定
+        #: 哪一格点亮（见 :meth:`setPenColor`）。
+        self._pen_color = ""
         self._status_text = ""
 
         #: 启动画面进度（0..1）与阶段文字。由应用层按真实里程碑推进
@@ -256,6 +268,16 @@ class Backend(QObject):
         return self._active_tool
 
     activeTool = Property(str, _get_active_tool, notify=activeToolChanged)
+
+    def _get_pen_color(self) -> str:
+        return self._pen_color
+
+    #: 当前墨迹颜色（``#RRGGBB``，空串 = 还没选过）。
+    #:
+    #: ⚠️ 必须是 ``@Property`` 而不是 ``@Slot``：QML 侧把后端的 ``@Slot`` 当
+    #: **属性**读**永远不报错**，拿到的是函数的形参个数（0）—— 症状是静默走
+    #: 降级分支，这个坑本项目在 ``licenseText`` 上踩过一次。
+    penColor = Property(str, _get_pen_color, notify=penColorChanged)
 
     def _get_status_text(self) -> str:
         return self._status_text
@@ -555,6 +577,30 @@ class Backend(QObject):
             self._active_tool = tool
             self.activeToolChanged.emit()
         self.actionTriggered.emit(f"tool:{tool}")
+
+    @Slot(str)
+    def setPenColor(self, color: str) -> None:
+        """选墨迹颜色（笔选单里点一格）。
+
+        ``color`` 是 ``#RRGGBB``（可带 alpha，``#AARRGGBB`` 也认，取后六位）。
+        先落进本对象（QML 靠它回显选中格），再经 ``actionTriggered`` 交给
+        应用层调 PowerPoint 的 ``View.PointerColor``。
+
+        ⚠️ 非法串**直接丢弃**且不改状态：选单里的格子全来自配置，正常不会
+        走到这儿，但这里是 QML 能直接调到的公开槽，别让它把 ``penColor``
+        写成半截的垃圾值（回显会跟着错）。
+        """
+        value = str(color or "").strip().lstrip("#").upper()
+        if len(value) == 8:  # #AARRGGBB → 取 RGB
+            value = value[2:]
+        if len(value) != 6 or any(c not in "0123456789ABCDEF" for c in value):
+            log.warning("忽略非法的墨迹颜色: %r", color)
+            return
+        hex_color = "#" + value
+        if hex_color != self._pen_color:
+            self._pen_color = hex_color
+            self.penColorChanged.emit()
+        self.actionTriggered.emit(f"pen_color:{hex_color}")
 
     @Slot(str)
     def triggerAction(self, action_id: str) -> None:

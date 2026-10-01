@@ -481,7 +481,32 @@ class WindowManager(QObject):
             root.setParentItem(container)
             root.widthChanged.connect(lambda *_, n=name: self._schedule_reposition(n))
             root.heightChanged.connect(lambda *_, n=name: self._schedule_reposition(n))
+            # 命中矩形**不是**跟着尺寸走的：笔的选单（PenPaletteCard）浮在控制条
+            # 上方 —— 那是 dock Item 的包围盒之外，尺寸一点没变，但区域塑形必须
+            # 把这块补进去（否则卡片既画不出来也点不动，点击会穿透到 PowerPoint
+            # 在幻灯片上乱画）。控制条为此发 ``hitRectChanged``。
+            self._connect_hit_rect(root)
             self._docks[name] = root
+
+    def _connect_hit_rect(self, dock) -> None:
+        """接住控制条的 ``hitRectChanged``，尽快重算窗口区域。
+
+        区域塑形平时跟着 ``_assert_topmost``（800ms 一拍）走，对「拖窗口」这类
+        慢变化够了；笔选单却是点一下瞬间长出来的，那 800ms 里新增的那块还没进
+        区域。转发到 ``QTimer.singleShot(0, ...)``：等 QML 的绑定都落地了再读
+        ``interactiveRect``，读到的一定是新值。
+        """
+        signal = getattr(dock, "hitRectChanged", None)
+        if signal is None:  # pragma: no cover - 别的控制条还没有这个信号
+            return
+        try:
+            signal.connect(self._schedule_region_sync)
+        except (RuntimeError, TypeError):  # pragma: no cover
+            log.debug("控制条 %s 的 hitRectChanged 接不上", dock.objectName(),
+                      exc_info=True)
+
+    def _schedule_region_sync(self) -> None:
+        QTimer.singleShot(0, self._sync_input_mode)
 
     def _destroy_docks(self) -> None:
         """销毁全部控制条实例（重建前用）。

@@ -289,6 +289,20 @@ class LuminaliumApplication:
             log.info("切换工具: %s", tool)
             return
 
+        if action.startswith("pen_color:"):
+            # 笔选单里点了一格颜色（``#RRGGBB``）。和 ``tool:`` 一样**先于**
+            # 「在放映中吗」的判断 —— 颜色是在 COM 层生效的，不该被窗口探测
+            # 的时序挡住；控制条本来就只在放映中出现。
+            code = action.split(":", 1)[1].lstrip("#")
+            try:
+                r, g, b = (int(code[i:i + 2], 16) for i in (0, 2, 4))
+            except (ValueError, IndexError):
+                log.warning("无法解析墨迹颜色: %r", action)
+                return
+            self.ppt.set_pen_color(r, g, b, hwnd)
+            log.info("切换墨迹颜色: #%s", code.upper())
+            return
+
         if not state.active:
             log.info("当前没有放映，忽略动作: %s", action)
             return

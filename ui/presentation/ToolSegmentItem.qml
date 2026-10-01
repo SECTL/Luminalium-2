@@ -50,6 +50,11 @@ Rin.SegmentedItem {
     property string label: ""
     /*! 是否在图标旁显示 ``label``。 */
     property bool showLabel: false
+    /*! 「这个工具的选单正开着」（目前只有笔有选单）。
+        选中钮外面再套一圈主题色描边 —— 顶层窗口是整窗穿透的，选单也没有关闭
+        按钮，用户唯一的退路就是「再点一下这个工具」；没有这圈提示，他很难
+        知道「再点一下能关」。 */
+    property bool expanded: false
 
     /*! 图标与文字之间的间距 / 文字右端留白（与 ``IconButton`` 同档）。 */
     readonly property int labelGap: Lumi.dockLabelGap
@@ -109,6 +114,18 @@ Rin.SegmentedItem {
                     easing.type: Easing.OutQuart
                 }
             }
+        }
+
+        /*! 「选单开着」的提示环（见 ``expanded``）。画在圆钮**之后**（= 上面），
+            贴着项的外沿，1px 主题色。 */
+        Rectangle {
+            objectName: "segmentExpandedRing"
+            visible: root.expanded
+            anchors.fill: parent
+            radius: Math.min(width, height) / 2
+            color: "transparent"
+            border.width: 1
+            border.color: Lumi.accent
         }
 
         /*! 图标槽 —— 恒为 ``itemHeight`` 的正方形，图标在它里面居中。 */

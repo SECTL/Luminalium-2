@@ -88,6 +88,23 @@ def check(label: str, ok: bool, detail: str = "") -> None:
     RESULTS.append(f"[{'PASS' if ok else 'FAIL'}] {label}{(' — ' + detail) if detail else ''}")
 
 
+def _hex(value) -> str:
+    """把 QML 回来的颜色统一成 ``#RRGGBB``（大写）。
+
+    ⚠️ QML 里声明成 ``property color`` 的东西，经 PySide 取回来是 **QColor**，
+    ``str()`` 出来长这样：``PySide6.QtGui.QColor.fromRgbF(1.000000, ...)`` ——
+    直接与 ``"#FFC000"`` 比会**恒不相等**（看着像「点击没生效」，其实是字符串
+    形态不对）。所以比对颜色一律先过这里。
+    """
+    if value is None:
+        return ""
+    try:
+        name = QColor(value).name()  # QColor(QColor) 是拷贝构造，也吃字符串
+    except (TypeError, ValueError):
+        return str(value).upper()
+    return name.upper() if name.startswith("#") else str(value).upper()
+
+
 # ------------------------------------------------------------------ 启动画面
 
 def _find_named(item, name):
@@ -1909,6 +1926,214 @@ def main() -> int:
                 f"视觉={visual_bottom} 期望={margin_y} shadow={shadow}",
             )
 
+            # ================================================================
+            # 笔的选单（2026-10-01 用户指令）
+            # ================================================================
+            # 用户指令原话：「顶层窗口的工具栏的 Segmented 默认工具不应该是鼠标
+            # 指针吗？并且当目前工具已经是笔的时候弹出如图的选单，图片的只供参考，
+            # 实际的颜色列表要更多更丰富」
+            def _click_dock_item(item) -> None:
+                """在**真机顶层窗口**上点控制条里的一个项。
+
+                坐标经 ``mapToScene`` 换成窗口坐标 —— 顶层窗口整屏铺开，容器
+                原点就是窗口原点，所以 scene 坐标直接就是 ``QTest`` 要的坐标。
+                ⚠️ 窗口是 ``WS_EX_TRANSPARENT`` 的整窗穿透，但 ``QTest`` 是**直接
+                投递**事件、不走 Win32 命中测试，所以照样能点（区域塑形也一样）。
+                """
+                center = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+                QTest.mouseClick(overlay, Qt.LeftButton, Qt.NoModifier,
+                                 QPoint(int(round(center.x())), int(round(center.y()))))
+                QTest.qWait(90)
+
+            arrow_item = _find_named(cdock, "dockTool_arrow")
+            pen_item = _find_named(cdock, "dockTool_pen")
+            palette = _find_named(cdock, "penPalette")
+            card = _find_named(cdock, "penPaletteCard")
+            check(
+                "（前置）工具栏上有指针 / 笔分页，且笔选单组件已挂上",
+                None not in (arrow_item, pen_item, palette, card),
+                f"arrow={arrow_item} pen={pen_item} palette={palette} card={card}",
+            )
+            # ① 默认工具必须是**鼠标指针**。原来初值是 ``pen``：控制条一出来就
+            #    高亮着「笔」，用户得先点一下指针才能正常放映 —— 等于把「默认
+            #    什么都不做」变成了「默认在书写」。
+            check(
+                "默认工具 = 鼠标指针（不是笔）",
+                app.backend.activeTool == "arrow"
+                and arrow_item is not None and arrow_item.property("checked") is True
+                and pen_item is not None and pen_item.property("checked") is False,
+                f"activeTool={app.backend.activeTool!r} "
+                f"arrow.checked={arrow_item.property('checked') if arrow_item else None} "
+                f"pen.checked={pen_item.property('checked') if pen_item else None}",
+            )
+            # ② 第一下点「笔」是**切工具**（选单不弹）；已经切过去了再点一下才弹。
+            _click_dock_item(pen_item)
+            check(
+                "点「笔」第一下只切工具，不弹选单",
+                app.backend.activeTool == "pen"
+                and palette.property("opened") is False
+                and pen_item.property("checked") is True,
+                f"activeTool={app.backend.activeTool!r} "
+                f"opened={palette.property('opened')}",
+            )
+            _click_dock_item(pen_item)
+            check(
+                "工具已经是笔时再点一下 → 弹出选单",
+                palette.property("opened") is True and palette.isVisible(),
+                f"opened={palette.property('opened')} visible={palette.isVisible()}",
+            )
+            # 笔分页上那圈「选项开着」的提示环（整窗穿透、选单又没有关闭按钮，
+            # 用户唯一的退路就是「再点一下这个工具」——得有东西告诉他）
+            ring = _find_named(pen_item, "segmentExpandedRing")
+            check(
+                "选单开着时笔分页描一圈（提示「再点一下能关」）",
+                ring is not None and ring.property("visible") is True,
+                "" if ring is None else f"visible={ring.property('visible')}",
+            )
+
+            # ---- 摆放：贴在工具栏**上方**，左沿与底板左沿对齐 ----
+            # ⚠️ 坐标取的是 ``penPaletteCard``（卡片**本体**那个 Rectangle），
+            #    它本身就摆在组件的 ``shadowMargin`` 处 —— 所以它的 mapToItem
+            #    落点已经是「卡片表面」，别再扣一次投影余量。
+            pad_bar = float(cdock.property("shadowMargin") or 0)      # 底板投影余量
+            card_pos = card.mapToItem(cdock, QPointF(0, 0))
+            card_left = card_pos.x()                                 # 卡片表面左沿
+            card_bottom = card_pos.y() + card.height()                # 卡片表面底边
+            check(
+                "选单落在工具栏上方（不压条、也不飘远），左沿与底板对齐",
+                0 < pad_bar - card_bottom <= 20
+                and abs(card_left - pad_bar) <= 1,
+                f"卡片底={card_bottom:.1f} 底板上沿={pad_bar:.1f} "
+                f"卡片左={card_left:.1f} 期望={pad_bar:.1f}",
+            )
+
+            # ---- 色板：格子数 / 排列都从配置来 ----
+            tiles = _collect_named(cdock, "penSwatchTile")
+            want_colors = len(app.config.get("presentation.pen.palette") or [])
+            per_row = int(app.config.get("presentation.pen.columns") or 0)
+            same_row = {round(t.y()) for t in tiles[:per_row]} if per_row else set()
+            check(
+                "色板格子数 = 配置里的色数（选单不是画死的）",
+                len(tiles) == want_colors and want_colors >= 12,
+                f"格子={len(tiles)} 配置={want_colors}",
+            )
+            check(
+                "色板按配置的列数排行（每行 columns 格）",
+                per_row > 1 and len(same_row) == 1
+                and len(tiles) > per_row
+                and round(tiles[per_row].y()) > round(tiles[0].y()),
+                f"列={per_row} 首行 y={sorted(same_row)} "
+                f"第二行首格 y={round(tiles[per_row].y()) if len(tiles) > per_row else None}",
+            )
+            # ---- 选中色：后端是唯一依据 ----
+            # 还没选过 → 配置里的 ``pen.default`` 预点亮（否则弹出来一格都不亮，
+            # 而「预览」却画着一条有颜色的笔迹，看着自相矛盾）
+            default_color = str(app.config.get("presentation.pen.default") or "").upper()
+            selected = [t for t in tiles if t.property("swatchSelected")]
+            preview = _find_named(cdock, "penPalettePreview")
+            check(
+                "没选过颜色时预点亮配置里的默认色（且预览与它同色）",
+                app.backend.penColor == ""
+                and len(selected) == 1
+                and _hex(selected[0].property("swatchColor")) == default_color
+                and _hex(preview.property("strokeColor")) == default_color,
+                f"penColor={app.backend.penColor!r} default={default_color} "
+                f"选中={[_hex(t.property('swatchColor')) for t in selected]} "
+                f"预览={_hex(preview.property('strokeColor'))}",
+            )
+            # 点一格色点：QML → 后端（penColor）→ 应用层（actionTriggered）
+            targets = [t for t in tiles
+                       if _hex(t.property("swatchColor")) == "#EC4899"]
+            fired = []
+
+            def _collect_action(action, _sink=fired):
+                _sink.append(str(action))
+
+            app.backend.actionTriggered.connect(_collect_action)
+            try:
+                if targets:
+                    _click_dock_item(targets[0])
+            finally:
+                app.backend.actionTriggered.disconnect(_collect_action)
+            selected = [t for t in tiles if t.property("swatchSelected")]
+            ring_visible = [
+                bool(_find_named(t, "penSwatchRing").property("visible"))
+                for t in tiles
+            ]
+            check(
+                "点色点 → 选中的只有那一格（带环），预览笔迹同色",
+                len(targets) == 1 and len(selected) == 1
+                and sum(ring_visible) == 1
+                and _hex(selected[0].property("swatchColor")) == "#EC4899"
+                and _hex(preview.property("strokeColor")) == "#EC4899",
+                f"候选={len(targets)} "
+                f"选中={[_hex(t.property('swatchColor')) for t in selected]} "
+                f"带环={sum(ring_visible)} "
+                f"预览={_hex(preview.property('strokeColor'))}",
+            )
+            check(
+                "色点把颜色送到应用层（actionTriggered 走 pen_color）",
+                any(str(a).upper() == "PEN_COLOR:#EC4899" for a in fired),
+                f"发出={fired}",
+            )
+
+            # ---- 命中矩形 / 窗口区域：选单必须被圈进去 ----
+            # 这是**整条链上最容易漏的一环**：顶层窗口被 SetWindowRgn 裁成「只有
+            # 控制条几块」，卡片浮在 dock 包围盒之外 —— 不进区域就既不画也点不动
+            # （点击直接穿透到 PowerPoint，在幻灯片上乱画一笔）。
+            rect = cdock.property("interactiveRect")
+            center = QPointF(card_pos.x() + card.width() / 2,
+                             card_pos.y() + card.height() / 2)
+            scene_center = cdock.mapToScene(center)
+            covered = [
+                r for r in app.windows._dock_rects_local()
+                if r[0] <= scene_center.x() <= r[0] + r[2]
+                and r[1] <= scene_center.y() <= r[1] + r[3]
+            ]
+            check(
+                "选单被算进 interactiveRect（否则会被区域塑形裁掉、点不动）",
+                rect.x() <= center.x() <= rect.x() + rect.width()
+                and rect.y() <= center.y() <= rect.y() + rect.height()
+                and rect.y() < pad_bar,   # 上沿必须探到条上面去
+                f"rect=({rect.x():.0f},{rect.y():.0f},{rect.width():.0f},"
+                f"{rect.height():.0f}) 卡片中心=({center.x():.0f},{center.y():.0f})",
+            )
+            check(
+                "区域塑形的矩形里有一块盖住了选单（真机上它才画得出来）",
+                bool(covered),
+                f"卡片中心(scene)=({scene_center.x():.0f},{scene_center.y():.0f}) "
+                f"区域块={app.windows._dock_rects_local()}",
+            )
+
+            # ---- 关闭：再点一下「笔」/ 点别的工具 / 换工具 ----
+            _click_dock_item(pen_item)
+            closed_rect = cdock.property("interactiveRect")
+            check(
+                "再点一下「笔」→ 选单收起（命中矩形缩回条本身）",
+                palette.property("opened") is False
+                and closed_rect.y() >= pad_bar - 1,
+                f"opened={palette.property('opened')} rect.y={closed_rect.y():.0f}",
+            )
+            _click_dock_item(pen_item)
+            _click_dock_item(arrow_item)
+            check(
+                "切到别的工具 → 选单自动收起（它属于「笔」这个工位）",
+                palette.property("opened") is False
+                and app.backend.activeTool == "arrow",
+                f"opened={palette.property('opened')} "
+                f"activeTool={app.backend.activeTool!r}",
+            )
+            # 回到默认档，别给后面的断言留状态（笔色本身留着就行：它只影响选单
+            # 的回显，没有别的断言读它；``setPenColor`` 也不收空串）
+            app.backend.selectTool("arrow")
+            check(
+                "（收尾）工具回到默认档（指针）",
+                app.backend.activeTool == "arrow"
+                and palette.property("opened") is False,
+                f"activeTool={app.backend.activeTool!r} "
+                f"opened={palette.property('opened')}",
+            )
+
             # ---- 「显示按钮文本」在**真机控制条**上也生效，并且会重新摆位 ----
             # 编辑器预览里那条单独验过（见 _check_editor）；这里验真实那条：
             # 名字一多整条就变宽，宽度变了若不重摆，居中的那条会按**旧宽度**
@@ -2321,23 +2546,45 @@ def main() -> int:
              ppt_controller.TOOL_TO_POINTER["eraser"]) == (0, 1, 2, 3),
             str(ppt_controller.TOOL_TO_POINTER),
         )
-        # 墨迹调色板必须与 L1 的 InkColorPicker 网格逐格一致：这张表是**坐标表**
-        # （行 0/1、列 0..9），少一格或多一格都会让键盘走位整体错位、点错颜色。
-        palette_source = (ROOT / "ui" / "Luminalium" / "Lumi.qml").read_text(encoding="utf-8")
-        palette_body = palette_source.split("readonly property var inkPalette:", 1)[-1].split("]", 1)[0]
-        palette = [token.strip().strip('"') for token in palette_body.replace("[", "").split(",")
-                   if token.strip().startswith('"')]
+        # 笔选单的色板：2026-10-01 起**配置是唯一来源**（选单从
+        # ``presentation.pen.palette`` 建格子，QML 里那张 ``inkPalette`` 已删）。
+        # 前 20 色仍是 PowerPoint 自己的 InkColorPicker 网格 —— 改坏了「看着
+        # 没错、选出来与 PowerPoint 原生调色板对不上」，所以照样逐格钉住。
+        _default_cfg = json.loads(DEFAULT_CONFIG_FILE.read_text(encoding="utf-8"))
+        pen_cfg = _default_cfg.get("presentation", {}).get("pen", {}) or {}
+        palette = [str(c).upper() for c in (pen_cfg.get("palette") or [])]
         expected_palette = [
+            # 第 1 行：Office 主题色
             "#FFFFFF", "#000000", "#E7E6E6", "#44546A", "#4472C4",
             "#ED7D31", "#A5A5A5", "#FFC000", "#5B9BD5", "#70AD47",
-            "#C00000", "#FF0000", "#FFFF00", "#92D050", "#00B050",
-            "#00B0F0", "#0070C0", "#002060", "#7030A0",
+            # 第 2 行：Office 标准色
+            "#C00000", "#FF0000", "#FF8C00", "#FFFF00", "#92D050",
+            "#00B050", "#00B0F0", "#0070C0", "#002060", "#7030A0",
+            # 第 3 行：扩展档（鲜艳色）
+            "#FF5B5B", "#FF9F45", "#FFE066", "#7CE38B", "#2FBF71",
+            "#38BDF8", "#6366F1", "#A855F7", "#EC4899", "#14B8A6",
         ]
         check(
-            "墨迹调色板 = L1 InkColorPicker 网格（顺序即行列坐标）",
-            [c.upper() for c in palette] == expected_palette,
-            f"{len(palette)} 色" + ("" if [c.upper() for c in palette] == expected_palette
+            "笔选单色板 = 30 色（3 行 Office 主题色 + 标准色 + 扩展档）",
+            palette == expected_palette,
+            f"{len(palette)} 色" + ("" if palette == expected_palette
                                     else f"，期望 {len(expected_palette)} 色"),
+        )
+        # 色板必须**整除列数**：``columns`` 就是选单网格的列数（``Grid.columns``），
+        # 30 色配 10 列 = 整整三行；写成 9 列会余出一行零头（最后一行稀稀拉拉）。
+        pen_columns = int(pen_cfg.get("columns") or 0)
+        check(
+            "色板能被列数整除（网格排得满行）",
+            pen_columns > 0 and len(palette) % pen_columns == 0
+            and len(palette) // pen_columns >= 2,
+            f"{len(palette)} 色 / {pen_columns} 列",
+        )
+        # 预点亮的默认色必须是色板里的一格 —— 否则选单一弹出来，没有任何一格
+        # 带着选中环，而「预览」却是一条有颜色的笔迹，看着自相矛盾。
+        check(
+            "默认选中色在色板里（选单弹出来有一格带环）",
+            str(pen_cfg.get("default", "")).upper() in palette,
+            f"default={pen_cfg.get('default')!r}",
         )
         # 切指针前必须先把放映窗口拉到前台 —— PowerPoint 的 View.PointerType
         # 只对前台放映窗口生效，漏这一步「橡皮点了没反应」（2026-09-25 用户报障）。

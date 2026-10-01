@@ -167,6 +167,20 @@ QtObject {
     /*! 同一组按钮之间的间距（L1 ``#toolbar gap: 4px``）。 */
     readonly property int dockButtonSpacing: 4
 
+    // ---- 按钮名称文本（「显示按钮文本」开关，2026-10-01 用户指令）----
+    // 打开后按钮从「直径 44 的圆」变成「图标 + 文字」的胶囊：
+    //
+    //     [ 11 ][ 22 图标 ][ gap 8 ][ 文字 ][ 12 ]
+    //
+    // 左端那 11 = ``(hitSize − glyphSize) / 2``，就是图标平时在圆里居中让出来的量；
+    // 右端取 12 与它呼应，于是文字两侧的视觉重量相当，不像贴在边上。
+    // 宽度按文字**实际**宽度撑开（由组件里的隐藏探针量，不抄字体），所以
+    // 「指针 / 笔 / 退出放映」这些不同长短的名字都各占各的，不需要预设档位。
+    /*! 图标与文字之间的间距。 */
+    readonly property int dockLabelGap: 8
+    /*! 文字右端的留白。 */
+    readonly property int dockLabelTrail: 12
+
     // ---- 按钮状态填充（L1 --overlay-button-hover / -active）----
     // 用 textPrimary 的透明度而不是写死白色：浅色主题下 L1 同样翻成
     // 黑 6% / 黑 12%，跟着文本色走天然对齐。

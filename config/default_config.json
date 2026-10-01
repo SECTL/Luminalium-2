@@ -113,7 +113,9 @@
     "//hit_size": "圆形按钮直径，= 内容高（条高 62 − 上下内边距 9×2 = 44）。L1 原档 38",
     "hit_size": 44,
     "//spacing": "Luminalium 1 #toolbar gap: 4px",
-    "spacing": 4
+    "spacing": 4,
+    "//show_labels": "在按钮**旁边**显示名称文本（入口：主界面编辑器 → 选中工具栏 → 「显示按钮文本」，2026-10-01 用户指令）。打开后按钮从「直径 44 的圆」变成「图标 + 文字」的胶囊，宽度按文字实际宽度撑开，整条控制条跟着变宽（Python 侧 ``_load_docks`` 挂了 widthChanged → 重摆，位置不会漂）。**只作用于工具栏那几块**（工具 / 动作 / 溢出 / 退出），翻页 pill 不受影响 —— 它本来就是「小、聚拢」的形态，加文字会把它拉成一条长条",
+    "show_labels": false
   },
   "segment": {
     "//description": "工具组是**圆的分段控件**（基类 RinUI 的 Segmented）：胶囊容器 + 三个圆形分页（指针 / 笔 / 橡皮），选中的那页浮现一枚圆钮；Luminalium 1 里工具本来是散装圆钮，这里按用户要求恢复成「有容器」的分段，但语言是圆的（没有下划线）",
@@ -151,6 +153,8 @@
     ],
   "pager": {
     "enabled": true,
+    "//position": "翻页组件的形态与位置（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」，2026-10-01 用户指令）。side = **竖版两侧中间**（middle_left / middle_right，组件 SidePager.qml）；bottom = **横版两侧下部**（bottom_left / bottom_right，与底部同款的横版 pill）。⚠️ 两种形态**二选一**（同时开会变成四个翻页栏），改它会连带开关 corners 里这四个角的 enabled —— 真实生效的仍是 corners，这一项只是它的人话开关",
+    "position": "side",
     "//width": "页码文本区宽度。放大档：翻页 pill 180 = 4 + 圆钮 44 + 8 + 68 + 8 + 44 + 4（L1 原档 160×54 的同比例放大）",
     "width": 68,
     "//spacing": "圆钮与页码区之间的间距。Luminalium 1 = 按钮 margin 4 + 页码区 padding 4 = 8",

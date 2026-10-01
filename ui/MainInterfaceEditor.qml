@@ -62,7 +62,15 @@ import Luminalium
     面板是**挤窄舞台**而不是浮在舞台上面（``anchors.rightMargin`` 跟着
     ``inspectorInset`` 走）—— 聚焦的组件要落在真正可见的那块区域中央。
     底色**实色**（``Lumi.editorPanelBg``），三段式：顶部返回键（``inspectorNav``）/
-    中部设置项区（可滚动，待接入）/ 下部常驻条（组件信息 + 缩放）。
+    中部设置项区（可滚动，按选中的组件摆）/ 下部常驻条（组件信息 + 缩放）。
+
+    设置项**跟着选中的组件变**（2026-10-01 两项）：
+
+    * 工具栏 → 「显示按钮文本」（``presentation.buttons.show_labels``）；
+    * 翻页组件 → 「翻页组件位置」（``presentation.pager.position``：竖版两侧中间
+      / 横版两侧下部，二选一 —— 后端顺带开关 ``corners`` 里那四个角）。
+
+    两项改完**预览与真机同时变**（配置广播 → 预览副本重建、真机侧重建控制条）。
 
     「编辑态压暗」盖的是**面板左边的整块区域**（见 ``dimMask``），不是只盖屏幕 ——
     否则视口四周那圈留白会露出没压暗的亚克力。
@@ -337,6 +345,46 @@ Rin.FluentWindowBase {
         return cornerLabels[cornerName] !== undefined ? cornerLabels[cornerName] : cornerName
     }
 
+    /*! 选中的这条是否含**工具栏**区块 —— 决定面板里摆哪些设置项。
+        判别与 ``componentName`` 同一套：「工具栏」= 带 tools / actions / exit 的横条。
+        （翻页 pill 只有 pager，它的设置项另说。） */
+    readonly property bool selectedHasToolbar: {
+        if (selectedCorner.length === 0)
+            return false
+        var groups = groupsOf(selectedCorner)
+        return groups.indexOf("tools") >= 0 || groups.indexOf("actions") >= 0
+            || groups.indexOf("exit") >= 0
+    }
+
+    /*! 选中的这条是否含**翻页**区块 —— 决定面板里摆哪些设置项。
+        判别与 ``componentName`` 同一套：竖版两侧（``middle_*``）恒是翻页组件，
+        横条里只有 ``pager`` 区块的也是。（工具栏那条带 tools/actions/exit，
+        两条互斥 —— 目前没有既带工具又带翻页的角落。） */
+    readonly property bool selectedHasPager: {
+        if (selectedCorner.length === 0)
+            return false
+        if (selectedCorner.indexOf("middle") === 0)
+            return true
+        if (selectedHasToolbar)
+            return false
+        return groupsOf(selectedCorner).indexOf("pager") >= 0
+    }
+
+    /*! 翻页组件位置下拉的选中项（0 = 竖版两侧中间，1 = 横版两侧下部）。
+
+        **从真实生效的 ``corners`` 反推**，不是读 ``presentation.pager.position``：
+        后者只是这个开关的影子（写的时候两者一起改），而用户手改配置只可能改到
+        ``corners`` —— 「显示什么就代表屏幕上是什么」比显示那个影子值重要。
+        四个角都关掉（等于把翻页栏藏起来）时才回落去读配置。 */
+    readonly property int pagerPositionIndex: {
+        var on = enabledCorners
+        if (on.indexOf("middle_left") >= 0 || on.indexOf("middle_right") >= 0)
+            return 0
+        if (on.indexOf("bottom_left") >= 0 || on.indexOf("bottom_right") >= 0)
+            return 1
+        return Backend.settings.presentation_pager_position === "bottom" ? 1 : 0
+    }
+
     /*! 面板上那行尺寸（屏幕坐标系里的真实像素，不是缩放后的）。
         用 ``focusRect`` 而不是控制条 Item 的宽高：那个含投影余量，
         写出来会比肉眼看到的条子大 48px。 */
@@ -422,12 +470,34 @@ Rin.FluentWindowBase {
             Math.max(item.height - margin * 2, 1))
     }
 
-    /*! 配置重载后：选中的角落可能被关掉了，尺寸也可能变了。 */
+    /*! 翻页组件换形态时的**对应角落**（竖版两侧 ↔ 横版下部）。
+        竖版 ``middle_left`` 关掉、横版 ``bottom_left`` 打开，指的是**同一个**
+        编辑对象 —— 切完形态还该停在它身上，不然用户刚点一下设置项面板就收了。 */
+    function pagerCounterpart(cornerName) {
+        if (cornerName === "middle_left")
+            return "bottom_left"
+        if (cornerName === "middle_right")
+            return "bottom_right"
+        if (cornerName === "bottom_left")
+            return "middle_left"
+        if (cornerName === "bottom_right")
+            return "middle_right"
+        return ""
+    }
+
+    /*! 配置重载后：选中的角落可能被关掉了，尺寸也可能变了。
+
+        ⚠️ 角落被关掉时**先试对应形态**（翻页组件换位置就是这么一回事）：
+        直接清空的话，用户点一下「翻页组件位置」面板就收起来了，看着像崩了。 */
     function refreshFromConfig() {
         if (selectedCorner.length === 0)
             return
         if (enabledCorners.indexOf(selectedCorner) < 0) {
-            clearSelection()
+            var counterpart = pagerCounterpart(selectedCorner)
+            if (counterpart.length > 0 && enabledCorners.indexOf(counterpart) >= 0)
+                selectCorner(counterpart)
+            else
+                clearSelection()
             return
         }
         updateFocusRect()
@@ -1027,7 +1097,8 @@ Rin.FluentWindowBase {
         // ------------------------------------------------------------ 设置项区
         //
         // 顶部导航条之下、下部常驻条之上，**整块**留给设置项（可滚动）。
-        // 目前是空的 —— 用户把每类组件的设置项给过来之后排进 ``bodyColumn``。
+        // 每一项自己绑 ``visible``（比如工具栏的设置项只在选中工具栏时出现），
+        // 布局器会跳过不可见项。
         Flickable {
             id: inspectorBody
             objectName: "editorInspectorBody"
@@ -1048,6 +1119,62 @@ Rin.FluentWindowBase {
                 y: 14
                 width: parent.width - 32
                 spacing: 8
+
+                /*! 工具栏的「显示按钮文本」（2026-10-01 用户指令：「工具栏新增设置项
+                    『显示按钮文本』，打开后，将在按钮旁边显示按钮的名称文本」）。
+                    写进 ``presentation.buttons.show_labels``，控制条那一侧
+                    （``PresentationDock``）读配置，所以改完**预览与真机同时变**。
+
+                    ⚠️ 只在选中的是**工具栏**时出现 —— 翻页 pill 不参与这个开关
+                    （见 ``Lumi`` / 配置里 ``show_labels`` 的说明）。 */
+                Rin.SettingCard {
+                    objectName: "editorSettingButtonLabels"
+
+                    Layout.fillWidth: true
+                    visible: editorWindow.selectedHasToolbar
+                    title: qsTr("显示按钮文本")
+                    description: qsTr("在按钮旁边显示名称（指针 / 笔 / 橡皮 / 清屏 / 退出放映）")
+                    icon.name: "ic_fluent_text_bullet_list_20_regular"
+
+                    Rin.Switch {
+                        objectName: "editorSettingButtonLabelsSwitch"
+                        primaryColor: Lumi.accent
+                        checked: Backend.settings.presentation_buttons_show_labels === true
+                        onToggled: Backend.setSetting(
+                            "presentation_buttons_show_labels", checked)
+                    }
+                }
+
+                /*! 翻页组件的「翻页组件位置」（2026-10-01 用户指令：「翻页组件新增
+                    设置项『翻页组件位置』，可选翻页组件是竖版两侧中间 还是横板两侧
+                    下部」）。写进 ``presentation.pager.position``，后端顺带开关
+                    ``corners`` 里那四个角 —— 两种形态**二选一**（同时开会变成四个
+                    翻页栏），所以这里是单选而不是两个独立开关。
+
+                    ⚠️ 只在选中的是**翻页组件**时出现 —— 工具栏没有这个设置项。
+                    ⚠️ 换了形态，编辑对象还在（``refreshFromConfig`` 会把它挪到
+                    对应角落），面板不会收起来。 */
+                Rin.SettingCard {
+                    objectName: "editorSettingPagerPosition"
+
+                    Layout.fillWidth: true
+                    visible: editorWindow.selectedHasPager
+                    title: qsTr("翻页组件位置")
+                    // ⚠️ 刻意**不写 description、也不带图标**：面板只有 340 宽，
+                    //    SettingCard 的左右两块是并排的，多一行说明 / 多一枚 22px 的
+                    //    图标都会把「翻页组件位置」这个标题挤成两行。两种形态的名字
+                    //    （竖版两侧中间 / 横版两侧下部）本身已经说清了。
+
+                    Rin.ComboBox {
+                        objectName: "editorSettingPagerPositionCombo"
+                        Layout.preferredWidth: 148
+                        model: [qsTr("竖版两侧中间"), qsTr("横版两侧下部")]
+                        currentIndex: editorWindow.pagerPositionIndex
+                        onActivated: Backend.setSetting(
+                            "presentation_pager_position",
+                            currentIndex === 1 ? "bottom" : "side")
+                    }
+                }
             }
         }
 

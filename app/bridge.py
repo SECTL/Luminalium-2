@@ -39,6 +39,8 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_margin_x": "presentation.margin_x",
     "presentation_margin_y": "presentation.margin_y",
     "presentation_bar_height": "presentation.bar_height",
+    "presentation_buttons_show_labels": "presentation.buttons.show_labels",
+    "presentation_pager_position": "presentation.pager.position",
     "presentation_screen_index": "presentation.screen_index",
     "presentation_shadow_enabled": "presentation.surface.shadow.enabled",
     "presentation_surface_opacity": "presentation.surface.opacity",
@@ -51,6 +53,16 @@ SETTING_PATHS: Dict[str, str] = {
 
 #: 值一变就需要 QML 重新取整块配置的键。
 _BROADCAST_KEYS = {"panel_section_shortcuts", "panel_section_footer"}
+
+#: 「翻页组件位置」的两种形态 -> 该形态下**启用**的角落。
+#:
+#: 改这一项会连带开关 ``corners`` 里对应的四个角：真实生效的仍是 ``corners``
+#: （``windows.py::_load_docks`` 与编辑器预览都只读它），``pager.position``
+#: 只是它的人话开关 —— 两种形态二选一，同时开会变成四个翻页栏。
+PAGER_POSITION_CORNERS: Dict[str, tuple] = {
+    "side": ("middle_left", "middle_right"),
+    "bottom": ("bottom_left", "bottom_right"),
+}
 
 
 class Backend(QObject):
@@ -85,6 +97,9 @@ class Backend(QObject):
     editorCloseRequested = Signal()
     themeChangeRequested = Signal(str)
     accentChangeRequested = Signal(str)
+    #: 启用 / 停用的角落集合变了（翻页组件位置切换）：控制条**换了一组组件**，
+    #: 光挪位置不够，得按新的角落重建（``windows.py::rebuild_docks``）。
+    docksRebuildRequested = Signal()
 
     def __init__(self, config: Config, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -421,6 +436,12 @@ class Backend(QObject):
         self._config.set(path, value)
         log.info("设置 %s = %r", path, value)
 
+        # 翻页组件位置：连带开关四个角落（两种形态二选一，见常量处的说明）。
+        # 真实生效的是 ``corners``，所以这一步不是「副作用」而是这个开关的本体。
+        if key == "presentation_pager_position":
+            self._apply_pager_position(str(value))
+            self.docksRebuildRequested.emit()
+
         if key == "theme":
             self.themeChangeRequested.emit(str(value))
         elif key == "accent":
@@ -433,6 +454,26 @@ class Backend(QObject):
             # ``presentationScreen`` 是按配置现算的，得给它一个重取的理由。
             self.presentationScreenChanged.emit()
         self.settingsChanged.emit()
+
+    def _apply_pager_position(self, position: str) -> None:
+        """把「翻页组件位置」落到 ``corners`` 那四个角的开关上。
+
+        ``side`` → 启用 ``middle_left`` / ``middle_right``（竖版两侧中间）、
+        关掉底部两只；``bottom`` → 反过来。
+
+        ⚠️ 真实生效的是 ``corners``（``windows.py::_load_docks`` 与编辑器预览
+        都只读它），``pager.position`` 只是它的人话开关 —— 两边必须一起改，
+        否则「设置里选了横版、屏幕上还是竖版」。
+        """
+        enabled = PAGER_POSITION_CORNERS.get(position)
+        if enabled is None:
+            log.info("未知翻页组件位置: %s", position)
+            return
+        for corners in PAGER_POSITION_CORNERS.values():
+            for corner in corners:
+                self._config.set(
+                    f"presentation.corners.{corner}.enabled", corner in enabled
+                )
 
     @Slot()
     def closeSettings(self) -> None:

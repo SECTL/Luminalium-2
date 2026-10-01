@@ -448,7 +448,21 @@ class WindowManager(QObject):
             log.error("顶层窗口加载失败（缺 container 容器属性）")
             return
         self.overlay = overlay
+        self._create_docks(container)
+        log.info(
+            "顶层窗口已创建，控制条 x%d: %s", len(self._docks), list(self._docks)
+        )
 
+    # ---------------------------------------------------------------- 控制条
+
+    def _create_docks(self, container) -> None:
+        """按当前配置给各角落建控制条（挂到顶层窗口的容器里）。
+
+        与 :meth:`_load_docks` 分开是为了**重建**：改「翻页组件位置」会换掉
+        启用的角落集合（竖版两侧 ↔ 横版下部），而且两边的组件根本不是一个
+        QML 文件（``SidePager`` vs ``PresentationDock``）—— 光挪位置不够，
+        得整批销毁重建。
+        """
         corners = self._config.get("presentation.corners", {}) or {}
         for name in CORNERS:
             settings = corners.get(name) or {}
@@ -467,9 +481,42 @@ class WindowManager(QObject):
             root.widthChanged.connect(lambda *_, n=name: self._schedule_reposition(n))
             root.heightChanged.connect(lambda *_, n=name: self._schedule_reposition(n))
             self._docks[name] = root
-        log.info(
-            "顶层窗口已创建，控制条 x%d: %s", len(self._docks), list(self._docks)
-        )
+
+    def _destroy_docks(self) -> None:
+        """销毁全部控制条实例（重建前用）。
+
+        ⚠️ 先从容器上摘下来再 ``deleteLater()``：直接删会让场景图在那一帧
+        还持有指向已释放对象的指针。
+        """
+        for name, dock in list(self._docks.items()):
+            try:
+                dock.setParentItem(None)
+                dock.deleteLater()
+            except RuntimeError:  # pragma: no cover - 已被 Qt 提前释放
+                log.debug("控制条已提前释放: %s", name)
+        self._docks.clear()
+        # 区域塑形是按控制条的矩形算的，形状变了必须重算（否则穿透区域还留在
+        # 旧位置，新的控制条点不动）
+        self._last_region_box = None
+
+    def rebuild_docks(self) -> None:
+        """按当前配置**重建**全部控制条（角落集合变了时）。
+
+        ``presentationConfigChanged`` 已经把新配置推给了 QML（控制条自己会
+        跟着改宽度 / 显隐），但**启用哪些角落**只有这里知道 —— 换形态要换
+        QML 组件，所以走一遍销毁 + 重建。
+        """
+        if self.overlay is None:
+            return
+        container = self.overlay.property("container")
+        if container is None:
+            log.warning("顶层窗口缺 container，控制条未重建")
+            return
+        self._destroy_docks()
+        self._create_docks(container)
+        log.info("控制条已重建 x%d: %s", len(self._docks), list(self._docks))
+        if self.overlay.isVisible():
+            self.reposition_all_docks()
 
     # ------------------------------------------------------------- 组件工具
 
@@ -623,6 +670,8 @@ class WindowManager(QObject):
         self._backend.debugWindowCloseRequested.connect(self.hide_debug)
         self._backend.editorRequested.connect(self.show_editor)
         self._backend.editorCloseRequested.connect(self.hide_editor)
+        # 翻页组件位置切换 → 换了一组角落（不只是挪位置），要重建
+        self._backend.docksRebuildRequested.connect(self.rebuild_docks)
         self._ppt.stateChanged.connect(self._on_presentation_state)
 
     def _on_presentation_state(self, state) -> None:

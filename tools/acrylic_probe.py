@@ -25,6 +25,9 @@
 
 * ``LUMI_PREVIEW_EDIT=<corner>`` —— 让编辑器停在**编辑态**（聚焦这个角落的控制条、
   右侧设置面板展开）再截。默认是全景态。
+* ``LUMI_PREVIEW_LABELS=1`` —— 打开「显示按钮文本」（``presentation.buttons.
+  show_labels``，**只在内存里改、截完还原**），控制条按名称文本撑宽。
+  产出文件名带 ``_labels`` 后缀，不覆盖常态那张。
 """
 
 from __future__ import annotations
@@ -68,8 +71,22 @@ def pin_on_top(hwnd: int) -> None:
     )
 
 
+#: 「显示按钮文本」预览开关（见模块 docstring）。
+LABELS = os.environ.get("LUMI_PREVIEW_LABELS", "") not in ("", "0")
+
+
+def _out_name(name: str) -> str:
+    """``LUMI_PREVIEW_LABELS`` 打开时给文件名加 ``_labels`` 后缀（别覆盖常态那张）。"""
+    return name.replace(".png", "_labels.png") if LABELS else name
+
+
 def main() -> int:
     config = Config()
+    # 「显示按钮文本」：只在内存里改（``persist=False``），截完在 capture() 里还原。
+    labels_previous = config.get("presentation.buttons.show_labels")
+    if LABELS:
+        config.set("presentation.buttons.show_labels", True, persist=False)
+
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)
 
@@ -102,7 +119,7 @@ def main() -> int:
             report["backdropEnabled"] = editor.property("backdropEnabled")
             report["acrylicActive"] = editor.property("acrylicActive")
         shot = QGuiApplication.primaryScreen().grabWindow(0)
-        out = ROOT / "preview" / "acrylic_check.png"
+        out = ROOT / "preview" / _out_name("acrylic_check.png")
         shot.save(str(out))
         report["shot"] = f"{out} ({shot.width()}x{shot.height()})"
 
@@ -110,6 +127,12 @@ def main() -> int:
         if rinui.theme_manager.get_theme_name() != previous_theme:
             rinui.theme_manager.toggle_theme(previous_theme)
             report["theme"] = f"已还原为 {previous_theme}"
+        # 同理，「显示按钮文本」也只是这一次截屏要用的状态
+        if LABELS:
+            config.set("presentation.buttons.show_labels", labels_previous,
+                       persist=False)
+            backend.reload_from_config()
+            report["labels"] = f"显示按钮文本已还原为 {labels_previous}"
         qt_app.quit()
 
     def start() -> None:

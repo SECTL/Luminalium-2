@@ -181,7 +181,7 @@ Window {
                 objectName: "splashWordmark"
                 x: splash.px(147.3)
                 y: splash.px(1176.5)
-                width: splash.px(727.7)
+                width: splash.px(1023.13)
                 height: splash.px(113.7)
                 source: Backend.resourceFile(
                     Lumi.isDark ? "splash/wordmark_dark.svg" : "splash/wordmark_light.svg")

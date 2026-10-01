@@ -32,6 +32,11 @@ import Luminalium
     ``currentIndex ↔ Backend.activeTool`` 由本组件双向同步（后端换工具
     —— 快捷键 / 托盘 —— 时选中页自动跟随）。
 
+    **「显示按钮文本」**（``presentation.buttons.show_labels``，入口在主界面编辑器 →
+    选中工具栏 → 设置项）：打开后工具栏的按钮从「直径 44 的圆」变成「图标 + 名称」的
+    胶囊，整条按文字实际宽度撑宽；**翻页 pill 不参与** —— 它本来就是「小、聚拢」的
+    形态，加文字会把它拉成一条长条（见 ``showLabels`` 的说明）。
+
     ``corner`` 由 Python 注入（bottom_left / bottom_right / ...），
     每组显隐由 ``corners.<corner>.groups`` 决定。
 
@@ -82,6 +87,15 @@ Item {
 
     /*! 内容行高度：底板扣掉上下 padding —— 图标按钮、退出键共用这一档。 */
     readonly property int contentHeight: barHeight - surfacePaddingY * 2
+
+    /*! **显示按钮文本**（``presentation.buttons.show_labels``，入口在主界面编辑器 →
+        选中工具栏 → 设置项）：按钮从「直径 44 的圆」变成「图标 + 名称」的胶囊，
+        整条按文字宽度自然变宽。
+
+        ⚠️ **只作用于工具栏那几块**（工具 / 动作 / 溢出 / 退出），翻页 pill **不参与**
+        —— 它本来就是「小、聚拢」的形态（沿轴留白只有 4），加文字会把它拉成一条
+        长条，与「翻页栏更紧凑」的设计初衷正好相反。见配置里的 ``show_labels`` 注释。 */
+    readonly property bool showLabels: buttonsCfg.show_labels === true
 
     readonly property int iconSize: buttonsCfg.icon_size !== undefined
         ? buttonsCfg.icon_size : Lumi.dockIconSize
@@ -278,6 +292,8 @@ Item {
                     glyphSize: dock.iconSize
                     tooltip: modelData.label !== undefined ? modelData.label : ""
                     icon.name: modelData.icon !== undefined ? modelData.icon : ""
+                    label: modelData.label !== undefined ? modelData.label : ""
+                    showLabel: dock.showLabels
                 }
             }
         }
@@ -296,6 +312,10 @@ Item {
                 delegate: IconButton {
                     iconName: modelData.icon !== undefined ? modelData.icon : ""
                     tooltip: modelData.tooltip !== undefined ? modelData.tooltip : ""
+                    // 名称文本取 ``label``（「清屏」），**不是** ``tooltip``
+                    //（「清屏（擦除本页全部墨迹）」）—— 条上要的是短名
+                    label: modelData.label !== undefined ? modelData.label : ""
+                    showLabel: dock.showLabels
                     hitSize: dock.hitSize
                     glyphSize: dock.iconSize
                     onClicked: Backend.triggerAction(modelData.id)
@@ -306,6 +326,8 @@ Item {
                 visible: dock.overflowEnabled
                 iconName: dock.overflowIcon
                 tooltip: dock.overflowTooltip
+                label: dock.overflowTooltip
+                showLabel: dock.showLabels
                 hitSize: dock.hitSize
                 glyphSize: dock.iconSize
                 onClicked: Backend.triggerAction("overflow")
@@ -322,6 +344,8 @@ Item {
         }
 
         // ==================================================== 3. 翻页组
+        // ⚠️ 这一段**不接** ``showLabels``：翻页 pill 保持「小、聚拢」的形态，
+        //    见上面 ``showLabels`` 的说明。
         Flow {
             visible: dock.present("pager")
             spacing: dock.pagerSpacing
@@ -373,6 +397,8 @@ Item {
             style: dock.exitStyle
             iconName: dock.exitIcon
             tooltip: dock.exitLabel
+            label: dock.exitLabel
+            showLabel: dock.showLabels
             buttonHeight: dock.contentHeight
             glyphSize: dock.iconSize
             onClicked: Backend.exitPresentation()

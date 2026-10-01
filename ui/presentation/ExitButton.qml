@@ -25,6 +25,10 @@ Item {
     property string style: "default"
     property string iconName: "ic_fluent_power_20_regular"
     property string tooltip: ""
+    /*! 按钮的名称文本（「退出放映」，由 ``PresentationDock`` 从 ``exit.label`` 传下来）。 */
+    property string label: ""
+    /*! 是否在图标旁显示 ``label``（跟着工具栏的「显示按钮文本」开关走）。 */
+    property bool showLabel: false
     property int buttonHeight: Lumi.dockHitSize
     property int glyphSize: Lumi.dockIconSize
 
@@ -39,15 +43,20 @@ Item {
     readonly property color iconColor: dangerStyle
         ? Lumi.dockDangerIcon : Lumi.textPrimary
 
-    implicitWidth: buttonSize
-    implicitHeight: buttonSize
+    /*! 尺寸由里面那枚 ``IconButton`` 说了算 —— 带名称文本时它会变宽，
+        这里照着它的 implicit 尺寸走，别自己写死成 ``buttonSize``（那样文字会溢出）。 */
+    implicitWidth: button.implicitWidth
+    implicitHeight: button.implicitHeight
     width: implicitWidth
     height: implicitHeight
 
     IconButton {
+        id: button
         anchors.fill: parent
         iconName: root.iconName
         tooltip: root.tooltip
+        label: root.label
+        showLabel: root.showLabel
         hitSize: root.buttonSize
         glyphSize: root.glyphSize
         glyphColor: root.iconColor

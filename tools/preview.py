@@ -33,6 +33,12 @@
   默认 640。页面长到一屏放不下时用它截全（例如「通用」页加内容之后）。
 - ``LUMI_PREVIEW_EDIT=<corner>`` —— 让主界面编辑器停在**编辑态**并聚焦这个角落
   （如 ``bottom_center``），输出到 ``main_editor_edit.png``。默认输出全景态。
+- ``LUMI_PREVIEW_LABELS=1`` —— 打开「显示按钮文本」（``presentation.buttons.
+  show_labels``，**只在内存里改、抓完图还原**），控制条按名称文本撑宽。
+  输出文件名带 ``_labels`` 后缀，不覆盖常态那两张。
+- ``LUMI_PREVIEW_PAGER=side|bottom`` —— 切「翻页组件位置」（``presentation.pager.
+  position``，同样只在内存里改、抓完图还原）：side = 竖版两侧中间，bottom = 横版
+  两侧下部。输出文件名带 ``_pager_<值>`` 后缀。
 """
 
 from __future__ import annotations
@@ -70,10 +76,52 @@ ONLY_SPLASH = IS_LIGHT or os.environ.get("LUMI_PREVIEW_ONLY", "") == "splash"
 PAGE_HEIGHT = int(os.environ.get("LUMI_PREVIEW_PAGE_HEIGHT", "640") or 640)
 #: 主界面编辑器停在编辑态时要聚焦的角落（空 = 全景态）。见模块 docstring。
 PREVIEW_EDIT = os.environ.get("LUMI_PREVIEW_EDIT", "").strip()
+#: 控制条「显示按钮文本」的预览开关。**只在内存里改配置**（``persist=False``），
+#: 抓完图还原 —— 预览工具不该动用户的 ``config/config.json``。
+PREVIEW_LABELS = os.environ.get("LUMI_PREVIEW_LABELS", "") not in ("", "0")
+#: 「翻页组件位置」的预览档（side = 竖版两侧中间 / bottom = 横版两侧下部）。
+#: 与 ``PREVIEW_LABELS`` 一样只改内存、抓完图还原。见模块 docstring。
+PREVIEW_PAGER = os.environ.get("LUMI_PREVIEW_PAGER", "").strip().lower()
+if PREVIEW_PAGER not in ("", "side", "bottom"):
+    print(f"[WARN] LUMI_PREVIEW_PAGER 只认 side / bottom，收到 {PREVIEW_PAGER!r}，忽略")
+    PREVIEW_PAGER = ""
+#: 翻页组件位置 → 该形态下**启用**的角落（与 bridge.py 的常量同一份口径）
+PAGER_POSITION_CORNERS = {
+    "side": ("middle_left", "middle_right"),
+    "bottom": ("bottom_left", "bottom_right"),
+}
+
+
+def preview_name(name: str) -> str:
+    """给预览图文件名加后缀（``_labels`` / ``_pager_<值>``）。
+
+    这些只是**对照图**，不该把常态那几张覆盖掉（控制条与编辑器两张都要加）。
+    """
+    stem, ext = os.path.splitext(name)
+    if PREVIEW_LABELS:
+        stem += "_labels"
+    if PREVIEW_PAGER:
+        stem += f"_pager_{PREVIEW_PAGER}"
+    return stem + ext
 
 
 def main() -> int:
     config = Config()
+    # 「显示按钮文本」预览：改内存里的配置（控制条读它），抓完图在 capture() 里还原。
+    labels_previous = config.get("presentation.buttons.show_labels")
+    if PREVIEW_LABELS:
+        config.set("presentation.buttons.show_labels", True, persist=False)
+    # 「翻页组件位置」预览：同样只改内存 —— 它连带开关四个角落（真实生效的是
+    # corners，所以两边一起改，否则预览里还是旧形态）。
+    pager_previous = config.get("presentation.pager.position") or "side"
+    if PREVIEW_PAGER:
+        config.set("presentation.pager.position", PREVIEW_PAGER, persist=False)
+        for corners in PAGER_POSITION_CORNERS.values():
+            for corner in corners:
+                config.set(f"presentation.corners.{corner}.enabled",
+                           corner in PAGER_POSITION_CORNERS[PREVIEW_PAGER],
+                           persist=False)
+
     qt_app = QApplication(sys.argv)
     qt_app.setQuitOnLastWindowClosed(False)
 
@@ -266,7 +314,7 @@ def main() -> int:
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
-                targets.append(("top_window.png", top_window))
+                targets.append((preview_name("top_window.png"), top_window))
             if settings is not None:
                 targets.append(("settings.png", settings))
             if splash is not None:
@@ -274,9 +322,11 @@ def main() -> int:
             if debug is not None:
                 targets.append(("debug_window.png", debug))
             if editor is not None:
-                targets.append(
-                    ("main_editor_edit.png" if PREVIEW_EDIT else "main_editor.png", editor)
-                )
+                targets.append((
+                    preview_name("main_editor_edit.png" if PREVIEW_EDIT
+                                 else "main_editor.png"),
+                    editor,
+                ))
             targets += page_hosts
 
         for name, window in targets:
@@ -295,6 +345,21 @@ def main() -> int:
         if rinui.theme_manager.get_theme_name() != previous_theme:
             rinui.theme_manager.toggle_theme(previous_theme)
             print(f"[OK] 主题已还原为 {previous_theme}")
+        # 同理，「显示按钮文本」也只是预览用的一次性改动 —— 别留在内存里
+        if PREVIEW_LABELS:
+            config.set("presentation.buttons.show_labels", labels_previous,
+                       persist=False)
+        if PREVIEW_PAGER:
+            config.set("presentation.pager.position", pager_previous, persist=False)
+            enabled = PAGER_POSITION_CORNERS.get(pager_previous, ())
+            for corners in PAGER_POSITION_CORNERS.values():
+                for corner in corners:
+                    config.set(f"presentation.corners.{corner}.enabled",
+                               corner in enabled, persist=False)
+        if PREVIEW_LABELS or PREVIEW_PAGER:
+            backend.reload_from_config()
+            print(f"[OK] 预览用的一次性改动已还原"
+                  f"（show_labels={labels_previous}, pager.position={pager_previous}）")
         qt_app.quit()
 
     QTimer.singleShot(1800, capture)

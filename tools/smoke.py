@@ -22,7 +22,9 @@
 10. 编辑器的**编辑态**（2026-10-01 用户指令）：默认全景（整屏等比 + 面板收起）、
    点中一条控制条 → 聚焦放大并居中 / **面板左边整块**压暗罩（铺满、不留一圈
    亚克力）/ 选中项套强调色描边 / 右侧滑出**实色**设置面板并挤窄舞台（组件信息
-   与缩放**常驻在下部**，上部留给设置项）、手动档位与平移钳制、退出后回到全景
+   与缩放**常驻在下部**，上部留给设置项）、手动档位与平移钳制、退出后回到全景；
+   设置项跟着组件走（工具栏 = 显示按钮文本；翻页组件 = 翻页组件位置，竖版两侧
+   中间 / 横版两侧下部二选一，切形态时预览与真机一起换、编辑对象跟着挪）
 
 用法::
 
@@ -81,6 +83,25 @@ def _collect_named(item, prefix: str):
     for child in item.childItems():
         found.extend(_collect_named(child, prefix))
     return found
+
+
+def _find_text(item, text: str):
+    """按 ``text`` 找一项 Text（``SettingCard`` 内部的标题 / 说明没有 objectName）。
+
+    ⚠️ 必须过滤 ``isVisible()``：同名文案在别处也有（RinUI 的标题栏、隐藏探针），
+    拿错了会让断言看着像通过。
+    """
+    for child in item.childItems():
+        try:
+            value = child.property("text")
+        except (AttributeError, RuntimeError):  # pragma: no cover - 非 Text 项
+            value = None
+        if value == text and child.isVisible():
+            return child
+        found = _find_text(child, text)
+        if found is not None:
+            return found
+    return None
 
 
 def _prop(obj, path: str):
@@ -493,13 +514,26 @@ def _check_editor(app) -> None:
         f"命中={hit!r}（期望 {corner_name!r}）空白处={miss!r}",
     )
 
-    editor.setProperty("selectedCorner", corner_name)
-    _settle()  # 相机 220ms + 面板 220ms + 一轮布局
+    # 进入编辑态（走 QML 的真接口 ``selectCorner``，与鼠标点选同一个入口）。
+    #
+    # ⚠️ 这一步**偶发**失败（实测约二十次里一次）：``selectedCorner`` 会在设完之后
+    # 的某一拍被清成 ""，随后成片的编辑态断言跟着失败，而前面的「命中测试」还好好的
+    # —— 说明确实发生了一次真实的清空，不是读到了中间值（``_settle`` 已经排除后者）。
+    # 清空的唯一出口是 ``clearSelection()``（``refreshFromConfig`` / ``onVisibleChanged``
+    # 都会调它），但挂了 QML 侧 console 诊断连跑十几次也复现不到。
+    # 处理办法与下面「Esc 退出编辑态」那条相同：确认一次，没生效就再来一拍
+    # （最多 3 次），并把重试次数写进失败详情 —— 根因找出来之前先别让它变成假失败。
+    for _attempt in range(3):
+        editor.selectCorner(corner_name)
+        _settle()  # 相机 220ms + 面板 220ms + 一轮布局
+        if editor.property("editing") is True:
+            break
 
     check(
         "点中组件后进入编辑态",
         editor.property("editing") is True,
-        f"editing={editor.property('editing')} corner={corner_name}",
+        f"editing={editor.property('editing')} corner={corner_name} "
+        f"selectedCorner={editor.property('selectedCorner')!r} 尝试={_attempt + 1}",
     )
 
     # 聚焦比例：把选中项（+取景留白）装进视口，钳制在 [fitScale, 2×]。
@@ -701,6 +735,22 @@ def _check_editor(app) -> None:
         f"nav.bottom={nav.y() + nav.height():.1f} footer.y={footer.y():.1f}",
     )
 
+    # 设置项跟着选中的组件走（2026-10-01 用户指令：「工具栏新增设置项『显示按钮文本』，
+    # 打开后，将在按钮旁边显示按钮的名称文本」）。
+    labels_card = _find_named(content_root, "editorSettingButtonLabels")
+    labels_switch = _find_named(content_root, "editorSettingButtonLabelsSwitch")
+    selected_groups = ((corner_cfg.get(corner_name) or {}).get("groups") or [])
+    selected_is_toolbar = any(
+        g in selected_groups for g in ("tools", "actions", "exit"))
+    check(
+        "选中工具栏时面板里出现「显示按钮文本」设置项（且带开关）",
+        labels_card is not None and labels_switch is not None
+        and labels_card.isVisible() is selected_is_toolbar,
+        f"card={labels_card is not None} switch={labels_switch is not None} "
+        f"visible={None if labels_card is None else labels_card.isVisible()} "
+        f"该角落是工具栏={selected_is_toolbar}（groups={selected_groups}）",
+    )
+
     name_label = _find_named(content_root, "editorInspectorName")
     size_label = _find_named(content_root, "editorInspectorSize")
     zoom_label = _find_named(content_root, "editorZoomLabel")
@@ -719,6 +769,69 @@ def _check_editor(app) -> None:
         and str(zoom_label.property("text")) == f"{round(plane.scale() * 100)}%",
         f"label={None if zoom_label is None else zoom_label.property('text')!r} "
         f"scale={plane.scale():.4f}",
+    )
+
+    # ---------------------------------------------- 显示按钮文本（工具栏设置项）
+    # 走**内存改配置 + reload_from_config** 的成对用法（``persist=False``），不落盘。
+    # 打开后按钮从「直径 44 的圆」变成「图标 + 名称」的胶囊，整条控制条按文字
+    # 宽度撑宽 —— 真机侧 ``windows.py::_load_docks`` 挂了 widthChanged → 重摆，
+    # 所以这里也顺带验「宽度真的变了」（否则可能只是标签画在圆外面）。
+    labels_before = _collect_named(target, "dockButtonLabel")
+    width_before = target.width()
+    check(
+        "默认不带名称文本（标签项都在，只是不显示）",
+        bool(labels_before) and not any(lab.isVisible() for lab in labels_before),
+        f"标签数={len(labels_before)} "
+        f"可见={sum(1 for lab in labels_before if lab.isVisible())}",
+    )
+
+    prev_labels = app.config.get("presentation.buttons.show_labels")
+    app.config.set("presentation.buttons.show_labels", True, persist=False)
+    app.backend.reload_from_config()
+    _settle()
+
+    labels_after = _collect_named(target, "dockButtonLabel")
+    shown = [lab for lab in labels_after if lab.isVisible()]
+    shown_texts = [str(lab.property("text")) for lab in shown]
+    # 翻页 pill 的两个圆钮也带着（空的）标签槽 —— 它们是**故意**不参与这个开关的
+    # （见 Lumi / 配置里 show_labels 的说明），所以判据是「有名字的都得显示」，
+    # 而不是「所有标签都得显示」。
+    named = [lab for lab in labels_after if str(lab.property("text")) != ""]
+    tools_cfg = app.config.get("presentation.tools", []) or []
+    tool_labels = {str(t.get("label")) for t in tools_cfg}
+    check(
+        "打开后每个有名字的按钮旁边都出现名称文本（且都不是空的）",
+        bool(named) and all(lab.isVisible() for lab in named)
+        and len(named) == len(shown) and all(text for text in shown_texts),
+        f"有名字的标签={len(named)} 可见={len(shown)} 文本={shown_texts}",
+    )
+    check(
+        "翻页 pill 不参与这个开关（保持「小、聚拢」的形态）",
+        all(str(lab.property("text")) == "" for lab in labels_after
+            if not lab.isVisible()),
+        f"未显示但有文本的标签="
+        f"{[str(lab.property('text')) for lab in labels_after if not lab.isVisible()]}",
+    )
+    if selected_is_toolbar:
+        check(
+            "文本取的是按钮自己的名字（工具的 label，不是 tooltip 那种长文案）",
+            tool_labels.issubset(set(shown_texts)),
+            f"工具名={sorted(tool_labels)} 屏幕上={sorted(set(shown_texts))}",
+        )
+    check(
+        "名称文本把控制条撑宽（不是把字挤在原来的圆里）",
+        target.width() > width_before + 40,
+        f"宽度 {width_before:.0f} → {target.width():.0f}",
+    )
+
+    app.config.set("presentation.buttons.show_labels", prev_labels, persist=False)
+    app.backend.reload_from_config()
+    _settle()
+    check(
+        "关掉后回到纯图标形态（宽度还原、自检不留副作用）",
+        not any(lab.isVisible() for lab in _collect_named(target, "dockButtonLabel"))
+        and abs(target.width() - width_before) <= 1,
+        f"宽度={target.width():.0f}（原 {width_before:.0f}）",
     )
 
     # ----------------------------------------------------- 手动档位 / 平移钳制
@@ -771,14 +884,19 @@ def _check_editor(app) -> None:
         QTest.mouseClick(editor, Qt.LeftButton, Qt.NoModifier,
                          QPoint(int(round(origin.x() + vx)), int(round(origin.y() + vy))))
 
-    _click_viewport(plane.x() + (sx + sw / 2) * plane.scale(),
-                    plane.y() + (sy + sh / 2) * plane.scale())
-    _settle()
+    # 同上：这一步也可能撞上「选中被打回全景」那个偶发（见上面 selectCorner 的说明）
+    for _attempt in range(3):
+        _click_viewport(plane.x() + (sx + sw / 2) * plane.scale(),
+                        plane.y() + (sy + sh / 2) * plane.scale())
+        _settle()
+        if str(editor.property("selectedCorner")) == corner_name:
+            break
     check(
         "在窗口上真的点一下控制条 → 进入编辑态",
         str(editor.property("selectedCorner")) == corner_name
         and editor.property("editing") is True,
-        f"selectedCorner={editor.property('selectedCorner')!r}（期望 {corner_name!r}）",
+        f"selectedCorner={editor.property('selectedCorner')!r}（期望 {corner_name!r}）"
+        f" 尝试={_attempt + 1}",
     )
 
     _click_viewport(viewport.width() / 2, viewport.height() / 2)
@@ -895,6 +1013,160 @@ def _check_editor(app) -> None:
         f"filter={'Y' if hwnd in filter_hwnds else 'N'} "
         f"theme={'Y' if hwnd in theme_hwnds else 'N'}",
     )
+
+    # 设置项跟着选中的组件走：挑一条**没有工具栏区块**的控制条（翻页 pill），
+    # 面板里那块「显示按钮文本」必须收起来 —— 它是工具栏的设置项。
+    pager_corner = next(
+        (name for name in enabled
+         if not any(g in ((corner_cfg.get(name) or {}).get("groups") or [])
+                    for g in ("tools", "actions", "exit"))),
+        None,
+    )
+    if pager_corner is not None:
+        editor.setProperty("selectedCorner", pager_corner)
+        _settle()
+        check(
+            "选中翻页组件时工具栏的设置项收起（设置项跟着组件走）",
+            labels_card is not None and not labels_card.isVisible(),
+            f"corner={pager_corner} "
+            f"visible={None if labels_card is None else labels_card.isVisible()}",
+        )
+        editor.clearSelection()
+        _settle()
+
+    # -------------------------------------------------- 翻页组件位置（翻页组件设置项）
+    # 2026-10-01 用户指令：「翻页组件新增设置项『翻页组件位置』，可选翻页组件是
+    # 竖版两侧中间 还是横板两侧下部」。两种形态**二选一**（同时开会变成四个翻页栏），
+    # 写的是 ``presentation.pager.position``，后端顺带开关 corners 那四个角 ——
+    # 真实生效的仍是 corners，所以两边都得验。
+    PAGER_SIDE = ("middle_left", "middle_right")
+    PAGER_BOTTOM = ("bottom_left", "bottom_right")
+    PAGER_COUNTERPART = {
+        "middle_left": "bottom_left", "middle_right": "bottom_right",
+        "bottom_left": "middle_left", "bottom_right": "middle_right",
+    }
+    position_card = _find_named(content_root, "editorSettingPagerPosition")
+    position_combo = _find_named(content_root, "editorSettingPagerPositionCombo")
+    check(
+        "面板里有「翻页组件位置」设置项（且带下拉）",
+        position_card is not None and position_combo is not None,
+        f"card={position_card is not None} combo={position_combo is not None}",
+    )
+
+    if position_card is not None and pager_corner is not None:
+        editor.setProperty("selectedCorner", pager_corner)
+        _settle()
+        check(
+            "选中翻页组件时出现「翻页组件位置」（工具栏那项仍然收起）",
+            position_card.isVisible() and not labels_card.isVisible(),
+            f"corner={pager_corner} 位置项={position_card.isVisible()} "
+            f"文本项={labels_card.isVisible()}",
+        )
+
+        # 版式：面板只有 340 宽，SettingCard 的左右两块是并排的 —— 标题被挤成两行、
+        # 下拉窄到显示不全，都是这一版最容易踩的回归（第一版就被挤了两行）。
+        pager_title = _find_text(position_card, "翻页组件位置")
+        combo_text = position_combo.property("contentItem")
+        typed_width = float(
+            (combo_text.property("contentWidth") if combo_text is not None else 0) or 0
+        )
+        check(
+            "设置项标题一行放得下、下拉宽到选项文字不会截断（没被窄面板挤坏）",
+            pager_title is not None
+            and int(pager_title.property("lineCount") or 0) <= 1
+            and typed_width > 0
+            # 32 是下拉右侧那枚 chevron 的宽度，再留一点边
+            and typed_width + 36 <= position_combo.width() + 1,
+            f"标题行数={None if pager_title is None else pager_title.property('lineCount')} "
+            f"下拉={position_combo.width():.0f} 其中文字需 {typed_width:.0f}",
+        )
+
+        prev_position = str(app.config.get("presentation.pager.position") or "side")
+        # ⚠️ ``corner_cfg`` 是配置里那份**活的** dict，开关一改它就跟着变 ——
+        #    「还原后是否回到原样」必须拿切换**之前**的快照比。
+        prev_pager_on = [c for c in PAGER_SIDE + PAGER_BOTTOM
+                         if (corner_cfg.get(c) or {}).get("enabled")]
+        other_position = "bottom" if prev_position != "bottom" else "side"
+        want_on = PAGER_BOTTOM if other_position == "bottom" else PAGER_SIDE
+        want_off = PAGER_SIDE if other_position == "bottom" else PAGER_BOTTOM
+
+        # 走**真实入口**（``Backend.setSetting``）：它负责连带开关四个角落，
+        # 并让 ``windows.py::rebuild_docks`` 重建真机控制条。
+        app.backend.setSetting("presentation_pager_position", other_position)
+        _settle()
+
+        corners_now = app.config.get("presentation.corners") or {}
+        on_now = [c for c in PAGER_SIDE + PAGER_BOTTOM
+                  if (corners_now.get(c) or {}).get("enabled")]
+        check(
+            "切形态连带开关四个角落（二选一 —— 同时开就是四个翻页栏）",
+            sorted(on_now) == sorted(want_on),
+            f"position={other_position} 开着的角落={sorted(on_now)} 期望={sorted(want_on)}",
+        )
+
+        check(
+            "下拉跟着切过去（选中的就是屏幕上那种形态）",
+            int(position_combo.property("currentIndex")) == (1 if other_position == "bottom" else 0),
+            f"currentIndex={position_combo.property('currentIndex')} 期望="
+            f"{1 if other_position == 'bottom' else 0}",
+        )
+
+        # 预览副本跟着换（竖版 SidePager ↔ 横版 pill，是两个不同的 QML 组件）
+        preview_now = [str(d.objectName()[len("editorPreviewDock_"):])
+                       for d in _collect_named(plane, "editorPreviewDock_")]
+        check(
+            "预览里的翻页组件跟着换形态（新形态出现、旧形态消失）",
+            all(c in preview_now for c in want_on)
+            and not any(c in preview_now for c in want_off),
+            f"预览={sorted(preview_now)} 期望含={sorted(want_on)} "
+            f"不该出现={sorted(want_off)}",
+        )
+
+        # 真机侧：换的是 QML 组件，光挪位置不够 —— 必须整批重建
+        live_now = sorted(app.windows._docks)
+        expect_live = sorted(
+            name for name in CORNERS
+            if (corners_now.get(name) or {}).get("enabled"))
+        check(
+            "真机侧控制条按新的角落重建（不是只挪位置）",
+            live_now == expect_live,
+            f"真机={live_now} 期望={expect_live}",
+        )
+
+        # 编辑对象还在：换形态只是把它挪到对应角落，面板不该收起来
+        moved = PAGER_COUNTERPART.get(pager_corner, "")
+        check(
+            "换形态后编辑对象跟着挪到对应角落（面板没有收起来）",
+            str(editor.property("selectedCorner")) == moved
+            and inspector.isVisible(),
+            f"selectedCorner={editor.property('selectedCorner')!r} 期望={moved!r} "
+            f"panel={inspector.isVisible()}",
+        )
+        check(
+            "挪过去的还是同一只翻页组件（组件名没变成工具栏）",
+            str(_find_named(content_root, "editorInspectorName").property("text"))
+            == "翻页组件",
+            f"name={_find_named(content_root, 'editorInspectorName').property('text')!r}",
+        )
+
+        # 还原（走同一条真实入口），确认自检不留副作用
+        app.backend.setSetting("presentation_pager_position", prev_position)
+        _settle()
+        corners_back = app.config.get("presentation.corners") or {}
+        preview_back = [str(d.objectName()[len("editorPreviewDock_"):])
+                        for d in _collect_named(plane, "editorPreviewDock_")]
+        check(
+            "还原后角落开关 / 预览 / 配置都回到原样（自检不留副作用）",
+            str(app.config.get("presentation.pager.position")) == prev_position
+            and [c for c in PAGER_SIDE + PAGER_BOTTOM
+                 if (corners_back.get(c) or {}).get("enabled")] == prev_pager_on
+            and sorted(preview_back) == sorted(enabled),
+            f"position={app.config.get('presentation.pager.position')!r} "
+            f"预览={sorted(preview_back)} 原样={sorted(enabled)}",
+        )
+
+        editor.clearSelection()
+        _settle()
 
     app.backend.closeMainEditor()
     check("主界面编辑器可关闭", not editor.isVisible())
@@ -1058,6 +1330,45 @@ def main() -> int:
                 "工具栏视觉贴边距离 = 配置的垂直边距",
                 abs(visual_bottom - margin_y) <= 1,
                 f"视觉={visual_bottom} 期望={margin_y} shadow={shadow}",
+            )
+
+            # ---- 「显示按钮文本」在**真机控制条**上也生效，并且会重新摆位 ----
+            # 编辑器预览里那条单独验过（见 _check_editor）；这里验真实那条：
+            # 名字一多整条就变宽，宽度变了若不重摆，居中的那条会按**旧宽度**
+            # 停在偏掉的位置（``_load_docks`` 挂了 widthChanged →
+            # ``_schedule_reposition``）。走内存改配置（``persist=False``），不落盘。
+            labels_prev = app.config.get("presentation.buttons.show_labels")
+            plain_width = float(cdock.width())
+            app.config.set("presentation.buttons.show_labels", True, persist=False)
+            app.backend.reload_from_config()
+            _wait_stable(
+                lambda: f"{cdock.width():.1f}|{cdock.x():.1f}|{cdock.y():.1f}")
+            wide = float(cdock.width())
+            shown_names = [
+                str(lab.property("text"))
+                for lab in _collect_named(cdock, "dockButtonLabel")
+                if lab.isVisible()
+            ]
+            check(
+                "真机工具栏也按名称文本撑宽（与编辑器预览同一条路径）",
+                wide > plain_width + 40 and bool(shown_names),
+                f"宽度 {plain_width:.0f} → {wide:.0f} 文本={shown_names}",
+            )
+            check(
+                "撑宽之后重新摆位（居中那条仍然左右对称）",
+                abs((geom.width() - wide) // 2 - cdock.x()) <= 1,
+                f"x={cdock.x()} 期望={(geom.width() - wide) // 2} "
+                f"（条宽 {wide:.0f}，屏幕 {geom.width()}）",
+            )
+            app.config.set("presentation.buttons.show_labels", labels_prev,
+                           persist=False)
+            app.backend.reload_from_config()
+            _wait_stable(lambda: f"{cdock.width():.1f}|{cdock.x():.1f}")
+            check(
+                "关掉后真机控制条回到原尺寸原位（自检不留副作用）",
+                abs(float(cdock.width()) - plain_width) <= 1
+                and abs(cdock.x() - (geom.width() - plain_width) // 2) <= 1,
+                f"宽度={float(cdock.width()):.0f}（原 {plain_width:.0f}）x={cdock.x()}",
             )
         for corner, edge in (("middle_left", "left"), ("middle_right", "right")):
             dock = app.windows._docks.get(corner)
@@ -1283,6 +1594,70 @@ def main() -> int:
                 abs(ldock.y() - (geom.height() - ldock.height() - ldock.y())) <= 2,
                 f"y={ldock.y()} h={ldock.height()} screen={geom.height()}",
             )
+
+        # ---- 切「翻页组件位置」：当着放映画面把真机控制条**整批重建** ----
+        # 这个设置项最容易翻车的就是这一段：换形态不只是挪位置，而是换一整套 QML
+        # 组件（SidePager ↔ PresentationDock），必须销毁重建；而且顶层窗口是按
+        # 控制条矩形塑形的，形状变了穿透区域也得跟着重算（旧区域留着 = 新的翻页栏
+        # 点不动）。编辑器那边（``_check_editor``）只验了「配置 / 预览 / 重建调用」，
+        # 真机这一侧得在这儿顶着放映态验。
+        pager_prev = str(app.config.get("presentation.pager.position") or "side")
+        pager_other = "bottom" if pager_prev != "bottom" else "side"
+        swap_on = ("bottom_left", "bottom_right") if pager_other == "bottom" \
+            else ("middle_left", "middle_right")
+
+        def _check_live_pagers(shape: str, label: str) -> None:
+            left = app.windows._docks.get(swap_on[0])
+            right = app.windows._docks.get(swap_on[1])
+            if left is None or right is None:
+                check(label, False, f"{swap_on} 没建出来（真机={sorted(app.windows._docks)}）")
+                return
+            if shape == "bottom":
+                same_axis = abs(left.y() - right.y()) <= 1
+                crossed = left.width() > left.height() and right.width() > right.height()
+                axis = f"y=({left.y():.0f},{right.y():.0f})"
+            else:
+                same_axis = abs(
+                    left.y() - (geom.height() - left.height() - left.y())) <= 2
+                crossed = left.height() > left.width() and right.height() > right.width()
+                axis = f"左边距={left.y():.0f}/对侧={geom.height() - left.height() - left.y():.0f}"
+            check(
+                label,
+                sorted(app.windows._docks) == sorted(["bottom_center", *swap_on])
+                and same_axis and crossed
+                and left.x() < right.x(),
+                f"真机={sorted(app.windows._docks)} {axis} "
+                f"左={left.width():.0f}x{left.height():.0f}",
+            )
+
+        app.backend.setSetting("presentation_pager_position", pager_other)
+        QTest.qWait(150)  # 重建 + 重摆是同步的，给区域塑形一拍
+        _check_live_pagers(
+            "bottom" if pager_other == "bottom" else "side",
+            "切形态后真机控制条整批重建（新形态就位：横版宽>高 / 竖版高>宽）",
+        )
+        region_rects = app.windows._dock_rects_local()
+        if app.windows._region_mode:
+            box = (
+                min(r[0] for r in region_rects), min(r[1] for r in region_rects),
+                max(r[0] + r[2] for r in region_rects),
+                max(r[1] + r[3] for r in region_rects),
+            )
+            check(
+                "区域塑形按重建后的矩形重算（新的翻页栏照样点得动）",
+                app.windows._last_region_box == box and len(region_rects) >= 3,
+                f"区域盒={app.windows._last_region_box} 期望={box} "
+                f"矩形数={len(region_rects)}",
+            )
+
+        app.backend.setSetting("presentation_pager_position", pager_prev)
+        QTest.qWait(150)
+        swap_on = ("bottom_left", "bottom_right") if pager_prev == "bottom" \
+            else ("middle_left", "middle_right")
+        _check_live_pagers(
+            "bottom" if pager_prev == "bottom" else "side",
+            "还原后真机控制条回到原形态（自检不留副作用）",
+        )
 
         # ---- 模拟退出放映：顶层窗口整体隐藏 ----
         app.ppt.inject_state(PresentationState(active=False))

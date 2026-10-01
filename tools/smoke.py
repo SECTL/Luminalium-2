@@ -35,7 +35,9 @@
    亚克力）/ 选中项套强调色描边 / 右侧滑出**实色**设置面板并挤窄舞台（组件信息
    与缩放**常驻在下部**，上部留给设置项）、手动档位与平移钳制、退出后回到全景；
    设置项跟着组件走（工具栏 = 显示按钮文本；翻页组件 = 翻页组件位置，竖版两侧
-   中间 / 横版两侧下部二选一，切形态时预览与真机一起换、编辑对象跟着挪）
+   中间 / 横版两侧下部二选一，切形态时预览与真机一起换、编辑对象跟着挪）；
+   设置项区是**平铺**版式（名称独占一行、控件排在下面，一个 ``SettingCard`` 都没有
+   —— 2026-10-01 第五轮用户指令 + Win11 截屏）
 11. 设置页「关于」的**流光英雄区**（L1 同款）：英雄区高 320、Logo 四层齐全、
     **页面不带大标题**（头部塌成 0）、流光的自转**真的在动**（⚠️ ``RotationAnimator``
     在本环境静默失效）、呼吸缩放落在 1.0~1.1、Logo 星心亮度贴近 L1 参考图
@@ -891,38 +893,85 @@ def _check_editor(app) -> None:
         f"nav.bottom={nav.y() + nav.height():.1f} footer.y={footer.y():.1f}",
     )
 
+    # ---------------------------------------------------- 平铺版式（2026-10-01 第五轮）
+    # 用户指令（附 Win11「设置 → 通知」截屏）：「主界面编辑器的组件设置内容其实
+    # 不应该用常规的设置卡，而是类似图片的这种平铺设置名称和 dropdown / 开关 / 选项」。
+    #
+    # 这条守的是**版式的本质**，不是某一项的措辞：
+    #   · 面板里不能再有 ``Rin.SettingCard``（那是「左标题 / 右控件」的两栏卡）；
+    #   · 三项设置都得是 ``InspectorSetting``（名称一行、控件在下一行）。
+    # ⚠️ 光照一张预览图看不出「卡片还在但看着像平的」，所以必须按类型数。
+    panel_card = _find_named(content_root, "editorInspectorPanel")
+    flat_items = _collect_type(panel_card, "InspectorSetting") if panel_card else []
+    check(
+        "编辑器设置面板已改成平铺式：一个 SettingCard 都没有、三个 InspectorSetting 就位",
+        panel_card is not None
+        and len(_collect_type(panel_card, "SettingCard")) == 0
+        and len(flat_items) == 3,
+        f"SettingCard={len(_collect_type(panel_card, 'SettingCard')) if panel_card else '?'} "
+        f"InspectorSetting={len(flat_items)}（期望 3：显示按钮文本 / 退出键样式 / 翻页组件位置）",
+    )
+
     # 设置项跟着选中的组件走（2026-10-01 用户指令：「工具栏新增设置项『显示按钮文本』，
     # 打开后，将在按钮旁边显示按钮的名称文本」）。
-    labels_card = _find_named(content_root, "editorSettingButtonLabels")
+    labels_item = _find_named(content_root, "editorSettingButtonLabels")
     labels_switch = _find_named(content_root, "editorSettingButtonLabelsSwitch")
     selected_groups = ((corner_cfg.get(corner_name) or {}).get("groups") or [])
     selected_is_toolbar = any(
         g in selected_groups for g in ("tools", "actions", "exit"))
     check(
         "选中工具栏时面板里出现「显示按钮文本」设置项（且带开关）",
-        labels_card is not None and labels_switch is not None
-        and labels_card.isVisible() is selected_is_toolbar,
-        f"card={labels_card is not None} switch={labels_switch is not None} "
-        f"visible={None if labels_card is None else labels_card.isVisible()} "
+        labels_item is not None and labels_switch is not None
+        and labels_item.isVisible() is selected_is_toolbar,
+        f"项={labels_item is not None} switch={labels_switch is not None} "
+        f"visible={None if labels_item is None else labels_item.isVisible()} "
         f"该角落是工具栏={selected_is_toolbar}（groups={selected_groups}）",
     )
+    if labels_item is not None and labels_switch is not None and selected_is_toolbar:
+        # 名称在**控件上面**（这是「平铺」与「两栏卡」唯一的结构差别，也最容易
+        # 在改版式时改漏 —— 卡片换掉、名字还留在右边）。
+        # ⚠️ 量坐标要在 ``content_root`` 坐标系里比：一个是 Rin.Text、一个是 Switch，
+        #    没有共同父级。
+        title_label = _find_text(labels_item, "显示按钮文本")
+        title_pos = (None if title_label is None
+                     else title_label.mapToItem(content_root, QPointF(0, 0)))
+        switch_pos = labels_switch.mapToItem(content_root, QPointF(0, 0))
+        check(
+            "「显示按钮文本」名称排在开关**上面**、两者左对齐（平铺版式）",
+            title_pos is not None
+            and title_pos.y() + title_label.height() <= switch_pos.y() + 1
+            and abs(title_pos.x() - switch_pos.x()) <= 1,
+            f"名称 y={None if title_pos is None else round(title_pos.y())} "
+            f"x={None if title_pos is None else round(title_pos.x())} "
+            f"| 开关 y={switch_pos.y():.0f} x={switch_pos.x():.0f}",
+        )
+        # 开关自带的状态字（``checkedText`` / ``uncheckedText``）必须是中文：
+        # 默认那对是 ``qsTr("On") / qsTr("Off")``，本项目没有翻译文件，会直接
+        # 显示成英文（第一版就并排出现了「Off 关」两个状态字）。
+        check(
+            "开关的状态字是中文「开 / 关」（不是 RinUI 默认的 On / Off）",
+            str(labels_switch.property("checkedText")) == "开"
+            and str(labels_switch.property("uncheckedText")) == "关",
+            f"checkedText={labels_switch.property('checkedText')!r} "
+            f"uncheckedText={labels_switch.property('uncheckedText')!r}",
+        )
 
     # 退出键样式（2026-10-01 用户指令：从设置 → 放映页搬进「主界面编辑器里的
     # 工具栏设置」）。它与「显示按钮文本」同属工具栏一组，所以显隐条件一致。
-    exit_card = _find_named(content_root, "editorSettingExitStyle")
+    exit_item = _find_named(content_root, "editorSettingExitStyle")
     exit_combo = _find_named(content_root, "editorSettingExitStyleCombo")
     check(
         "选中工具栏时面板里出现「退出键样式」（从放映页搬来，带下拉）",
-        exit_card is not None and exit_combo is not None
-        and exit_card.isVisible() is selected_is_toolbar,
-        f"card={exit_card is not None} combo={exit_combo is not None} "
-        f"visible={None if exit_card is None else exit_card.isVisible()} "
+        exit_item is not None and exit_combo is not None
+        and exit_item.isVisible() is selected_is_toolbar,
+        f"项={exit_item is not None} combo={exit_combo is not None} "
+        f"visible={None if exit_item is None else exit_item.isVisible()} "
         f"该角落是工具栏={selected_is_toolbar}",
     )
-    if exit_card is not None and exit_combo is not None and selected_is_toolbar:
-        # 版式：面板只有 340 宽，SettingCard 左右并排 —— 「翻页组件位置」第一版
-        # 就是被挤成两行的标题，这一项同样有风险（选项文字 8 个汉字，比它还长）。
-        exit_title = _find_text(exit_card, "退出键样式")
+    if exit_item is not None and exit_combo is not None and selected_is_toolbar:
+        # 版式：平铺之后标题独占一行，不会被挤成两行；但下拉仍得宽到选项文字
+        # 不截断（「危险红图标（L1）」是三项里最长的选项文字）。
+        exit_title = _find_text(exit_item, "退出键样式")
         combo_text = exit_combo.property("contentItem")
         typed_width = float(
             (combo_text.property("contentWidth") if combo_text is not None else 0) or 0
@@ -1249,9 +1298,9 @@ def _check_editor(app) -> None:
         _settle()
         check(
             "选中翻页组件时工具栏的设置项收起（设置项跟着组件走）",
-            labels_card is not None and not labels_card.isVisible(),
+            labels_item is not None and not labels_item.isVisible(),
             f"corner={pager_corner} "
-            f"visible={None if labels_card is None else labels_card.isVisible()}",
+            f"visible={None if labels_item is None else labels_item.isVisible()}",
         )
         editor.clearSelection()
         _settle()
@@ -1267,40 +1316,49 @@ def _check_editor(app) -> None:
         "middle_left": "bottom_left", "middle_right": "bottom_right",
         "bottom_left": "middle_left", "bottom_right": "middle_right",
     }
-    position_card = _find_named(content_root, "editorSettingPagerPosition")
-    position_combo = _find_named(content_root, "editorSettingPagerPositionCombo")
+    position_item = _find_named(content_root, "editorSettingPagerPosition")
+    position_side = _find_named(content_root, "editorSettingPagerPositionSide")
+    position_bottom = _find_named(content_root, "editorSettingPagerPositionBottom")
     check(
-        "面板里有「翻页组件位置」设置项（且带下拉）",
-        position_card is not None and position_combo is not None,
-        f"card={position_card is not None} combo={position_combo is not None}",
+        "面板里有「翻页组件位置」设置项（且是两条平铺选项，不是下拉）",
+        position_item is not None
+        and position_side is not None and position_bottom is not None,
+        f"项={position_item is not None} 选项={position_side is not None}"
+        f"/{position_bottom is not None}",
     )
 
-    if position_card is not None and pager_corner is not None:
+    if position_item is not None and pager_corner is not None:
         editor.setProperty("selectedCorner", pager_corner)
         _settle()
         check(
             "选中翻页组件时出现「翻页组件位置」（工具栏那项仍然收起）",
-            position_card.isVisible() and not labels_card.isVisible(),
-            f"corner={pager_corner} 位置项={position_card.isVisible()} "
-            f"文本项={labels_card.isVisible()}",
+            position_item.isVisible() and not labels_item.isVisible(),
+            f"corner={pager_corner} 位置项={position_item.isVisible()} "
+            f"文本项={labels_item.isVisible()}",
         )
 
-        # 版式：面板只有 340 宽，SettingCard 的左右两块是并排的 —— 标题被挤成两行、
-        # 下拉窄到显示不全，都是这一版最容易踩的回归（第一版就被挤了两行）。
-        pager_title = _find_text(position_card, "翻页组件位置")
-        combo_text = position_combo.property("contentItem")
-        typed_width = float(
-            (combo_text.property("contentWidth") if combo_text is not None else 0) or 0
-        )
+        # 版式（2026-10-01 第五轮改平铺）：名称一行、两条选项排在它下面，
+        # 且**选项文字不能截断** —— 平铺之后宽度不再由卡片右栏挤出来，
+        # 但也因此没有「右栏最小宽度」兜底，窄面板下更容易被压掉字。
+        # ⚠️ 量截断看 ``width() >= implicitWidth()``：``RadioButton`` 换掉
+        #    ``contentItem`` 之后没有 ``contentWidth`` 可读（``ComboBox`` 才有）。
+        pager_title = _find_text(position_item, "翻页组件位置")
+        title_pos = (None if pager_title is None
+                     else pager_title.mapToItem(content_root, QPointF(0, 0)))
+        options = [o for o in (position_side, position_bottom) if o is not None]
+        option_pos = [o.mapToItem(content_root, QPointF(0, 0)) for o in options]
         check(
-            "设置项标题一行放得下、下拉宽到选项文字不会截断（没被窄面板挤坏）",
+            "「翻页组件位置」名称在上、两条选项在下且左对齐、文字都没被压掉",
             pager_title is not None
             and int(pager_title.property("lineCount") or 0) <= 1
-            and typed_width > 0
-            # 32 是下拉右侧那枚 chevron 的宽度，再留一点边
-            and typed_width + 36 <= position_combo.width() + 1,
+            and len(options) == 2
+            and all(o.width() + 1 >= o.implicitWidth() for o in options)
+            and all(pos.y() >= title_pos.y() + pager_title.height() - 1
+                    for pos in option_pos)
+            and all(abs(pos.x() - title_pos.x()) <= 1 for pos in option_pos),
             f"标题行数={None if pager_title is None else pager_title.property('lineCount')} "
-            f"下拉={position_combo.width():.0f} 其中文字需 {typed_width:.0f}",
+            f"选项宽=" + "/".join(
+                f"{o.width():.0f}>={o.implicitWidth():.0f}" for o in options),
         )
 
         prev_position = str(app.config.get("presentation.pager.position") or "side")
@@ -1327,10 +1385,14 @@ def _check_editor(app) -> None:
         )
 
         check(
-            "下拉跟着切过去（选中的就是屏幕上那种形态）",
-            int(position_combo.property("currentIndex")) == (1 if other_position == "bottom" else 0),
-            f"currentIndex={position_combo.property('currentIndex')} 期望="
-            f"{1 if other_position == 'bottom' else 0}",
+            "两条选项跟着切过去（选中的那枚就是屏幕上那种形态）",
+            bool(position_side.property("checked"))
+            == (other_position != "bottom")
+            and bool(position_bottom.property("checked"))
+            == (other_position == "bottom"),
+            f"竖版选项 checked={position_side.property('checked')} "
+            f"横版选项 checked={position_bottom.property('checked')} "
+            f"期望 position={other_position!r}",
         )
 
         # 预览副本跟着换（竖版 SidePager ↔ 横版 pill，是两个不同的 QML 组件）

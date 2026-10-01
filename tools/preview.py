@@ -329,8 +329,16 @@ def main() -> int:
             editor.show()
             # 编辑态预览：钉一个聚焦目标，好核对「聚焦放大 + 暗罩 + 高亮 + 右侧面板」
             # 这一整套编排（相机有 220ms 动画，抓图在 1.8s 后，早就停稳了）。
+            #
+            # ⚠️ 光钉 ``selectedCorner`` 还不够：窗口摆在屏幕外**从没被暴露过**时，
+            # 抓图可能拿到**上一帧**的合成结果 —— 实测偶发过一次
+            # ``main_editor_edit.png`` 里右侧面板整块不见了（而同一时刻读
+            # ``inspectorReveal`` 明明是 1.0）。抬一次窗口催曝光就稳了，
+            # 与 ``smoke.py::_nudge_editor`` 同一个办法。
             if PREVIEW_EDIT:
                 editor.setProperty("selectedCorner", PREVIEW_EDIT)
+                editor.raise_()
+                editor.requestActivate()
 
     # 各设置页单独渲染：用临时宿主窗口 + Loader 承载，逐页跑一遍
     page_hosts = _build_page_hosts(rinui.engine)

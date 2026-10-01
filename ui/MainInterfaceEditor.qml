@@ -1112,14 +1112,18 @@ Rin.FluentWindowBase {
             boundsBehavior: Flickable.StopAtBounds
             contentHeight: bodyColumn.implicitHeight + 28
 
-            /*! 设置项的落点：``x/y`` 与 ``width`` 已经排好版，往里加设置项即可
-                （间距 8 已经在 ``spacing`` 里）。 */
+            /*! 设置项的落点：``x/y`` 与 ``width`` 已经排好版，往里加设置项即可。
+
+                2026-10-01（第五轮）：间距 8 → **18**。改平铺版式之后设置项之间
+                没有卡片底板隔着，8 会让「上一项的控件」和「下一项的名称」糊成
+                一组；18 是把「名称 8 控件」的组内间距（``InspectorSetting.itemSpacing``）
+                的两倍多一点，组的边界一眼看得出来。 */
             ColumnLayout {
                 id: bodyColumn
                 x: 16
                 y: 14
                 width: parent.width - 32
-                spacing: 8
+                spacing: 18
 
                 /*! 工具栏的「显示按钮文本」（2026-10-01 用户指令：「工具栏新增设置项
                     『显示按钮文本』，打开后，将在按钮旁边显示按钮的名称文本」）。
@@ -1127,23 +1131,29 @@ Rin.FluentWindowBase {
                     （``PresentationDock``）读配置，所以改完**预览与真机同时变**。
 
                     ⚠️ 只在选中的是**工具栏**时出现 —— 翻页 pill 不参与这个开关
-                    （见 ``Lumi`` / 配置里 ``show_labels`` 的说明）。 */
-                Rin.SettingCard {
+                    （见 ``Lumi`` / 配置里 ``show_labels`` 的说明）。
+
+                    2026-10-01（第五轮）版式改**平铺**（用户指令 + Win11 截屏）：
+                    原先是一张 ``Rin.SettingCard``（左标题 / 右开关），现在是
+                    「名称一行、开关在下一行」。改用 ``InspectorSetting`` 的两条
+                    原因见那个组件自己的头注释。
+
+                    开关右边那枚「开 / 关」是照截屏加的，走的是 RinUI ``Switch``
+                    自带的 ``checkedText`` / ``uncheckedText``（``text`` 留空时它
+                    就显示这一对）—— ⚠️ **别自己再挂一枚 ``Rin.Text``**：默认那对
+                    是 ``qsTr("On") / qsTr("Off")``，本项目没有翻译文件，于是会
+                    出现「Off 关」两个状态字并排。 */
+                InspectorSetting {
                     objectName: "editorSettingButtonLabels"
 
-                    Layout.fillWidth: true
                     visible: editorWindow.selectedHasToolbar
                     title: qsTr("显示按钮文本")
-                    // 措辞按面板宽度收短：本来写的是「在按钮旁边显示名称（指针 /
-                    // 笔 / 橡皮 / 清屏 / 退出放映）」—— 340 宽的面板里说明只能放下
-                    // 约 10 个汉字，那句要折三行、把标题都挤短了。名称本来就在
-                    // 按钮上，不必在说明里再念一遍。
-                    description: qsTr("按钮旁边显示名称")
-                    icon.name: "ic_fluent_text_bullet_list_20_regular"
 
                     Rin.Switch {
                         objectName: "editorSettingButtonLabelsSwitch"
                         primaryColor: Lumi.accent
+                        checkedText: qsTr("开")
+                        uncheckedText: qsTr("关")
                         checked: Backend.settings.presentation_buttons_show_labels === true
                         onToggled: Backend.setSetting(
                             "presentation_buttons_show_labels", checked)
@@ -1157,18 +1167,19 @@ Rin.FluentWindowBase {
 
                     ⚠️ 只在选中的是**工具栏**时出现 —— 退出键是工具栏上的一枚按钮，
                     选中翻页组件时它没有意义。
-                    ⚠️ 同「翻页组件位置」：这块面板只有 340 宽，SettingCard 左右两块
-                    并排，**刻意不写 description** —— 两个选项的名字本身已经说清了。 */
-                Rin.SettingCard {
+                    2026-10-01（第五轮）：改 ``InspectorSetting`` 平铺版式后，
+                    名称独占一行，下拉也就不必再为了挤进右栏而压到 148 —— 放到 200，
+                    两个选项的名字都能完整显示（不再需要靠「刻意不写 description」
+                    来腾地方）。 */
+                InspectorSetting {
                     objectName: "editorSettingExitStyle"
 
-                    Layout.fillWidth: true
                     visible: editorWindow.selectedHasToolbar
                     title: qsTr("退出键样式")
 
                     Rin.ComboBox {
                         objectName: "editorSettingExitStyleCombo"
-                        Layout.preferredWidth: 148
+                        Layout.preferredWidth: 200
                         model: [qsTr("普通圆钮"), qsTr("危险红图标（L1）")]
                         currentIndex: Backend.settings.presentation_exit_style === "danger" ? 1 : 0
                         onActivated: Backend.setSetting(
@@ -1185,26 +1196,41 @@ Rin.FluentWindowBase {
 
                     ⚠️ 只在选中的是**翻页组件**时出现 —— 工具栏没有这个设置项。
                     ⚠️ 换了形态，编辑对象还在（``refreshFromConfig`` 会把它挪到
-                    对应角落），面板不会收起来。 */
-                Rin.SettingCard {
+                    对应角落），面板不会收起来。
+
+                    2026-10-01（第五轮）版式与**控件形态**一起换（用户指令 +
+                    Win11 截屏）：原来是个 148 宽的下拉，现在改成**两条平铺选项**
+                    （单选）。理由有二：① 只有两个互斥选项，摊开比收进下拉少一次
+                    点击、当前形态一眼可见；② 用户给的截屏里「选项」就是这种
+                    「指示器 + 文字」一行一枚的排法。
+
+                    ⚠️ ``checked`` 绑的是派生属性 ``pagerPositionIndex``（由配置算
+                    出来），用户点一下控件会内部给 ``checked`` 赋值、把绑定断掉 ——
+                    这是本项目所有「开关 / 下拉 / 分段」共用的既有写法，可接受的原因
+                    是：**这条设置唯一的写入方就是这个控件本身**，点完的界面状态与
+                    写进配置的值必然一致。别在别处再改 ``presentation.pager.position``。 */
+                InspectorSetting {
                     objectName: "editorSettingPagerPosition"
 
-                    Layout.fillWidth: true
                     visible: editorWindow.selectedHasPager
                     title: qsTr("翻页组件位置")
-                    // ⚠️ 刻意**不写 description、也不带图标**：面板只有 340 宽，
-                    //    SettingCard 的左右两块是并排的，多一行说明 / 多一枚 22px 的
-                    //    图标都会把「翻页组件位置」这个标题挤成两行。两种形态的名字
-                    //    （竖版两侧中间 / 横版两侧下部）本身已经说清了。
 
-                    Rin.ComboBox {
-                        objectName: "editorSettingPagerPositionCombo"
-                        Layout.preferredWidth: 148
-                        model: [qsTr("竖版两侧中间"), qsTr("横版两侧下部")]
-                        currentIndex: editorWindow.pagerPositionIndex
-                        onActivated: Backend.setSetting(
-                            "presentation_pager_position",
-                            currentIndex === 1 ? "bottom" : "side")
+                    Rin.RadioButton {
+                        objectName: "editorSettingPagerPositionSide"
+                        primaryColor: Lumi.accent
+                        text: qsTr("竖版两侧中间")
+                        checked: editorWindow.pagerPositionIndex === 0
+                        onClicked: Backend.setSetting(
+                            "presentation_pager_position", "side")
+                    }
+
+                    Rin.RadioButton {
+                        objectName: "editorSettingPagerPositionBottom"
+                        primaryColor: Lumi.accent
+                        text: qsTr("横版两侧下部")
+                        checked: editorWindow.pagerPositionIndex === 1
+                        onClicked: Backend.setSetting(
+                            "presentation_pager_position", "bottom")
                     }
                 }
             }

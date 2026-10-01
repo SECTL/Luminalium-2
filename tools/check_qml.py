@@ -32,6 +32,10 @@ from RinUI.core.config import RINUI_PATH  # noqa: E402
 
 from app.paths import UI_DIR  # noqa: E402
 
+#: ``ui/Luminalium`` 是**模块目录**：里面的组件靠 ``import Luminalium`` 自引用
+#: （``Lumi`` 单例，见 AuroraFlow / GlassLogo），单独编译它们会拿到「模块自引用」
+#: 那类噪声。它们仍会被**间接**检查到 —— 用到它们的页面（如 MainInterfaceEditor
+#: 用 InspectorSetting）在下面逐个编译时，依赖组件一并进编译。
 SKIP_DIRS = {"Luminalium"}
 
 

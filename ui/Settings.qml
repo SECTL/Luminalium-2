@@ -27,24 +27,40 @@ Rin.FluentWindow {
         ? Backend.settingsConfig : ({})
 
     readonly property real widthRatio: settingsCfg.width_ratio !== undefined
-        ? settingsCfg.width_ratio : 0.5
+        ? settingsCfg.width_ratio : 0.64
     readonly property real heightRatio: settingsCfg.height_ratio !== undefined
-        ? settingsCfg.height_ratio : 0.6
+        ? settingsCfg.height_ratio : 0.68
 
-    title: qsTr("Luminalium 2 设置")
+    /*! 尺寸：按屏幕比例算，宽高各自取「比例值」与「硬下限」的较大者，再被
+        「屏幕尺寸 − 留白」夹住。
+
+        ⚠️ 那两组数字（``0.64`` / ``0.68`` 与 ``1000`` / ``640``）是**成对**的，
+        改一个要想着另一个：下限是给小屏的兜底 —— 1366×768 上比例值（874×522）
+        比下限还小，实际开出来就是 1000×640。2026-10-01 用户指令「默认尺寸宽高
+        大一些，横纵比例大一些」把两对都抬了（原值 0.5/0.6 + 900/600）。
+
+        1920×1080 上：``0.64`` → 1229 宽、``0.68`` → 734 高，比 1.674
+        （原值 960×648 = 1.481）。1366×768 上：1000×640 = 1.5625。
+        **本机**（1755×987 逻辑像素）→ 1123×671，比 1.674。
+        ``preview.py`` 的 ``PAGE_WIDTH`` 是对齐**真机页面内容列**（本机实测 807）
+        而不是窗口宽度，所以那边默认是 961 —— 换显示器 / 改这里的比例后两处都要重算。
+        真实值由 ``config/default_config.json`` 的 ``settings.width_ratio`` 等覆盖。 */
+    title: qsTr("设置")
     visible: false
-    width: Math.min(Screen.width - 80, Math.max(900, Screen.width * widthRatio))
-    height: Math.min(Screen.height - 120, Math.max(600, Screen.height * heightRatio))
-    minimumWidth: settingsCfg.minimum_width !== undefined ? settingsCfg.minimum_width : 680
-    minimumHeight: settingsCfg.minimum_height !== undefined ? settingsCfg.minimum_height : 480
+    width: Math.min(Screen.width - 80, Math.max(1000, Screen.width * widthRatio))
+    height: Math.min(Screen.height - 120, Math.max(640, Screen.height * heightRatio))
+    minimumWidth: settingsCfg.minimum_width !== undefined ? settingsCfg.minimum_width : 820
+    minimumHeight: settingsCfg.minimum_height !== undefined ? settingsCfg.minimum_height : 560
 
     // 标题只由左侧导航栏承担：``titleEnabled: false`` 关掉 ``FluentWindow``
     // 自绘标题栏里的「图标 + 文字」，否则窗口标题会出现两次。
     titleEnabled: false
 
     // ``NavigationView`` 的导航栏在窗口宽度低于 ``minimumExpandWidth``（默认 900）
-    // 时会**自动收成图标条**。设置窗口通常不到 900 逻辑像素宽，所以把阈值降下来
-    // 让它保持展开；导航栏宽度沿用动态模式（``expandWidth`` 默认 0）。
+    // 时会**自动收成图标条**。设置窗口现在默认开 1229 宽（远大于 900），但最小可拖到
+    // 820（``settings.minimum_width``），仍是比 900 窄 —— 不降阈值的话，一缩小就
+    // 变成图标条。所以保留 640 这个兜底（低于它才收）。导航栏宽度沿用动态模式
+    // （``expandWidth`` 默认 0）。
     navigationView.navMinimumExpandWidth: 640
 
     onClosing: function (event) {

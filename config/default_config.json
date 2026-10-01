@@ -7,8 +7,10 @@
     "accent": "#4CC2FF",
     "//backdrop": "窗口背景材质：none=实色主题背景。RinUI 默认在 Win11 用 Mica / Win10 用 Acrylic，窗口会变成透明靠 DWM 合成，不支持/异常的机器上就是一片怪材质。",
     "backdrop": "none",
-    "//codename": "开发代号（开发水印第二行用）",
+    "//codename": "开发代号（设置页「关于」的版本行 + 开发水印第二行用）",
     "codename": "AwaSubaru",
+    "//channel": "发布渠道，只显示在设置页「关于」的徽章上：Dev=开发版 / Release=正式版。发给用户的正式包改成 \"Release\"",
+    "channel": "Dev",
     "//dev_watermark": "**开发者开关，只在调试窗口里出现**（调试窗口没有可见入口：在设置窗口左上角标题文本上连点 10 次打开）：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
     "dev_watermark": true
   },
@@ -56,10 +58,11 @@
   },
   "settings": {
     "//": "设置窗口。CW2 惯例：FluentWindow + navigationItems 左侧导航 + FluentPage 内容页。",
-    "width_ratio": 0.5,
-    "height_ratio": 0.6,
-    "minimum_width": 680,
-    "minimum_height": 480,
+    "//size": "2026-10-01 用户指令「默认尺寸宽高大一些，横纵比例大一些」：0.5/0.6 → 0.64/0.68。1920×1080 上由 960×648（比 1.481）变成 1229×734（比 1.674）；宽涨 +28%、高涨 +13%。下限也一并抬了（680×480 → 820×560），否则默认开得大、一拖就缩回小格子。",
+    "width_ratio": 0.64,
+    "height_ratio": 0.68,
+    "minimum_width": 820,
+    "minimum_height": 560,
     "//navigation": "导航栏宽度由 NavigationBar 自己的动态逻辑决定（FluentWindow 没暴露）；但窗口宽度低于 900 会被自动收成图标条，所以 Settings.qml 里显式下调了 navMinimumExpandWidth。",
     "default_page": "settings/Home.qml"
   },
@@ -124,8 +127,9 @@
     "//spacing": "两个分页之间的间距",
     "spacing": 4
   },
-  "divider": {
-    "enabled": true,
+ "divider": {
+  "//enabled": "组分隔线（动作 / 翻页 / 退出之间的细竖线）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（放映页那个开关）—— 配置键仍然生效、默认 true，想关就在这里写 false；别的键（width / height / gap）也是纯配置项",
+  "enabled": true,
     "width": 1,
     "//height": "L1 .separator 24px；放大档 28",
     "height": 28,
@@ -151,8 +155,9 @@
         "tooltip": "清屏（擦除本页全部墨迹）"
       }
     ],
-  "pager": {
-    "enabled": true,
+ "pager": {
+  "//enabled": "翻页区块的总开关（关掉则控制条上不出现翻页 pill）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（放映页那个「页码切换」开关）—— 翻页组件的**形态与位置**改由 ``position`` 管（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」），这一项保留为纯配置项、默认 true",
+  "enabled": true,
     "//position": "翻页组件的形态与位置（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」，2026-10-01 用户指令）。side = **竖版两侧中间**（middle_left / middle_right，组件 SidePager.qml）；bottom = **横版两侧下部**（bottom_left / bottom_right，与底部同款的横版 pill）。⚠️ 两种形态**二选一**（同时开会变成四个翻页栏），改它会连带开关 corners 里这四个角的 enabled —— 真实生效的仍是 corners，这一项只是它的人话开关",
     "position": "side",
     "//width": "页码文本区宽度。放大档：翻页 pill 180 = 4 + 圆钮 44 + 8 + 68 + 8 + 44 + 4（L1 原档 160×54 的同比例放大）",

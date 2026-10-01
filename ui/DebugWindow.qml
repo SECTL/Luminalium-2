@@ -81,17 +81,23 @@ Rin.FluentWindowBase {
             Rin.SettingCard {
                 Layout.fillWidth: true
                 title: qsTr("放映检测轮询间隔")
-                description: qsTr("越短越跟手，但 CPU 占用略高；排查控制条不出现时先看这里")
+                // 措辞收短：原来后面还挂着「排查控制条不出现时先看这里」，
+                // 620 宽的调试窗口里要折成两行（控制条不出现的问题看日志更直接）。
+                description: qsTr("越短越跟手，CPU 占用略高")
                 icon.name: "ic_fluent_timer_20_regular"
 
-                Rin.SpinBox {
-                    Layout.preferredWidth: 160
+                // 滑块而不是 SpinBox：这一项是「试出来的」—— 拖到不卡为止，
+                // 不需要精确到 1ms，档位 100ms。
+                SettingSlider {
+                    primaryColor: Lumi.accent
                     from: 100
                     to: 2000
                     stepSize: 100
+                    suffix: " ms"
                     value: Backend.settings.presentation_poll_interval_ms !== undefined
                         ? Backend.settings.presentation_poll_interval_ms : 400
-                    onValueModified: Backend.setSetting("presentation_poll_interval_ms", value)
+                    onMoved: Backend.setSetting("presentation_poll_interval_ms",
+                                                Math.round(value))
                 }
             }
 

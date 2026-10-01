@@ -29,8 +29,16 @@
 
 - ``LUMI_PREVIEW_THEME=light`` —— 换成浅色主题，且**只**输出启动画面。
 - ``LUMI_PREVIEW_ONLY=splash`` —— 保留当前主题但同样只输出启动画面。
+- ``LUMI_PREVIEW_PAGE_ONLY=1`` —— 只输出设置页（``page_*.png``），且文件名带
+  主题后缀（``page_MainInterface_light.png``）。配 ``LUMI_PREVIEW_THEME=light``
+  用来看浅色主题下的页面版式（浅色那档默认只出启动画面）。
 - ``LUMI_PREVIEW_PAGE_HEIGHT=<px>`` —— 单页预览（``page_*.png``）的宿主窗口高度，
-  默认 640。页面长到一屏放不下时用它截全（例如「通用」页加内容之后）。
+  默认 940（「主界面」页在 2026-10-01 接收了放映页搬来的 5 张卡之后，640 已经
+  截不全 —— 这种「页面比宿主还高」的情况看预览图是**看不出来**的，只能靠
+  这个默认值留够）。
+- ``LUMI_PREVIEW_PAGE_WIDTH=<px>`` —— 同上，宿主窗口宽度，默认 961 —— 对齐的是
+  **真机页面内容列**（不是设置窗口宽度；预览宿主没有左侧导航），见下面
+  ``PAGE_WIDTH`` 的推导。太窄会让页面里的并排卡片换行，看着像版式坏了。
 - ``LUMI_PREVIEW_EDIT=<corner>`` —— 让主界面编辑器停在**编辑态**并聚焦这个角落
   （如 ``bottom_center``），输出到 ``main_editor_edit.png``。默认输出全景态。
 - ``LUMI_PREVIEW_LABELS=1`` —— 打开「显示按钮文本」（``presentation.buttons.
@@ -71,9 +79,33 @@ CORNERS = ("bottom_left", "bottom_center", "bottom_right", "middle_left", "middl
 
 #: 浅色主题（对照设计稿的「启动画面 Light」）。见模块 docstring。
 IS_LIGHT = os.environ.get("LUMI_PREVIEW_THEME", "dark").lower().startswith("l")
-ONLY_SPLASH = IS_LIGHT or os.environ.get("LUMI_PREVIEW_ONLY", "") == "splash"
+#: 只渲染设置页（``page_*.png``）。用来核验**浅色主题**下的页面版式 ——
+#: 浅色那一版默认只出启动画面（见 ``ONLY_SPLASH``），单独跑这档才看得到页面。
+PAGE_ONLY = os.environ.get("LUMI_PREVIEW_PAGE_ONLY", "") not in ("", "0")
+ONLY_SPLASH = (IS_LIGHT and not PAGE_ONLY) or os.environ.get(
+    "LUMI_PREVIEW_ONLY", "") == "splash"
+#: 单页预览的文件名后缀 —— 浅色那次不能把深色的常态图覆盖掉。
+THEME_TAG = "light" if IS_LIGHT else "dark"
 #: 单页预览的宿主窗口高度。页面长到一屏放不下时调大它（见模块 docstring）。
-PAGE_HEIGHT = int(os.environ.get("LUMI_PREVIEW_PAGE_HEIGHT", "640") or 640)
+#: 940 是「最长的那个设置页（主界面）刚好放得下」的档位。
+PAGE_HEIGHT = int(os.environ.get("LUMI_PREVIEW_PAGE_HEIGHT", "940") or 940)
+#: 单页预览的宿主窗口宽度。默认 **961** —— 对齐的不是「设置窗口有多宽」，而是
+#: **真机里页面内容列有多宽**：预览宿主只渲染单个页面（没有左侧导航），所以宿主
+#: 宽度要等于真机的**页面宽度**，页面里的卡片版式（尤其是并排的图片 + 文字）才跟
+#: 真机一模一样。
+#: 推导（2026-10-01 实测，本机屏幕 1755×987 逻辑像素）：
+#:   ① 真机窗口宽 = ``min(1755-80, max(1000, 1755*0.64))`` = 1123（``QWindow``
+#:      量到 1135，多出的 ~13 是 Windows 不可见 resize 边框）；
+#:   ② 真机内容列宽 = **807** —— 用 ``aboutHero`` 量出来（hero 是 ``Layout.fillWidth``，
+#:      宽度就等于 ``FluentPage`` 的 ``container``）；
+#:   ③ 宿主的左右留白 = 77/侧（在 961 宽的宿主里量过 ``page_About``，hero = 806.9，
+#:      与真机 807 差 0.1px）；
+#:   → 宿主宽度取 807 + 2×77 = 961。
+#: ⚠️ 换显示器 / 改 ``settings.width_ratio`` / 页面 ``horizontalPadding`` 之后这个数
+#: 会变，要重量一遍（``J:/tmp/l1probe/probe_page_col.py`` 量真机、
+#: ``measure_hero.py`` 量预览图）。
+#: 历史值 1000（内容列 846）是「窗口还开 900」那个年代定的，窗口改宽后偏宽 5%，故重算。
+PAGE_WIDTH = int(os.environ.get("LUMI_PREVIEW_PAGE_WIDTH", "961") or 961)
 #: 主界面编辑器停在编辑态时要聚焦的角落（空 = 全景态）。见模块 docstring。
 PREVIEW_EDIT = os.environ.get("LUMI_PREVIEW_EDIT", "").strip()
 #: 控制条「显示按钮文本」的预览开关。**只在内存里改配置**（``persist=False``），
@@ -311,6 +343,12 @@ def main() -> int:
             # 只出启动画面：别的窗口照旧建着（都摆在屏幕外），但不截图 ——
             # 否则浅色那一版会把上面所有深色预览图覆盖掉。
             targets = [] if splash is None else [(splash_name, splash)]
+        elif PAGE_ONLY:
+            # 只出设置页（用来核验浅色主题下的页面版式），同样加主题后缀
+            targets = [
+                (name.replace(".png", f"_{THEME_TAG}.png"), window)
+                for name, window in page_hosts
+            ]
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
@@ -373,8 +411,9 @@ Rin.Window {
     id: host
     property url pageUrl: ""
     property int hostHeight: 640
+    property int hostWidth: 1000
 
-    width: 780
+    width: hostWidth
     height: hostHeight
     titleBarHeight: 0
     titleEnabled: false
@@ -416,6 +455,7 @@ def _build_page_hosts(engine) -> list[tuple[str, object]]:
             {
                 "pageUrl": QUrl.fromLocalFile(str(page)),
                 "hostHeight": PAGE_HEIGHT,
+                "hostWidth": PAGE_WIDTH,
                 "visible": True,
             }
         )

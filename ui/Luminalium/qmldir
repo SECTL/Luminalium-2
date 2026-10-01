@@ -1,2 +1,5 @@
 module Luminalium
 singleton Lumi 1.0 Lumi.qml
+SettingSlider 1.0 SettingSlider.qml
+AuroraFlow 1.0 AuroraFlow.qml
+GlassLogo 1.0 GlassLogo.qml

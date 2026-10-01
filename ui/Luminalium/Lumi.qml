@@ -430,6 +430,84 @@ QtObject {
         再大的图标在 40 的方框里会顶边）。 */
     readonly property int editorBackButtonSize: 40
 
+    /*! 设置页「主界面」里那张**推广卡**（「编辑主界面的新方式」）的版式 ——
+        照搬 Class Widgets 2 的 ``ClassWidgets/Components/Introduction.qml``
+        （它的用例在 ``pages/settings/General/Widgets.qml``）：Frame 内边距 24，
+        左图 + 右两列间距 24，图片最大 200×150。 */
+    readonly property int editorIntroPadding: 24
+    readonly property int editorIntroSpacing: 24
+    readonly property int editorIntroImageWidth: 200
+    readonly property int editorIntroImageHeight: 150
+
+    // ================================================== 设置 · 关于页英雄区
+    //
+    // 2026-10-01 用户指令「给设置的关于界面上安排 Luminalium 1 的同款流光背景
+    // Logo 混色效果」。出处 = L1 插件式设置页（``plugins/builtins/settings/
+    // settings.html``）的 ``#section-about``：
+    //
+    //   · ``.about-header``        —— 320 高的英雄区，``overflow:hidden``；
+    //     圆角 L1 原值是 ``16px 16px 0 0``（**上圆下直**），因为它是「出血」的：
+    //     ``width: calc(100% + 96px)`` + ``margin: -32px -48px 32px``，左右各
+    //     多出 48、顶上顶出 32，下沿是一条直边直接接上后面的设置组。
+    //     本项目把英雄区摆成页面里的一张**内嵌卡**（四周都有留白），下沿没有
+    //     「接着往下流」的东西，所以**刻意**用四角统一的 16（``aboutHeroRadius``）
+    //     —— 照抄 16/16/0/0 会让卡片下沿像被切了一刀，不是设计意图。
+    //   · ``.hyperos-bg``          —— HyperOS 风格的「流光」：10 层 radial-gradient
+    //     铺成 200%×200% 的画幅、``blur(60px)``、25s 匀速自转 360° 且
+    //     中点缩到 1.1（``@keyframes hyperos-flow``）；
+    //   · ``.about-main-logo``     —— 248×248，两个伪元素都用
+    //     ``logo_grayscale.svg`` 当 mask：``::before`` 是「毛玻璃」
+    //     （渐变白 + ``backdrop-filter: blur(22px) saturate(170%)``，也就是
+    //     把身后的流光透过 Logo 剪影show出来 —— 「混色」在这里），``::after``
+    //     是白色渐变版 + ``drop-shadow(0 0 22px var(--logo-glow))`` 光晕；
+    //   · ``.about-header::after`` —— 底部 100px 渐隐到页面底色，让流光化开。
+    //
+    // 十团光斑的颜色照 L1 ``applyMonetPalette()`` 的 Monet 公式以强调色为种
+    // 现算（L1 那套是从壁纸抽色的，本项目没有抽色源，直接用强调色）。
+    readonly property int aboutHeroHeight: 320
+    readonly property int aboutHeroRadius: 16
+    /*! 底部渐隐高度（L1 ``.about-header::after`` 的 100）。 */
+    readonly property int aboutHeroFade: 100
+    readonly property int aboutLogoSize: 248
+
+    /*! 窗口/页面基色 —— RinUI ``FluentWindowBase`` 在没有 backdrop 时就是用
+        ``colors.backgroundColor`` 铺底（``app.backdrop`` 默认 "none"）。 */
+    readonly property color pageBg: themeColors
+        ? themeColors.backgroundColor : "#202020"
+
+    /*! 两色按比例线性混合（L1 ``mixColor``），结果不透明。
+
+        ⚠️⚠️ 两个端色必须走 **color 属性**传进来，别在调用点直接写字面量：QML 把
+        函数参数当 JS 值，字面量 ``"#000000"`` 到了函数里就是字符串，
+        ``.r/.g/.b`` 全是 ``undefined`` → ``Qt.rgba`` 恒返回**黑色**（静默、
+        不报错）。2026-10-01 实测踩过：流光整片发灰黑，查了半天。 */
+    function mix(base, target, ratio) {
+        return Qt.rgba(base.r + (target.r - base.r) * ratio,
+                       base.g + (target.g - base.g) * ratio,
+                       base.b + (target.b - base.b) * ratio, 1)
+    }
+
+    /*! ``mix()`` 的两个端色（见上面的告警）。 */
+    readonly property color mixBlack: "#000000"
+    readonly property color mixWhite: "#FFFFFF"
+
+    /*! 流光底色：深色档 = 强调色压暗（L1 ``mixColor(accent, "#000000", 0.78/0.7)``）；
+        浅色档 = 页面基色往强调色里掺一档 —— L1 取的是 ``palette.background`` /
+        ``palette.surface``，而 Monet 的那两色**本身就是带主色的浅色**，本项目主题
+        基色是中性的，所以这里现掺（不掺的话浅色下整块是白的，流光和 Logo 一起
+        看不见 —— 试过）。 */
+    readonly property color auroraBase: isDark
+        ? mix(accent, mixBlack, 0.78) : mix(pageBg, accent, 0.20)
+    readonly property color auroraSurface: isDark
+        ? mix(accent, mixBlack, 0.70) : mix(pageBg, accent, 0.15)
+    readonly property color auroraG1: mix(auroraBase, accent, 0.15)
+    readonly property color auroraG2: mix(auroraSurface, accent, 0.12)
+    readonly property color auroraG3: mix(auroraSurface, accent, 0.20)
+    readonly property color auroraG4: mix(auroraBase, accent, 0.25)
+    readonly property color auroraG5: mix(auroraSurface, mixWhite, isDark ? 0.08 : 0.30)
+    /*! ``::after`` 光晕色（L1 ``--logo-glow``）。 */
+    readonly property color logoGlow: fade(accent, isDark ? 0.28 : 0.22)
+
     // ------------------------------------------------------------------ 动效
     readonly property int durationFast: Rin.Utils.animationSpeedFaster
     /*! 启动画面淡出时长。 */

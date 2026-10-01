@@ -64,9 +64,10 @@ import Luminalium
     底色**实色**（``Lumi.editorPanelBg``），三段式：顶部返回键（``inspectorNav``）/
     中部设置项区（可滚动，按选中的组件摆）/ 下部常驻条（组件信息 + 缩放）。
 
-    设置项**跟着选中的组件变**（2026-10-01 两项）：
+    设置项**跟着选中的组件变**（2026-10-01 三项）：
 
-    * 工具栏 → 「显示按钮文本」（``presentation.buttons.show_labels``）；
+    * 工具栏 → 「显示按钮文本」（``presentation.buttons.show_labels``）、
+      「退出键样式」（``presentation.exit.style``，从设置 → 放映页搬来）；
     * 翻页组件 → 「翻页组件位置」（``presentation.pager.position``：竖版两侧中间
       / 横版两侧下部，二选一 —— 后端顺带开关 ``corners`` 里那四个角）。
 
@@ -1133,7 +1134,11 @@ Rin.FluentWindowBase {
                     Layout.fillWidth: true
                     visible: editorWindow.selectedHasToolbar
                     title: qsTr("显示按钮文本")
-                    description: qsTr("在按钮旁边显示名称（指针 / 笔 / 橡皮 / 清屏 / 退出放映）")
+                    // 措辞按面板宽度收短：本来写的是「在按钮旁边显示名称（指针 /
+                    // 笔 / 橡皮 / 清屏 / 退出放映）」—— 340 宽的面板里说明只能放下
+                    // 约 10 个汉字，那句要折三行、把标题都挤短了。名称本来就在
+                    // 按钮上，不必在说明里再念一遍。
+                    description: qsTr("按钮旁边显示名称")
                     icon.name: "ic_fluent_text_bullet_list_20_regular"
 
                     Rin.Switch {
@@ -1142,6 +1147,33 @@ Rin.FluentWindowBase {
                         checked: Backend.settings.presentation_buttons_show_labels === true
                         onToggled: Backend.setSetting(
                             "presentation_buttons_show_labels", checked)
+                    }
+                }
+
+                /*! 工具栏的「退出键样式」（2026-10-01 用户指令：从设置 → 放映页搬来）。
+                    写进 ``presentation.exit.style``：``default`` = 与其他工具栏按钮
+                    同款的透明圆钮 + 主题色图标；``danger`` = Luminalium 1 的形态
+                    （透明圆钮 + **红色**电源图标）。改完预览与真机同时变。
+
+                    ⚠️ 只在选中的是**工具栏**时出现 —— 退出键是工具栏上的一枚按钮，
+                    选中翻页组件时它没有意义。
+                    ⚠️ 同「翻页组件位置」：这块面板只有 340 宽，SettingCard 左右两块
+                    并排，**刻意不写 description** —— 两个选项的名字本身已经说清了。 */
+                Rin.SettingCard {
+                    objectName: "editorSettingExitStyle"
+
+                    Layout.fillWidth: true
+                    visible: editorWindow.selectedHasToolbar
+                    title: qsTr("退出键样式")
+
+                    Rin.ComboBox {
+                        objectName: "editorSettingExitStyleCombo"
+                        Layout.preferredWidth: 148
+                        model: [qsTr("普通圆钮"), qsTr("危险红图标（L1）")]
+                        currentIndex: Backend.settings.presentation_exit_style === "danger" ? 1 : 0
+                        onActivated: Backend.setSetting(
+                            "presentation_exit_style",
+                            currentIndex === 1 ? "danger" : "default")
                     }
                 }
 

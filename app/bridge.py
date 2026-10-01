@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from PySide6.QtCore import Property, QObject, Signal, Slot
+from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 
@@ -44,8 +44,10 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_screen_index": "presentation.screen_index",
     "presentation_shadow_enabled": "presentation.surface.shadow.enabled",
     "presentation_surface_opacity": "presentation.surface.opacity",
-    "presentation_divider_enabled": "presentation.divider.enabled",
-    "presentation_pager_enabled": "presentation.pager.enabled",
+    # ⚠️ ``presentation.divider.enabled`` / ``presentation.pager.enabled`` **没有**
+    #    登记在这里：这两个开关 2026-10-01 按用户指令从界面上删除了（配置键仍
+    #    生效、默认 true，只是改成纯配置项 —— 想关就在 config/config.json 里写）。
+    #    登记进来的话 QML 侧会多一份没人读的代理属性，反而看不出它已经没有界面。
     "presentation_exit_style": "presentation.exit.style",
     # 只在调试窗口出现（隐藏入口：设置标题连点 10 次），普通用户看不到水印开关
     "dev_watermark": "app.dev_watermark",
@@ -67,6 +69,10 @@ PAGER_POSITION_CORNERS: Dict[str, tuple] = {
 
 class Backend(QObject):
     """面向 QML 的应用后端。"""
+
+    #: 设置项写盘的合并窗口（ms）。滑块拖动 / SpinBox 连点会连续改值，
+    #: 这段窗口内的多次改动只落一次盘。
+    _SAVE_DEBOUNCE_MS = 400
 
     # ---- 通知类信号 ----
     presentationActiveChanged = Signal()
@@ -126,6 +132,17 @@ class Backend(QObject):
         #: 配置索引兜底。见 ``syncPresentationScreen``。
         self._overlay_screen: Optional[Dict[str, Any]] = None
 
+        #: 设置项的**延迟落盘**（见 :meth:`setSetting`）。
+        #:
+        #: ``Config.set(persist=True)`` 会把整份用户配置重写一遍 —— 滑块拖一次
+        #: 会发几十个 ``moved``，逐个落盘就是几十次磁盘写。这里改成「先改内存、
+        #: 停手 ``_SAVE_DEBOUNCE_MS`` 之后再写一次」。进程正常退出时
+        #: ``application.quit()`` 还会补一次 ``config.save()``，不会丢。
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(self._SAVE_DEBOUNCE_MS)
+        self._save_timer.timeout.connect(self._config.save)
+
 
     # ==================================================================== 常量
 
@@ -159,6 +176,12 @@ class Backend(QObject):
     @Property(str, constant=True)
     def devCodename(self) -> str:
         return str(self._config.get("app.codename", "AwaSubaru"))
+
+    @Property(str, constant=True)
+    def appChannel(self) -> str:
+        """发布渠道（``app.channel``）：设置页「关于」的徽章只显示 ``Dev`` /
+        ``Release`` 这两档，正式包把配置改成 ``"Release"`` 即可。"""
+        return str(self._config.get("app.channel", "Dev"))
 
     # ================================================================ 启动画面
 
@@ -433,7 +456,9 @@ class Backend(QObject):
 
         if current == value:
             return
-        self._config.set(path, value)
+        # 只改内存 + 排一次延迟落盘（理由见 ``_save_timer`` 处的注释）。
+        self._config.set(path, value, persist=False)
+        self._save_timer.start()
         log.info("设置 %s = %r", path, value)
 
         # 翻页组件位置：连带开关四个角落（两种形态二选一，见常量处的说明）。

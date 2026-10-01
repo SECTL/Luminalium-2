@@ -6,7 +6,8 @@
 2. 快捷面板能显示，且按**光标位置**摆放并夹取在屏幕内
 3. 放映控制条能按角落显示 / 隐藏，且位置贴角（工具栏下中；翻页栏
    按配置在屏幕两侧垂直居中（竖版）或左下 / 右下（横版））
-4. 设置窗口（懒创建）能打开、居中且在屏幕内；调试窗口（隐藏入口 = 设置标题
+4. 设置窗口（懒创建）能打开、**默认尺寸够大且更宽**（0.64 / 0.68，按真机屏幕
+   复算公式）、居中且在屏幕内；调试窗口（隐藏入口 = 设置标题
    连点 10 次）的热区盖得住标题文本、点够次数能开、与设置窗口并排不重叠
 5. 快捷方式增删 / 排序与设置项读写能落回配置
 6. 配置读取与日志写入正常
@@ -14,7 +15,9 @@
    各元素落在设计稿位置（按 ``k = 宽/2984`` 缩放）、描边贴住外沿、进度填充与
    淡出后的回收
 8. 主界面编辑器（独立窗口）：懒创建、能从快捷面板的快捷方式派发打开、
-   交给 RinUI 管、只隐藏不销毁；设置导航里「外观」已改名「主界面」
+   交给 RinUI 管、只隐藏不销毁；设置导航里「外观」已改名「主界面」，
+   且「主界面」页里有推广卡「编辑主界面的新方式」（左图 + 右文 + 右下按钮，
+   按钮能真的把编辑器叫起来）
 9. 编辑器的**顶层窗口预览舞台**：舞台平面 = 放映显示器 1:1 坐标系、外框跟着
    相机、控制条副本与配置里启用的角落一一对应且位置与
    ``windows.py::_position_dock`` 同源、预览层有鼠标屏蔽、亚克力已打到窗口
@@ -25,6 +28,15 @@
    与缩放**常驻在下部**，上部留给设置项）、手动档位与平移钳制、退出后回到全景；
    设置项跟着组件走（工具栏 = 显示按钮文本；翻页组件 = 翻页组件位置，竖版两侧
    中间 / 横版两侧下部二选一，切形态时预览与真机一起换、编辑对象跟着挪）
+11. 设置页「关于」的**流光英雄区**（L1 同款）：英雄区高 320、Logo 四层齐全、
+    **页面不带大标题**（头部塌成 0）、流光的自转**真的在动**（⚠️ ``RotationAnimator``
+    在本环境静默失效）、呼吸缩放落在 1.0~1.1、Logo 星心亮度贴近 L1 参考图
+    （拦 ``DropShadow`` 重复绘制）
+12. 设置页「关于」的**应用信息卡**（照 Class Widgets 2 的关于页主卡做的）：
+    卡在、右栏徽章 = ``Backend.appChannel`` 且版本行含 ``devCodename``、三条内容
+    项（仓库 / 反馈 / 依赖）齐全并默认展开、**「开源许可」项已按用户指令删掉**、
+    **仓库地址在打开按钮左边且是等宽字体**、**依赖与参考的标题与链接同列上下排**
+    （后两条是用户指定的版式，改错了截图未必看得出）
 
 用法::
 
@@ -45,7 +57,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from PySide6.QtCore import QMetaObject, QPoint, QPointF, Qt, QTimer  # noqa: E402
+from PySide6.QtCore import Q_ARG, QMetaObject, QPoint, QPointF, Qt, QTimer  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtGui import QCursor, QGuiApplication  # noqa: E402
 
@@ -75,6 +87,26 @@ def _find_named(item, name):
     return None
 
 
+def _wait_named(item, name: str, timeout_ms: int = 4000, step_ms: int = 50):
+    """轮询等一项出现（超时返回 ``None``）。
+
+    ⚠️ 为什么必须轮询而不是 ``qWait`` 固定时长：RinUI 的
+    ``NavigationView.push`` 是**异步**的（内部 ``stackView.replace`` + 转场，
+    且被 ``pushInProgress`` 串行化）。窗口刚 ``show()`` 时初始页（Home）的转场
+    还没跑完，后面的 push 会一直挂在 ``Qt.callLater`` 重试队列里 —— 实测要
+    **0.6~2s** 才落地（视窗先稳定一拍再 push 会快很多）。钉死 500ms 会随机
+    假失败：症状是「页面整个不存在」，看着像 QML 崩了，其实只是还没切过去。
+    """
+    waited = 0
+    while waited <= timeout_ms:
+        found = _find_named(item, name)
+        if found is not None:
+            return found
+        QTest.qWait(step_ms)
+        waited += step_ms
+    return None
+
+
 def _collect_named(item, prefix: str):
     """收集树里所有 objectName 以 ``prefix`` 开头的项（按前缀找一族兄弟项）。"""
     found = []
@@ -83,6 +115,38 @@ def _collect_named(item, prefix: str):
     for child in item.childItems():
         found.extend(_collect_named(child, prefix))
     return found
+
+
+def _next_visible_right(item, reference):
+    """在 ``item`` 所在的 Layout 行里找它的**右邻居**（下一个可见、有宽度的兄弟）。
+
+    用来量「A 在 B 左边」这种版式。``Rin.SettingItem`` 的右栏是个 ``RowLayout``：
+    ``item``（如仓库地址那个 ``Text``）是它的孩子，而「打开按钮」
+    （``SettingItem`` 的 ``actionIcon``）是**那个 RowLayout 的兄弟**。所以先上跳
+    两级，再在同一行里挑 ``x`` 落在该 RowLayout 右边缘之后、且离它最近的那个。
+
+    ⚠️ 不能直接读 ``SettingItem.actionIcon`` —— 它是 QML 专有类型
+    （``Icon_QMLTYPE_*``），Python 侧 ``property("actionIcon")`` 会抛
+    ``RuntimeError: Can't find converter for 'Icon_QMLTYPE_17*'``（实测）。
+    """
+    if item is None or reference is None:
+        return None
+    row = item.parentItem()                        # 右栏 RowLayout
+    line = row.parentItem() if row is not None else None   # 外层 RowLayout
+    if line is None:
+        return None
+    edge = row.mapToItem(reference, 0, 0).x() + row.width() - 1
+    best = None
+    best_x = None
+    for sibling in line.childItems():
+        if sibling is row or not sibling.isVisible() or sibling.width() <= 0:
+            continue
+        sx = sibling.mapToItem(reference, 0, 0).x()
+        if sx < edge:
+            continue
+        if best_x is None or sx < best_x:
+            best, best_x = sibling, sx
+    return best
 
 
 def _find_text(item, text: str):
@@ -102,6 +166,24 @@ def _find_text(item, text: str):
         if found is not None:
             return found
     return None
+
+
+def _collect_type(item, type_name: str):
+    """收集树里所有**类型名**以 ``type_name`` 开头的项（如 ``SettingCard``）。
+
+    用来验「某一页上还剩几个设置项」—— 设置项搬走 / 删除之后，光看某一项
+    存不存在不够（搬走的和留下的可能重名），得看整页的数量。
+    """
+    found = []
+    try:
+        name = item.metaObject().className()
+    except (AttributeError, RuntimeError):  # pragma: no cover
+        name = ""
+    if name.startswith(type_name):
+        found.append(item)
+    for child in item.childItems():
+        found.extend(_collect_type(child, type_name))
+    return found
 
 
 def _prop(obj, path: str):
@@ -145,7 +227,11 @@ def _wait_stable(key, *, timeout_ms: int = 3000, step_ms: int = 120,
 #: 时，这条会立刻炸。``None`` = 该字段不按设计稿校验（已改走 Fluent 固定值）。
 SPLASH_LAYOUT = {
     "splashLogo": (131.0, 121.0, 184.0, 184.0),
-    "splashWordmark": (147.3, 1176.5, 727.7, 113.7),
+    # wordmark 宽度按**素材本身**走：现用的是 1024×114 的轮廓 SVG
+    # （``resources/splash/wordmark_*.svg`` 的 viewBox，QML 侧 1023.13×113.7
+    # 就是它的等比缩放）。这里原先写 727.7 —— 那是上一版素材的宽度，换素材时
+    # 漏改了，这条断言因此一直失败（2026-10-01 对齐）。
+    "splashWordmark": (147.3, 1176.5, 1023.13, 113.7),
     "splashArtCard": (1444.0, 121.0, 1448.0, 1438.0),
     "splashTrack": (134.0, None, 1178.0, None),
 }
@@ -358,6 +444,37 @@ def _check_editor(app) -> None:
     def _settle() -> None:
         _wait_stable(_camera_key)
 
+    def _nudge_editor() -> None:
+        """把编辑器窗口再抬起来催一次曝光。
+
+        ⚠️ QML 的动画由**渲染循环**推进 —— 窗口没被暴露（被别的窗口盖住 / 桌面切走）
+        时动画会**卡住**在中间值上，于是「值连续两拍不变」当场成立，``_settle()``
+        会心满意足地返回一个**中间值**。实测偶发一次：手动档位那条读到
+        ``scale=0.5989``（目标 1.0），紧接着的平移钳制读到 ``plane=(0.0,36.5)``
+        （期望 ≤0.5），复跑又是全绿 —— 典型的曝光问题，不是产品坏了。
+        """
+        editor.raise_()
+        editor.requestActivate()
+        QTest.qWait(120)
+
+    def _wait_cam(predicate, *, timeout_ms: int = 3000, step_ms: int = 120) -> bool:
+        """轮询到 ``predicate()`` 成立（超时返回最后一拍的结果）。
+
+        相机那几条**不能**只靠 ``_settle()``：它等的是「不变」，动画卡住时同样满足。
+        这里等的是**目标值**，中途还会抬一次窗口催曝光（见 ``_nudge_editor``）。
+        """
+        waited = 0
+        nudged = False
+        while waited <= timeout_ms:
+            if predicate():
+                return True
+            QTest.qWait(step_ms)
+            waited += step_ms
+            if not nudged and waited >= timeout_ms // 2:
+                nudged = True
+                _nudge_editor()
+        return predicate()
+
     QTest.qWait(300)  # contentItem 里的绑定要等第一轮布局才拿得到几何
     _settle()
 
@@ -379,6 +496,7 @@ def _check_editor(app) -> None:
         f"selectedCorner={editor.property('selectedCorner')!r} "
         f"editing={editor.property('editing')}",
     )
+    _wait_cam(lambda: abs(float(plane.scale()) - fit) <= 1e-3)
     scale = plane.scale()
     check(
         "全景比例 = 整屏等比装进舞台",
@@ -751,6 +869,66 @@ def _check_editor(app) -> None:
         f"该角落是工具栏={selected_is_toolbar}（groups={selected_groups}）",
     )
 
+    # 退出键样式（2026-10-01 用户指令：从设置 → 放映页搬进「主界面编辑器里的
+    # 工具栏设置」）。它与「显示按钮文本」同属工具栏一组，所以显隐条件一致。
+    exit_card = _find_named(content_root, "editorSettingExitStyle")
+    exit_combo = _find_named(content_root, "editorSettingExitStyleCombo")
+    check(
+        "选中工具栏时面板里出现「退出键样式」（从放映页搬来，带下拉）",
+        exit_card is not None and exit_combo is not None
+        and exit_card.isVisible() is selected_is_toolbar,
+        f"card={exit_card is not None} combo={exit_combo is not None} "
+        f"visible={None if exit_card is None else exit_card.isVisible()} "
+        f"该角落是工具栏={selected_is_toolbar}",
+    )
+    if exit_card is not None and exit_combo is not None and selected_is_toolbar:
+        # 版式：面板只有 340 宽，SettingCard 左右并排 —— 「翻页组件位置」第一版
+        # 就是被挤成两行的标题，这一项同样有风险（选项文字 8 个汉字，比它还长）。
+        exit_title = _find_text(exit_card, "退出键样式")
+        combo_text = exit_combo.property("contentItem")
+        typed_width = float(
+            (combo_text.property("contentWidth") if combo_text is not None else 0) or 0
+        )
+        check(
+            "「退出键样式」标题一行放得下、下拉宽到选项文字不截断",
+            exit_title is not None
+            and int(exit_title.property("lineCount") or 0) <= 1
+            and typed_width > 0
+            and typed_width + 36 <= exit_combo.width() + 1,
+            f"标题行数={None if exit_title is None else exit_title.property('lineCount')} "
+            f"下拉={exit_combo.width():.0f} 其中文字需 {typed_width:.0f}",
+        )
+
+        # 走**真实入口**（``Backend.setSetting``）：写配置 + 广播，预览与真机
+        # 控制条同时变（两项都是直径 44 的圆，只能靠暴露的填充 / 图标色区分）。
+        prev_exit = app.config.get("presentation.exit.style")
+        other_exit = "danger" if (prev_exit or "default") != "danger" else "default"
+        fill_before = str(target.property("exitFillColor"))
+        app.backend.setSetting("presentation_exit_style", other_exit)
+        _settle()
+        check(
+            f"切「退出键样式」写进配置并同步到控制条（{prev_exit} → {other_exit}）",
+            str(app.config.get("presentation.exit.style")) == other_exit
+            and int(exit_combo.property("currentIndex"))
+            == (1 if other_exit == "danger" else 0)
+            and str(target.property("exitStyle")) == other_exit
+            and str(target.property("exitFillColor")) != fill_before,
+            f"配置={app.config.get('presentation.exit.style')!r} "
+            f"下拉={exit_combo.property('currentIndex')} "
+            f"控制条={target.property('exitStyle')!r} "
+            f"填充={target.property('exitFillColor')}（原 {fill_before}）",
+        )
+
+        app.backend.setSetting("presentation_exit_style", prev_exit)
+        _settle()
+        check(
+            "「退出键样式」已还原（自检不留副作用）",
+            str(app.config.get("presentation.exit.style")) == prev_exit
+            and str(target.property("exitFillColor")) == fill_before,
+            f"配置={app.config.get('presentation.exit.style')!r} "
+            f"填充={target.property('exitFillColor')}（原 {fill_before}）",
+        )
+
     name_label = _find_named(content_root, "editorInspectorName")
     size_label = _find_named(content_root, "editorInspectorSize")
     zoom_label = _find_named(content_root, "editorZoomLabel")
@@ -835,9 +1013,12 @@ def _check_editor(app) -> None:
     )
 
     # ----------------------------------------------------- 手动档位 / 平移钳制
+    # ⚠️ 这三条等的是**目标值**而不是「不再变化」：动画卡在中间值时「不变」同样成立
+    # （见 ``_wait_cam`` / ``_nudge_editor`` 的说明），实测偶发假失败过。
     editor.setProperty("autoScale", False)
     editor.setProperty("manualScale", 1.0)
     _settle()
+    _wait_cam(lambda: abs(float(plane.scale()) - 1.0) <= 1e-3)
     check(
         "手动档位接管相机（100% = 真实像素大小）",
         abs(plane.scale() - 1.0) <= 1e-3,
@@ -846,6 +1027,7 @@ def _check_editor(app) -> None:
 
     editor.setProperty("manualScale", 99.0)
     _settle()
+    _wait_cam(lambda: float(plane.scale()) <= ZOOM_MAX + 1e-6)
     check(
         "手动档位有上限钳制",
         plane.scale() <= ZOOM_MAX + 1e-6,
@@ -855,6 +1037,7 @@ def _check_editor(app) -> None:
     editor.setProperty("panDX", 99999.0)
     editor.setProperty("panDY", 99999.0)
     _settle()
+    _wait_cam(lambda: plane.x() <= 0.5 and plane.y() <= 0.5)
     check(
         "拖动平移被钳制（画面不许从视口里拖出空档）",
         plane.x() <= 0.5 and plane.y() <= 0.5,
@@ -864,6 +1047,7 @@ def _check_editor(app) -> None:
     # ---------------------------------------------------------------- 退出编辑态
     editor.clearSelection()  # 走真实出口（面板 × / Esc 也调它）
     _settle()
+    _wait_cam(lambda: abs(float(plane.scale()) - fit) <= 1e-3)
     check(
         "退出编辑态：面板收起、暗罩消失、比例回到全景",
         editor.property("selectedCorner") == ""
@@ -1862,6 +2046,31 @@ def main() -> int:
                 settings.isVisible() and inside,
                 f"pos=({settings.x()},{settings.y()}) size={settings.width()}x{settings.height()}",
             )
+            # 默认尺寸（2026-10-01 用户指令「默认尺寸宽高大一些，横纵比例大一些」）：
+            # 口径在 ``config/default_config.json`` 的 ``settings`` 段（0.64 / 0.68，
+            # 硬下限 1000 / 640）。这里按**同一套公式**拿真机屏幕尺寸复算一遍，
+            # 确认 QML 的绑定真的吃到了配置 —— 只断言「比 900 宽」这种弱条件拦不住
+            # 「改了配置没生效」。
+            #
+            # ⚠️ 容差 ±16 是因为 ``QWindow::width()`` 在 Windows 上把**不可见 resize
+            # 边框**也算了进来，比 QML 里 ``width`` 大一圈。实测（本机 DPR 1.75）：
+            # 请求 1000×700 → 实际 1013×713、请求 1400×900 → 实际 1413×913，恒 +13
+            # —— **不是** QML 没吃到配置（QML 侧表达式实测就是 1123.2×671.16）。
+            # 口径若被改回 0.5/0.6，偏差是 200+，照样炸。
+            screen_size = settings.screen().geometry()
+            sw, sh = screen_size.width(), screen_size.height()
+            exp_w = min(sw - 80, max(1000, sw * 0.64))
+            exp_h = min(sh - 120, max(640, sh * 0.68))
+            size_ok = (abs(settings.width() - exp_w) <= 16
+                       and abs(settings.height() - exp_h) <= 16)
+            check(
+                "设置窗口默认尺寸更大、更宽（0.64 / 0.68）",
+                size_ok,
+                "" if size_ok else (
+                    f"实测 {settings.width():.0f}x{settings.height():.0f} "
+                    f"期望 {exp_w:.0f}x{exp_h:.0f}（屏幕 {sw}x{sh}）"
+                ),
+            )
             # Win32 原生边框：**2026-09-30 起由 RinUI 接管**，不再自己摘 flags。
             #
             # RinUI 的窗口外观全靠两处 Win32 侧代码：WinEventFilter 处理
@@ -1906,9 +2115,236 @@ def main() -> int:
             check("设置窗口可关闭", not settings.isVisible())
 
             # 打开指定设置页（快捷方式「放映控制」走的路径）
+            #
+            # ⚠️ 这里**必须**用 ``_wait_named`` 等页面真的换过来，再关窗：
+            # ① push 是异步的，固定时长会假失败（见 ``_wait_named`` 注释）；
+            # ② 别在 push 还没落地时就把窗口隐藏 —— 转场靠渲染推进，窗口一隐，
+            #    初始页的转场就悬着，后面那次 push 会被拖到很久之后才生效
+            #    （2026-10-01 这一条把「关于页英雄区」整段自检拖挂）。
             app.windows.show_settings("settings/Presentation.qml")
-            check("能跳到指定设置页", settings.isVisible())
+            QTest.qWait(120)  # 先让窗口出一帧，push 才走得动
+            page_switched = _wait_named(settings.contentItem(), "Presentation") is not None
+            check(
+                "能跳到指定设置页（页面真的换过来了）",
+                settings.isVisible() and page_switched,
+                # detail 无论成败都会打印，所以只在失败时给「为什么」
+                "" if (settings.isVisible() and page_switched) else (
+                    "窗口可见但没切页" if settings.isVisible() else "窗口不可见"
+                ),
+            )
             app.backend.settingsCloseRequested.emit()
+
+        # ---- 设置页「关于」的流光英雄区（2026-10-01 用户指令）----
+        #
+        # 这里两个坑都踩过，而且**都不报错、预览图上也只能靠肉眼比**，所以
+        # 各钉一条断言：
+        #   ① ``RotationAnimator`` 在本环境里**静默不动**（渲染线程动画拿不到
+        #      渲染帧；同一个窗口里 ``NumberAnimation`` 正常走）→ 不钉的话
+        #      「流光」就是一张静图；
+        #   ② Qt5Compat 的 ``DropShadow { source: X }`` 会把 X **也画一遍**
+        #      （输出 = X + 影子，和 ``Glow`` 同行为）→ Logo 直接亮一倍；
+        #   ③ 设置页跳转是**异步**的（``NavigationView.push`` 挂在
+        #      ``Qt.callLater`` 上，实测 0.6~2s 才落地）→ 固定 ``qWait`` 会
+        #      假失败成「页面整个不存在」。
+        # 详见 ``GlassLogo.qml`` / ``AuroraFlow.qml`` 的头注释，探针在
+        # ``J:/tmp/l1probe/``（probe_anim4.py 是 Animator 的隔离实验，
+        # probe_grabs.py 是逐层 grabToImage 量 alpha，
+        # probe_about4.py 是 push 落地时间的四组对照）。
+        app.windows.show_settings("settings/About.qml")
+        page_st = settings.contentItem()
+        # 同「能跳到指定设置页」：push 是异步的，轮询等页面落地（实测 0.6~2s）
+        hero_st = _wait_named(page_st, "aboutHero")
+        aurora_st = _find_named(page_st, "aboutAurora")
+        logo_st = _find_named(page_st, "aboutLogo")
+        check(
+            "关于页英雄区存在且高 = Lumi.aboutHeroHeight",
+            hero_st is not None and round(hero_st.height()) == 320,
+            "未找到" if hero_st is None else f"height={hero_st.height()}",
+        )
+        missing_st = [
+            n for n in ("aboutLogoMask", "aboutLogoBefore", "aboutLogoSheen",
+                        "aboutLogoGlowShape")
+            if _find_named(page_st, n) is None
+        ]
+        check(
+            "关于页 Logo 四层齐全（蒙版 / ::before / ::after / 光晕形状）",
+            not missing_st,
+            f"缺 {missing_st}",
+        )
+        # 等页面滑入转场收尾：转场期间 ``mapToItem`` 的坐标还在动，
+        # 后面按星心坐标取像素会取到隔壁。
+        QTest.qWait(300)
+
+        # 页面**不带**大标题（2026-10-01 用户指令「把关于大标题去掉」）。
+        # ``FluentPage`` 的头部高度 = ``title !== "" ? 36 + 44 : 0``，所以
+        # 「去掉标题」必须是「头部一起塌成 0」——只清空 ``title`` 而留着 80px
+        # 空白是另一种观感，别混。左侧导航里的「关于」项是另一回事，照旧有。
+        #
+        # ⚠️ 页面根要按 **``About``** 找，不能按 ``FluentPage`` 找：
+        # ``NavigationView.asyncPush`` 会 ``stackView.replace(..., {objectName:
+        # <文件名>})``，把页面根的 objectName **覆盖**成文件名；树里那个叫
+        # ``FluentPage`` 的其实是 ``Page.contentItem``（没有 ``title``/``header``
+        # 属性，按它取属性只会拿到 ``None``，看起来像「标题还在」）。
+        fp_st = _find_named(page_st, "About")
+        hdr_st = fp_st.property("header") if fp_st is not None else None
+        page_title = fp_st.property("title") if fp_st is not None else None
+        no_title = (fp_st is not None and page_title == ""
+                    and hdr_st is not None and round(hdr_st.height()) == 0)
+        check(
+            "关于页没有页面大标题（头部一起塌成 0）",
+            no_title,
+            "" if no_title else (
+                f"页面根={'未找到' if fp_st is None else 'About'} "
+                f"title={page_title!r} "
+                f"header高={None if hdr_st is None else hdr_st.height()}"
+            ),
+        )
+        if aurora_st is not None:
+            a0 = float(aurora_st.property("angle"))
+            QTest.qWait(1500)
+            a1 = float(aurora_st.property("angle"))
+            # 25s 一圈 → 1.5s 应该走 ~21.6°；只要求「明显在动」
+            check(
+                "流光的自转真的在走（⚠️ 别换回 RotationAnimator）",
+                abs(a1 - a0) > 5.0,
+                f"{a0:.1f}° → {a1:.1f}° / 1.5s（期望 ≈ 21.6°）",
+            )
+            spread_st = float(aurora_st.property("spread"))
+            check(
+                "流光的呼吸缩放落在 1.0 ~ 1.1",
+                0.999 <= spread_st <= 1.101,
+                f"spread={spread_st:.4f}",
+            )
+        if logo_st is not None and aurora_st is not None:
+            # 星心亮度基准来自 L1 参考图（见 GlassLogo.qml 头注释的「自检基准」）。
+            # 容差 45 足够拦住「重复绘制」那种 +70/通道 的偏差，又不会被主题或
+            # 强调色的小改动碰倒。
+            dpr_st = settings.devicePixelRatio()
+            shot_st = settings.grabWindow()
+            dark_st = app.rinui.theme_manager.is_dark_theme()
+            base_st = (124, 131, 163) if dark_st else (234, 234, 243)
+            ctr = logo_st.mapToItem(page_st,
+                                    QPointF(logo_st.width() / 2,
+                                            logo_st.height() / 2))
+            got_st = shot_st.pixelColor(int(ctr.x() * dpr_st),
+                                        int(ctr.y() * dpr_st)).getRgb()[:3]
+            check(
+                "Logo 星心亮度贴近 L1 参考（拦「重复绘制 → 亮一倍」）",
+                all(abs(got_st[i] - base_st[i]) <= 45 for i in range(3)),
+                f"实测 {got_st} 参考 {base_st} "
+                f"主题={'dark' if dark_st else 'light'}",
+            )
+        # ---- 关于页的**内容卡**（2026-10-01 用户指令「参考 Class Widgets 2 的
+        #      关于界面的那个设置卡，填充关于界面的内容」）----
+        #
+        # 版式照 CW2 的主卡（``SettingExpander`` + 一串 ``SettingItem``），内容
+        # 换成本项目的真实信息（MIT / Qt 系 / Seirai Haraguchi 署名）。四条各钉
+        # 一件事：
+        #   ① ``Rin.SettingExpander`` 是**本项目第一次用**的组件，RinUI 升级把
+        #      它改没了的话这条会先炸；
+        #   ② 头部右栏的徽章 / 版本号**来自后端**（``Backend.appChannel`` /
+        #      ``appVersion`` / ``devCodename``），写死的会在升版本或换渠道后
+        #      过期。用户口径：徽章**只**分 Dev / Release，开发代号跟版本号后面
+        #      的括号里；
+        #   ③ 折叠区默认展开（关于页进来就是来看这些的）;
+        #   ④ 两条被用户逐字指定的版式：「仓库地址在打开按钮的左边（等宽字体）」、
+        #      「依赖与参考的标题和内容上下换行」—— 都是**布局方向**，改错了在
+        #      截图上也未必一眼看出，所以直接量坐标。
+        app_card_st = _find_named(page_st, "aboutAppCard")
+        check(
+            "关于页有应用信息卡（SettingExpander）",
+            app_card_st is not None,
+            "" if app_card_st is not None else "未找到 aboutAppCard",
+        )
+        ver_st = _find_named(page_st, "aboutVersionText")
+        badge_st = _find_named(page_st, "aboutChannelBadge")
+        got_ver = ver_st.property("text") if ver_st is not None else ""
+        got_badge = badge_st.property("text") if badge_st is not None else None
+        got_ver = got_ver if isinstance(got_ver, str) else ""
+        ch_ok = got_badge == app.backend.appChannel
+        ver_ok = (got_ver.startswith(app.backend.appVersion)
+                  and app.backend.devCodename in got_ver)
+        check(
+            "应用卡右栏 = 渠道徽章 + 版本行（版本号后面括号里跟 Codename）",
+            ch_ok and ver_ok,
+            "" if (ch_ok and ver_ok) else (
+                f"徽章={got_badge!r}（期望 {app.backend.appChannel!r}）"
+                f" 版本={got_ver!r}（期望含 {app.backend.appVersion!r}"
+                f" 与 {app.backend.devCodename!r}）"
+            ),
+        )
+        miss_items = [
+            n for n in ("aboutRepoItem", "aboutIssuesItem", "aboutDepsItem")
+            if _find_named(page_st, n) is None
+        ]
+        card_open = (bool(app_card_st.property("expanded"))
+                     and round(float(app_card_st.property("contentHeight"))) > 0
+                     ) if app_card_st is not None else False
+        check(
+            "应用卡三条内容项齐全（仓库 / 反馈 / 依赖）且默认展开",
+            not miss_items and card_open,
+            "" if (not miss_items and card_open) else (
+                f"缺 {miss_items} 展开={card_open}"
+            ),
+        )
+        # 「开源许可」那一项已按 2026-10-01 用户指令「关于界面的开源许可关掉」删除，
+        # 连 ``About.qml`` 的 ``licenseUrl`` 属性一起。这条拦「重新加回来」。
+        check(
+            "关于页没有「开源许可」外链项（用户指令关掉）",
+            _find_named(page_st, "aboutLicenseItem") is None,
+            "" if _find_named(page_st, "aboutLicenseItem") is None
+            else "aboutLicenseItem 又回来了",
+        )
+        # ④ 两条版式：仓库地址在打开按钮左边（等宽字体）；依赖的标题与链接
+        #    **同列、上下排**（并排时标题会被右栏推到卡片右边，``x`` 会很大）。
+        url_st = _find_named(page_st, "aboutRepoUrl")
+        url_text = url_st.property("text") if url_st is not None else ""
+        # ⚠️ QML ``Text`` 的 ``font`` 得走 ``property("font")``：``QQuickItem``
+        # 本身没有 ``font()`` 这个方法（对着它调会 AttributeError，把整段自检
+        # 抛进「过程异常」）。
+        url_font = url_st.property("font") if url_st is not None else None
+        url_mono = url_font.family() if url_font is not None else ""
+        # 「在打开按钮左边」= 该行里存在一个可见兄弟，``x`` 落在 URL 右边缘之后。
+        url_btn_st = _next_visible_right(url_st, page_st)
+        url_left_ok = False
+        if url_st is not None and url_btn_st is not None:
+            url_x = url_st.mapToItem(page_st, 0, 0).x()
+            btn_x = url_btn_st.mapToItem(page_st, 0, 0).x()
+            url_left_ok = url_x + url_st.width() <= btn_x + 1
+        url_ok = (isinstance(url_text, str)
+                  and url_text.startswith("https://github.com/")
+                  and "Consolas" in str(url_mono)
+                  and url_left_ok)
+        check(
+            "仓库地址在打开按钮左边、用等宽字体",
+            url_ok,
+            "" if url_ok else (
+                f"地址={url_text!r} 字体={url_mono!r} "
+                f"右邻居={'未找到' if url_btn_st is None else 'Y'} "
+                f"地址右缘={None if url_st is None else url_st.mapToItem(page_st, 0, 0).x() + url_st.width()} "
+                f"按钮x={None if url_btn_st is None else url_btn_st.mapToItem(page_st, 0, 0).x()}"
+            ),
+        )
+        # 依赖与参考：标题在上、链接在下，**同列**（并排时标题会被推到卡片右边）。
+        dep_title_st = _find_named(page_st, "aboutDepsTitle")
+        dep_link_st = _find_named(page_st, "aboutDepsLink0")
+        deps_ok = (
+            dep_title_st is not None and dep_link_st is not None
+            and dep_link_st.y() >= dep_title_st.y() + dep_title_st.height() - 1
+            and abs(dep_link_st.x() - dep_title_st.x()) < 12
+        )
+        check(
+            "依赖与参考的标题与内容上下换行（同列）",
+            deps_ok,
+            "" if deps_ok else (
+                f"依赖标题x={None if dep_title_st is None else dep_title_st.x()} "
+                f"/ y={None if dep_title_st is None else dep_title_st.y()} "
+                f"首链接x={None if dep_link_st is None else dep_link_st.x()} "
+                f"/ y={None if dep_link_st is None else dep_link_st.y()}"
+            ),
+        )
+
+        app.backend.settingsCloseRequested.emit()
 
         # ---- 调试窗口（隐藏入口：设置标题连点 10 次）----
         # 调试项 2026-09-30 从设置导航移出、改成独立窗口，入口是压在 RinUI 标题
@@ -2017,6 +2453,18 @@ def main() -> int:
                     f"settings=({settings.x()},{settings.y()}) "
                     f"debug=({debug_win.x()},{debug_win.y()})",
                 )
+                # 轮询间隔也换成了滑块（2026-10-01「能改成滑块的都改成滑块」）。
+                poll_sliders = _collect_type(debug_win.contentItem(), "Slider")
+                check(
+                    "调试窗口的轮询间隔是滑块（带 ms 读数）",
+                    len(poll_sliders) == 1
+                    and len(_collect_type(debug_win.contentItem(), "SpinBox")) == 0
+                    and any("ms" in str(t.property("text"))
+                            for t in _collect_type(debug_win.contentItem(), "Text")),
+                    f"滑块={len(poll_sliders)} "
+                    f"SpinBox="
+                    f"{len(_collect_type(debug_win.contentItem(), 'SpinBox'))}",
+                )
                 # 调试窗口与设置窗口同一条约定：由 RinUI 接管（见上面那段长注释）
                 debug_hwnd = int(debug_win.winId())
                 style_b = (
@@ -2042,6 +2490,241 @@ def main() -> int:
         # 放在快捷方式增删之前：那段会临时改动「已启用快捷方式」列表，
         # 先跑这条能确保它读到的是配置原样。
         _check_editor(app)
+
+        # ---- 设置页「主界面」的推广卡「编辑主界面的新方式」----
+        # 版式照搬 Class Widgets 2 的 ``ClassWidgets/Components/Introduction.qml``
+        # （用例在 ``pages/settings/General/Widgets.qml``）：左图 + 右文 + 右下角
+        # 一个 flat + highlighted 的按钮。
+        # ⚠️ 必须排在 ``_check_editor`` **之后**：编辑器是懒创建的，上面那条
+        # 「未打开时不建」的断言不能被这里先点开给破坏掉。
+        if settings is not None:
+            app.windows.show_settings("settings/MainInterface.qml")
+            intro = None
+            for _ in range(12):  # NavigationView.push → 页面组件加载是异步的
+                QTest.qWait(120)
+                intro = _find_item(
+                    settings.contentItem(),
+                    lambda it: it.objectName() == "mainInterfaceEditorIntro",
+                )
+                if intro is not None:
+                    break
+            check(
+                "设置页「主界面」有推广卡「编辑主界面的新方式」",
+                intro is not None,
+                "" if intro is not None
+                else "未找到 objectName=mainInterfaceEditorIntro 的项",
+            )
+            if intro is not None:
+                title = _find_named(intro, "mainInterfaceEditorIntroTitle")
+                image = _find_named(intro, "mainInterfaceEditorIntroImage")
+                button = _find_named(intro, "mainInterfaceEditorIntroButton")
+                check(
+                    "推广卡标题是「编辑主界面的新方式」",
+                    title is not None
+                    and title.property("text") == "编辑主界面的新方式",
+                    f"title={None if title is None else title.property('text')!r}",
+                )
+                # 配图是**两张文件**，按主题二选一：两张原图都是透明底、元素色与
+                # 卡片同色，贴错了整块看不见（2026-10-01 实测），所以在这里钉死。
+                # ⚠️ 判据取 ``is_dark_theme()`` 而不是 ``get_theme_name()``：后者
+                # 在「跟随系统」档下返回 ``Auto``，跟 QML 里的 ``Lumi.isDark`` 不是
+                # 一回事（Auto 下真实明暗由系统决定）。
+                dark = bool(app.rinui.theme_manager.is_dark_theme())
+                want = "_dark.png" if dark else "_light.png"
+                # ⚠️ ``Image.source`` 是 QUrl，直接 ``str()`` 会得到
+                # ``PySide6.QtCore.QUrl('file:///…')`` 这种壳，得走 ``toString()``。
+                raw = None if image is None else image.property("source")
+                source = raw.toString() if hasattr(raw, "toString") else str(raw)
+                check(
+                    f"推广卡配图跟着主题走（{'深色' if dark else '浅色'} → {want}）",
+                    image is not None and source.endswith(want),
+                    f"source={source!r}",
+                )
+                check(
+                    "推广卡按钮是「打开主界面编辑器」（flat + highlighted）",
+                    button is not None
+                    and button.property("text") == "打开主界面编辑器"
+                    and button.property("flat") is True
+                    and button.property("highlighted") is True,
+                    "按钮缺失" if button is None
+                    else f"text={button.property('text')!r} "
+                         f"flat={button.property('flat')} "
+                         f"highlighted={button.property('highlighted')}",
+                )
+                # 版式：图在左、文字在右（不重叠）；按钮贴着卡片内容区右边界。
+                if image is not None and title is not None and button is not None:
+                    image_right = image.mapToItem(intro, image.width(), 0).x()
+                    title_left = title.mapToItem(intro, 0, 0).x()
+                    check(
+                        "推广卡版式：图在左、文字在右且不重叠",
+                        image_right <= title_left + 1,
+                        f"图右={image_right:.0f} 文字左={title_left:.0f}",
+                    )
+                    button_right = button.mapToItem(intro, button.width(), 0).x()
+                    content_right = intro.width() - float(
+                        intro.property("rightPadding") or 0
+                    )
+                    check(
+                        "推广卡按钮贴右（Fluent 卡片尾部的动作位）",
+                        abs(button_right - content_right) <= 1,
+                        f"按钮右={button_right:.0f} 内容右={content_right:.0f}",
+                    )
+                    # 高度 = 图高 + 上下内边距（与 Lumi.editorIntroImageHeight /
+                    # editorIntroPadding 同值；QML 单例 Python 侧读不到，只能对齐）
+                    check(
+                        "推广卡高度 = 图片高 + 上下内边距",
+                        abs(intro.height() - (150 + 24 * 2)) <= 1,
+                        f"height={intro.height():.0f} 期望 198",
+                    )
+                # 点击按钮 → 真的把编辑器叫起来（与快捷面板同一条 openMainEditor）
+                if button is not None:
+                    QMetaObject.invokeMethod(button, "clicked")
+                    QTest.qWait(500)
+                    editor_win = app.windows.editor
+                    check(
+                        "推广卡按钮能把主界面编辑器叫起来",
+                        editor_win is not None and editor_win.isVisible(),
+                        "窗口未创建" if editor_win is None
+                        else f"visible={editor_win.isVisible()}",
+                    )
+                    app.backend.closeMainEditor()
+                    QTest.qWait(150)
+
+            # ---- 放映页的「位置 / 外观」整组搬来这一页（2026-10-01 用户指令）----
+            # 这五项调的都是「主界面长什么样」，归这一页；放映页只剩下行为项。
+            moved_cards = [
+                "mainInterfaceMarginX",
+                "mainInterfaceMarginY",
+                "mainInterfaceScreenIndex",
+                "mainInterfaceSurfaceOpacity",
+                "mainInterfaceShadowEnabled",
+            ]
+            found_cards = {name: _find_named(settings.contentItem(), name)
+                           for name in moved_cards}
+            missing = [n for n, v in found_cards.items() if v is None]
+            check(
+                "「主界面」页有从放映页搬来的 5 项（水平/垂直边距、目标显示器、"
+                "底板不透明度、投影）",
+                not missing,
+                f"缺失={missing}" if missing
+                else f"找到={len(found_cards)}",
+            )
+            # 控件也得跟着搬过来（最容易出的事：整块搬走时把卡片留下、把里面的
+            # 滑块 / 下拉漏了 —— 表现是「有这一项但点不动」）。
+            probe = found_cards.get("mainInterfaceSurfaceOpacity")
+            if probe is not None:
+                sliders = _collect_type(probe, "Slider")
+                check(
+                    "搬来的「底板不透明度」是**滑块**（2026-10-01：能改成滑块的都改）",
+                    len(sliders) > 0 and len(_collect_type(probe, "SpinBox")) == 0,
+                    f"卡内 滑块={len(sliders)} SpinBox="
+                    f"{len(_collect_type(probe, 'SpinBox'))}",
+                )
+            display_card = found_cards.get("mainInterfaceScreenIndex")
+            if display_card is not None:
+                combos = _collect_type(display_card, "ComboBox")
+                check(
+                    "搬来的「目标显示器」带下拉（控件没漏搬）",
+                    len(combos) > 0,
+                    f"卡内 ComboBox 数={len(combos)}",
+                )
+
+            # 三个数值项都该是滑块（边距 ×2 + 不透明度），且**数值读数**在旁边
+            # —— 拖完看不见具体数字是滑块最容易丢的东西。
+            slider_cards = [
+                "mainInterfaceMarginX", "mainInterfaceMarginY",
+                "mainInterfaceSurfaceOpacity",
+            ]
+            every = {}
+            for name in slider_cards:
+                card = found_cards.get(name)
+                every[name] = [] if card is None else _collect_type(card, "Slider")
+            check(
+                "边距与不透明度都用滑块（三个数值项都换掉了 SpinBox）",
+                all(len(v) == 1 for v in every.values()),
+                ", ".join(f"{k}={len(v)}" for k, v in every.items()),
+            )
+            check(
+                "滑块旁边有数值读数（带单位，拖完看得见具体数字）",
+                all(
+                    any("px" in str(t.property("text")) or "%" in str(t.property("text"))
+                        for t in _collect_type(card, "Text"))
+                    for card in (found_cards.get(n) for n in slider_cards)
+                    if card is not None
+                ),
+                ", ".join(
+                    f"{n}:" + "/".join(
+                        str(t.property("text"))
+                        for t in _collect_type(found_cards.get(n), "Text")
+                    )
+                    for n in slider_cards if found_cards.get(n) is not None
+                ),
+            )
+
+            # 真的拖一下：按住手柄拖到别处 → 配置跟着变。这是「滑块接上了
+            # setSetting」的唯一证据（光照一张图看不出接线对不对）。
+            # ⚠️ 走**真实鼠标事件**而不是 ``QMetaObject.invokeMethod(slider,
+            # "moved", …)`` —— 后者对 QML 里声明的信号不生效（静默返回 False），
+            # 断言会变成「配置没变」的假失败。
+            # ⚠️ 挑**位置最高的那只**（水平边距）：设置窗口只有 913×613，页面比
+            # 窗口高，「底板不透明度」那张卡在 y≈709 处 —— 落在窗口外，鼠标事件
+            # 发过去什么都不会发生（表现就是「拖了但配置没变」，第一版踩到）。
+            margin_card = found_cards.get("mainInterfaceMarginX")
+            drag_slider = (
+                None if margin_card is None
+                else (_collect_type(margin_card, "Slider") or [None])[0]
+            )
+            if drag_slider is not None:
+                prev_margin = app.config.get("presentation.margin_x")
+                from_value = float(drag_slider.property("from") or 0)
+                to_value = float(drag_slider.property("to") or 0)
+                start = float(drag_slider.property("value"))
+                want = 120.0
+
+                handle = drag_slider.property("handle")
+                origin = drag_slider.mapToScene(QPointF(0, 0))
+                span = drag_slider.width() - handle.width()
+                ratio = ((want - from_value) / (to_value - from_value)
+                         if to_value != from_value else 0.0)
+                grab = handle.mapToScene(QPointF(handle.width() / 2, handle.height() / 2))
+                drop = QPointF(origin.x() + handle.width() / 2 + ratio * span,
+                               grab.y())
+                QTest.mousePress(settings, Qt.LeftButton, Qt.NoModifier,
+                                 QPoint(int(grab.x()), int(grab.y())))
+                QTest.mouseMove(settings, QPoint(int(drop.x()), int(drop.y())))
+                QTest.mouseRelease(settings, Qt.LeftButton, Qt.NoModifier,
+                                   QPoint(int(drop.x()), int(drop.y())))
+                QTest.qWait(250)
+
+                after = float(app.config.get("presentation.margin_x") or 0)
+                # 容差 = 一档（stepSize 1px）：落在哪一格由像素取整决定。
+                check(
+                    "拖滑块能写进配置（真实鼠标拖动手柄 → setSetting）",
+                    abs(after - want) <= 1.5 and after != prev_margin,
+                    f"{prev_margin} → {after}（拖到 {want}）"
+                    f" | start={start} 抓点=({grab.x():.0f},{grab.y():.0f})"
+                    f" 落点=({drop.x():.0f},{drop.y():.0f})",
+                )
+                app.backend.setSetting("presentation_margin_x", prev_margin)
+                QTest.qWait(120)
+                check(
+                    "滑块自检不留副作用",
+                    app.config.get("presentation.margin_x") == prev_margin,
+                    f"{app.config.get('presentation.margin_x')} 期望 {prev_margin}",
+                )
+
+            # ---- 放映页：设置项已全部搬走 / 删除 ----
+            app.windows.show_settings("settings/Presentation.qml")
+            QTest.qWait(500)  # 换页是异步的（页面组件要重新加载）
+            left = _collect_type(settings.contentItem(), "SettingCard")
+            check(
+                "「放映」页已没有设置项（位置/外观→主界面、退出键样式→编辑器、"
+                "组分隔线与页码切换已删除）",
+                len(left) == 0,
+                f"还剩 {len(left)} 项",
+            )
+            app.backend.settingsCloseRequested.emit()
+            QTest.qWait(150)
 
         # ---- 快捷方式增删 / 排序 ----
         backend = app.backend

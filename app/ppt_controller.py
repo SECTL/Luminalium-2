@@ -164,12 +164,16 @@ def configure_detection(
     if fullscreen_ratio:
         FULLSCREEN_COVER_RATIO = float(fullscreen_ratio)
 
-# PpSlideShowPointerType
+# PpSlideShowPointerType（Microsoft Learn 的枚举表逐项核对过 —— ⚠️ **3 不是橡皮**，
+# 是 AlwaysHidden：之前写 3，切橡皮的结果就是「光标消失、点击行为等同指针」，
+# 因为 PowerPoint 把它当成了「指针永远隐藏」）：
+#   0=None 1=Arrow 2=Pen 3=AlwaysHidden 4=AutoArrow **5=Eraser**
 PP_POINTER_NONE = 0
 PP_POINTER_ARROW = 1
 PP_POINTER_PEN = 2
-PP_POINTER_ERASER = 3
+PP_POINTER_ALWAYS_HIDDEN = 3
 PP_POINTER_AUTO_ARROW = 4
+PP_POINTER_ERASER = 5
 
 # PpSlideShowState：1=运行中 2=暂停 3=黑屏 4=白屏 5=已结束 6=切场中。
 # 只有「已结束」要当成不在放映；黑屏 / 白屏仍是放映态（还要翻页、还要退出）。

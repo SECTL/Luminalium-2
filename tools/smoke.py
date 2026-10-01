@@ -61,6 +61,7 @@ import ctypes
 import ctypes.wintypes
 import json
 import os
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -2654,13 +2655,17 @@ def main() -> int:
             ppt_controller.L1_POINTER_RETRY_DELAYS == (0.0, 0.08, 0.16, 0.28),
             str(ppt_controller.L1_POINTER_RETRY_DELAYS),
         )
-        # 指针语义必须与 COM 的 PpSlideShowPointerType 对齐（arrow=1 pen=2 eraser=3）
+        # 指针语义必须与 COM 的 PpSlideShowPointerType 对齐 —— **官方表**：
+        # 0=None 1=Arrow 2=Pen 3=AlwaysHidden 4=AutoArrow **5=Eraser**。
+        # ⚠️ 这条守卫曾把错的旧值（eraser=3）钉成「正确」，真机「切橡皮没光标、
+        # 行为像指针」就是它放行的 —— 3 是 AlwaysHidden，PowerPoint 把指针藏了。
+        # 教训：钉常量之前先对官方文档，别对着当时的实现对个爽。（2026-10-02 修正）
         check(
-            "工具 -> 指针类型映射 = PpSlideShowPointerType",
+            "工具 -> 指针类型映射 = PpSlideShowPointerType（官方表，橡皮=5）",
             (ppt_controller.TOOL_TO_POINTER["none"],
              ppt_controller.TOOL_TO_POINTER["arrow"],
              ppt_controller.TOOL_TO_POINTER["pen"],
-             ppt_controller.TOOL_TO_POINTER["eraser"]) == (0, 1, 2, 3),
+             ppt_controller.TOOL_TO_POINTER["eraser"]) == (0, 1, 2, 5),
             str(ppt_controller.TOOL_TO_POINTER),
         )
         # 笔选单的色板：2026-10-01 起**配置是唯一来源**（选单从
@@ -3658,6 +3663,33 @@ def main() -> int:
             "源码 / 配置里没有指向已删「放映」页的残留引用",
             not page_refs,
             "; ".join(page_refs[:6]),
+        )
+
+        # ---- PpSlideShowPointerType 枚举值（钉官方表）----
+        # 2026-10-02 实锤：``PP_POINTER_ERASER`` 曾写成 3 —— 而 3 是
+        # **AlwaysHidden**，橡皮 = 5（Microsoft Learn 的
+        # ``PpSlideShowPointerType`` 枚举表：0=None 1=Arrow 2=Pen
+        # 3=AlwaysHidden 4=AutoArrow 5=Eraser）。症状正是用户报的
+        # 「切橡皮后没光标、行为类似指针」。这条守卫钉源码里的字面量，
+        # 谁改回 3 立刻红。
+        ppt_src = (ROOT / "app" / "ppt_controller.py").read_text(encoding="utf-8")
+
+        def _const_value(name: str):
+            for line in ppt_src.splitlines():
+                m = re.match(rf"^PP_POINTER_{name}\s*=\s*(\d+)", line)
+                if m:
+                    return int(m.group(1))
+            return None
+
+        pointer_values = {n: _const_value(n) for n in
+                          ("NONE", "ARROW", "PEN", "ALWAYS_HIDDEN",
+                           "AUTO_ARROW", "ERASER")}
+        check(
+            "PpSlideShowPointerType 枚举值 = 官方表（橡皮是 5，3 是 AlwaysHidden）",
+            pointer_values == {"NONE": 0, "ARROW": 1, "PEN": 2,
+                               "ALWAYS_HIDDEN": 3, "AUTO_ARROW": 4,
+                               "ERASER": 5},
+            f"实际={pointer_values}",
         )
 
         # ---- 快捷方式增删 / 排序 ----

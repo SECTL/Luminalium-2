@@ -14,16 +14,11 @@
     "//dev_watermark": "**开发者开关，只在调试窗口里出现**（调试窗口没有可见入口：在设置窗口左上角标题文本上连点 10 次打开）：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
     "dev_watermark": true
   },
-  "tray": {
-    "enabled": true,
-    "tooltip": "Luminalium 2",
-    "show_on_click": true,
-    "notify_on_start": false
-  },
+  "//tray": "托盘已于 2026-10-01（第二轮）按用户指令「托盘整组连着相关的逻辑和代码一块删掉」改为**恒定行为**，整段配置已删除：常驻（application.py::_boot_tray 恒 show）、提示文字取 app.name、左键恒唤出快捷面板、启动不再弹气泡、右键菜单项写死在 tray.py。没有可配置的路",
   "quick_panel": {
     "title": "快捷面板",
     "//size": "面板尺寸与弹出偏移（原 width=375 / height=440 / offset_y=30）已于 2026-10-01 按用户指令移除（「尺寸与位置的设置删除包括行为的代码」）：尺寸写死在 ui/QuickPanel.qml 的 panelWidth / panelHeight，弹出偏移写死在 app/windows.py::_position_panel 的 PANEL_OFFSET_Y。改尺寸直接改那两处常量",
-    "hide_on_deactivate": true,
+    "//hide_on_deactivate": "「失去焦点时收起」已于 2026-10-01（第二轮）按用户指令改为**默认行为**、不再作为设置项（配置键一并删除）：面板失活就收起，见 app/windows.py::_on_panel_active_changed",
     "header": {
       "logotext": "Luminalium 2"
     },

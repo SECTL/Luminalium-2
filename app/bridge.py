@@ -27,11 +27,14 @@ SETTING_PATHS: Dict[str, str] = {
     "accent": "app.accent",
     "language": "app.language",
     "log_level": "app.log_level",
-    "tray_enabled": "tray.enabled",
-    "tray_tooltip": "tray.tooltip",
-    "tray_show_on_click": "tray.show_on_click",
-    "tray_notify_on_start": "tray.notify_on_start",
-    "panel_hide_on_deactivate": "quick_panel.hide_on_deactivate",
+    # ⚠️ ``tray.enabled`` / ``tray.tooltip`` / ``tray.show_on_click`` /
+    #    ``tray.notify_on_start`` **没有**登记在这里，配置里的 ``tray`` 段也已删除：
+    #    2026-10-01（第二轮）用户指令「托盘整组连着相关的逻辑和代码一块删掉」。
+    #    现在托盘是**恒定行为**（常驻 + 提示文字取 app.name + 左键开面板 + 启动不弹
+    #    气泡，见 ``application.py::_boot_tray/_boot_ready`` 与 ``TrayIcon``），
+    #    没有可配置的路。
+    # ⚠️ ``quick_panel.hide_on_deactivate`` 同理删除：失焦收起是**默认行为**
+    #    （``windows.py::_on_panel_active_changed`` 恒定生效）。
     "panel_shortcuts_locked": "quick_panel.shortcuts_locked",
     "panel_section_shortcuts": "quick_panel.sections.shortcuts",
     "panel_section_footer": "quick_panel.sections.footer",

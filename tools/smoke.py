@@ -9,7 +9,10 @@
 4. 设置窗口（懒创建）能打开、**默认尺寸够大且更宽**（0.64 / 0.68，按真机屏幕
    复算公式）、居中且在屏幕内；调试窗口（隐藏入口 = 设置标题
    连点 10 次）的热区盖得住标题文本、点够次数能开、与设置窗口并排不重叠
-5. 快捷方式增删 / 排序与设置项读写能落回配置
+5. 快捷方式增删 / 排序与设置项读写能落回配置；「通用」页的**「托盘」整组与
+   「失去焦点时收起」已按用户指令删除**（2026-10-01 第二轮：「托盘整组连着相关的
+   逻辑和代码一块删掉」/「失焦收起作为默认行为」），且覆盖 UI / ``SETTING_PATHS`` /
+   默认配置 / 源码残留四层守卫
 6. 配置读取与日志写入正常
 7. 启动画面（设计稿还原）：按 2984:1679 比例居中、无标题栏且**刻意不登记 RinUI**、
    各元素落在设计稿位置（按 ``k = 宽/2984`` 缩放）、描边贴住外沿、进度填充与
@@ -47,6 +50,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
+import json
 import os
 import sys
 import traceback
@@ -63,6 +67,8 @@ from PySide6.QtGui import QCursor, QGuiApplication  # noqa: E402
 
 from app import ppt_controller  # noqa: E402
 from app.application import LuminaliumApplication  # noqa: E402
+from app.bridge import SETTING_PATHS  # noqa: E402
+from app.paths import DEFAULT_CONFIG_FILE  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
 from app.windows import CORNERS, _dwm_cloaked  # noqa: E402
 
@@ -166,6 +172,33 @@ def _find_text(item, text: str):
         if found is not None:
             return found
     return None
+
+
+def _scan_symbols(symbols, roots, skip=()):
+    """在源码里扫「已删除符号」的残留引用（静态守卫，返回 ``文件:行:符号`` 列表）。
+
+    删设置项时最容易漏的是「UI 删了、后端还在读」，或者「代码删了、引用还在」。
+    只扫 ``.py`` / ``.qml`` / ``.json``，跳过 ``__pycache__`` 与 ``skip`` 里的文件
+    （调用方要把**自己**排掉：待扫符号的字面量就写在调用处，否则永远自命中）。
+    命中即失败，用来拦「重新加回来」。
+    """
+    skipped = {Path(item).resolve() for item in skip}
+    hits = []
+    for root in roots:
+        for path in sorted(Path(root).rglob("*")):
+            if (path.suffix not in (".py", ".qml", ".json")
+                    or "__pycache__" in path.parts or not path.is_file()):
+                continue
+            if path.resolve() in skipped:
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for lineno, line in enumerate(text.splitlines(), 1):
+                for symbol in symbols:
+                    if symbol in line:
+                        hits.append(
+                            f"{path.relative_to(ROOT).as_posix()}:{lineno}:{symbol}"
+                        )
+    return hits
 
 
 def _collect_type(item, type_name: str):
@@ -1392,7 +1425,23 @@ def main() -> int:
         nonlocal failures
 
         check("系统托盘可用", app.tray.available)
-        check("托盘已显示", True)
+        # 2026-10-01（第二轮）用户指令删掉了「常驻托盘」/「托盘提示文字」两个开关：
+        # 托盘是**恒定行为**（`_boot_tray` 恒 show、tooltip 取 `app.name`），
+        # 所以这里真的把它显示出来看，别再写恒 True 的假断言。
+        app.tray.show()
+        QTest.qWait(150)
+        tray_icon = app.tray._tray
+        check(
+            "托盘已显示（「常驻托盘」开关已删，恒常驻）",
+            bool(tray_icon.isVisible()),
+            f"visible={tray_icon.isVisible()}",
+        )
+        check(
+            "托盘提示文字取 app.name（「托盘提示文字」开关已删）",
+            tray_icon.toolTip() == str(app.config.get("app.name")),
+            f"tooltip={tray_icon.toolTip()!r} "
+            f"app.name={app.config.get('app.name')!r}",
+        )
         expected_docks = [
             name
             for name, settings in (app.config.get("presentation.corners", {}) or {}).items()
@@ -2200,14 +2249,26 @@ def main() -> int:
             ),
         )
         if aurora_st is not None:
+            # 25s 一圈 → 1.5s 应该走 ~21.6°；只要求「明显在动」。
+            # ⚠️ 但**不能只采两拍**：QML 动画由渲染循环推进，设置窗口一旦被遮挡 /
+            # 没被系统暴露，时钟就走得极慢（实测读到 3.6°→6.1°，看着像「动画坏了」，
+            # 其实只是没曝光）—— 与相机那几处同一个坑。所以这里改成轮询「等到真的
+            # 动了」，中途抬窗催曝光（``_nudge_*`` 同款做法）。换成 ``RotationAnimator``
+            # 的话角度永远不动，轮询超时后照样 FAIL，拦截力不变。
             a0 = float(aurora_st.property("angle"))
-            QTest.qWait(1500)
-            a1 = float(aurora_st.property("angle"))
-            # 25s 一圈 → 1.5s 应该走 ~21.6°；只要求「明显在动」
+            a1 = a0
+            waited = 0
+            while waited < 5000 and abs(a1 - a0) <= 5.0:
+                QTest.qWait(250)
+                waited += 250
+                a1 = float(aurora_st.property("angle"))
+                if waited % 1250 == 0:  # 催一次曝光（遮挡时渲染循环会卡住）
+                    settings.raise_()
+                    settings.requestActivate()
             check(
                 "流光的自转真的在走（⚠️ 别换回 RotationAnimator）",
                 abs(a1 - a0) > 5.0,
-                f"{a0:.1f}° → {a1:.1f}° / 1.5s（期望 ≈ 21.6°）",
+                f"{a0:.1f}° → {a1:.1f}° / {waited / 1000:.2f}s（1.5s 期望 ≈ 21.6°）",
             )
             spread_st = float(aurora_st.property("spread"))
             check(
@@ -2723,8 +2784,90 @@ def main() -> int:
                 len(left) == 0,
                 f"还剩 {len(left)} 项",
             )
+            # ---- 通用页：托盘设置组与「失去焦点时收起」已删除 ----
+            # 2026-10-01（第二轮）用户指令：「托盘」整组连着相关的逻辑和代码一块
+            # 删掉；「失去焦点时收起」作为默认行为、不再作为设置项。
+            # ⚠️ 页面根得先等它真的 push 完成（异步，见 ``_wait_named``）——
+            # 找的不是文件名而是页面根的 objectName（NavigationView 会把页面根的
+            # objectName 覆盖成文件名，所以这里就是 ``Index``）。
+            app.windows.show_settings("settings/General/Index.qml")
+            general = _wait_named(settings.contentItem(), "Index")
+            check(
+                "通用页能打开（页面根按文件名 Index 找得到）",
+                general is not None,
+                "页面没落地（可能只是 push 还没跑完）" if general is None else "",
+            )
+            if general is not None:
+                gone = [
+                    title for title in (
+                        "常驻托盘", "启动时提示", "左键打开快捷面板",
+                        "托盘提示文字", "失去焦点时收起",
+                    )
+                    if _find_text(general, title) is not None
+                ]
+                check(
+                    "通用页已无「托盘」整组（4 项）与「失去焦点时收起」",
+                    not gone,
+                    f"还找到 {gone}",
+                )
+                check(
+                    "通用页已无「托盘」分组标题",
+                    _find_text(general, "托盘") is None,
+                )
+                cards = _collect_type(general, "SettingCard")
+                keep = [
+                    title for title in ("快捷方式锁定", "应用主题", "强调色", "界面语言")
+                    if _find_text(general, title) is not None
+                ]
+                check(
+                    "通用页只剩 4 张卡（快捷方式锁定 + 外观 3 张）",
+                    len(cards) == 4 and len(keep) == 4,
+                    f"卡数={len(cards)} 找到={keep}",
+                )
+                check(
+                    "「快捷方式锁定」的开关还在（本次没动它）",
+                    len(_collect_type(general, "Switch")) == 1,
+                    f"Switch={len(_collect_type(general, 'Switch'))}",
+                )
+
             app.backend.settingsCloseRequested.emit()
             QTest.qWait(150)
+
+        # ---- 删除项的静态守卫（拦「重新加回来」）----
+        # 三层都要干净：QML（上面已按真窗口验过）、SETTING_PATHS、默认配置 + 源码残留。
+        stale_keys = [
+            key for key in (
+                "tray_enabled", "tray_tooltip", "tray_show_on_click",
+                "tray_notify_on_start", "panel_hide_on_deactivate",
+            )
+            if key in SETTING_PATHS
+        ]
+        check(
+            "SETTING_PATHS 已无托盘 / 失焦收起五项",
+            not stale_keys,
+            f"残留={stale_keys}",
+        )
+        defaults = json.loads(DEFAULT_CONFIG_FILE.read_text(encoding="utf-8"))
+        quick_panel_defaults = defaults.get("quick_panel") or {}
+        check(
+            "默认配置已删掉 tray 段与 quick_panel.hide_on_deactivate",
+            "tray" not in defaults
+            and "hide_on_deactivate" not in quick_panel_defaults,
+            f"tray={'tray' in defaults} "
+            f"hide_on_deactivate={'hide_on_deactivate' in quick_panel_defaults}",
+        )
+        stale_refs = _scan_symbols(
+            ("tray_enabled", "tray_tooltip", "tray_show_on_click",
+             "tray_notify_on_start", "panel_hide_on_deactivate",
+             'config.get("tray', "def set_tooltip"),
+            roots=(ROOT / "ui", ROOT / "app", ROOT / "config", ROOT / "tools"),
+            skip=(Path(__file__),),
+        )
+        check(
+            "源码 / 配置里没有已删托盘设置键、tray 配置读取、set_tooltip 的残留引用",
+            not stale_refs,
+            "; ".join(stale_refs[:6]),
+        )
 
         # ---- 快捷方式增删 / 排序 ----
         backend = app.backend

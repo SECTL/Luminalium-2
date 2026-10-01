@@ -425,8 +425,9 @@ class WindowManager(QObject):
         self._bind_panel()
 
     def _on_panel_active_changed(self) -> None:
-        if not self._config.get("quick_panel.hide_on_deactivate", True):
-            return
+        # 失焦收起是**默认行为**（2026-10-01 第二轮用户指令：原来的
+        # 「失去焦点时收起」设置项与 ``quick_panel.hide_on_deactivate`` 配置键
+        # 一并删除）。这里不再读配置，面板失活就（延迟 140ms）收起。
         if self.panel is not None and not self.panel.isActive():
             self._hide_timer.start()
 

@@ -4,13 +4,20 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    通用：托盘、快捷面板与全局外观开关。
+    通用：快捷面板与全局外观开关。
 
     2026-09-25 导航重构后本页吸收了原「行为」子页的全部内容；
     2026-10-01 又吸收了原「外观」页的三张卡（主题模式 / 强调色 / 界面语言）——
     用户指令「把『外观』改成『主界面』」，而这三项是**全局外观设定**、不属于
     「主界面」这个概念，所以随改名一起并进来；原「外观」页改名为
     ``settings/MainInterface.qml`` 并留空。日志级别归调试窗口。
+
+    ⚠️ 2026-10-01（第二轮）用户指令：「托盘」整组（常驻托盘 / 启动时提示 /
+    左键打开快捷面板 / 托盘提示文字）**连着相关的逻辑和代码一块删掉**；
+    「失去焦点时收起」**作为默认行为、不再作为设置项**。两者都已落地：
+    托盘行为在 ``application.py`` / ``tray.py`` 里写死（常驻、提示文字取
+    ``app.name``、左键恒唤出面板、启动不再弹气泡），失焦收起在
+    ``windows.py::_on_panel_active_changed`` 里恒定生效。**别再往回加**。
 */
 Rin.FluentPage {
     id: page
@@ -27,79 +34,7 @@ Rin.FluentPage {
     Rin.Text {
         Layout.fillWidth: true
         typography: Rin.Typography.BodyStrong
-        text: qsTr("托盘")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("常驻托盘")
-        description: qsTr("关闭后不显示托盘图标，快捷面板只能靠命令行唤起")
-        icon.name: "ic_fluent_apps_list_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.tray_enabled === true
-            onToggled: Backend.setSetting("tray_enabled", checked)
-        }
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("启动时提示")
-        description: qsTr("驻留托盘后弹一条气泡提示")
-        icon.name: "ic_fluent_alert_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.tray_notify_on_start === true
-            onToggled: Backend.setSetting("tray_notify_on_start", checked)
-        }
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("左键打开快捷面板")
-        description: qsTr("关闭后左键不再唤出面板，只能走右键菜单")
-        icon.name: "ic_fluent_cursor_click_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.tray_show_on_click === true
-            onToggled: Backend.setSetting("tray_show_on_click", checked)
-        }
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("托盘提示文字")
-        description: qsTr("鼠标悬停在托盘图标上时显示")
-        icon.name: "ic_fluent_text_bulleted_list_20_regular"
-
-        Rin.TextField {
-            Layout.preferredWidth: 220
-            text: Backend.settings.tray_tooltip !== undefined ? Backend.settings.tray_tooltip : ""
-            onEditingFinished: Backend.setSetting("tray_tooltip", text)
-        }
-    }
-
-    Rin.Text {
-        Layout.fillWidth: true
-        Layout.topMargin: 10
-        typography: Rin.Typography.BodyStrong
         text: qsTr("快捷面板")
-    }
-
-    Rin.SettingCard {
-        Layout.fillWidth: true
-        title: qsTr("失去焦点时收起")
-        description: qsTr("点击别处自动隐藏，和系统托盘菜单一致")
-        icon.name: "ic_fluent_eye_tracking_20_regular"
-
-        Rin.Switch {
-            primaryColor: Lumi.accent
-            checked: Backend.settings.panel_hide_on_deactivate === true
-            onToggled: Backend.setSetting("panel_hide_on_deactivate", checked)
-        }
     }
 
     Rin.SettingCard {

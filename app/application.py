@@ -121,7 +121,9 @@ class LuminaliumApplication:
         self.rinui.setBackdropEffect(effect)
 
         # ---- 窗口 ----
-        self.tray = TrayIcon(str(self.config.get("tray.tooltip", APP_NAME)))
+        # 托盘提示文字 = 应用名（2026-10-01 第二轮用户指令：原来的「托盘提示文字」
+        # 设置项连着配置键一起删掉了，这里直接取 app.name）。
+        self.tray = TrayIcon(str(self.config.get("app.name", APP_NAME)))
         self.windows = WindowManager(
             self.rinui.engine,
             self.config,
@@ -177,12 +179,19 @@ class LuminaliumApplication:
         self.backend.setSplashStage(float(progress), stage)
 
     def _boot_tray(self) -> None:
-        if self.config.get("tray.enabled", True):
-            if self.tray.available:
-                self.tray.show()
-            else:
-                log.warning("系统托盘不可用，快捷面板只能通过命令启动")
-                self.windows.show_panel()
+        """创建托盘图标。
+
+        ⚠️ 2026-10-01（第二轮）用户指令「托盘整组连着相关的逻辑和代码一块删掉」：
+        原来的 ``tray.enabled`` 判断已删除 —— 托盘是**恒定行为**，也是应用的唯一
+        入口（左键唤出快捷面板、右键菜单），不再有「关掉托盘」这条路。
+        系统托盘不可用（极少数被魔改的 shell）时退回直接显示快捷面板，
+        否则用户将完全无法唤出界面。
+        """
+        if self.tray.available:
+            self.tray.show()
+        else:
+            log.warning("系统托盘不可用，直接显示快捷面板作为兜底")
+            self.windows.show_panel()
         self._splash(0.60, "创建托盘图标")
         QTimer.singleShot(SPLASH_STEP_MS, self._boot_presenter)
 
@@ -197,11 +206,8 @@ class LuminaliumApplication:
         QTimer.singleShot(SPLASH_STEP_MS, self._boot_ready)
 
     def _boot_ready(self) -> None:
-        if self.config.get("tray.notify_on_start", False):
-            self.tray.notify(
-                str(self.config.get("app.name", APP_NAME)),
-                "已驻留托盘，点击图标打开快捷面板。",
-            )
+        # 「启动时提示」气泡已按 2026-10-01（第二轮）用户指令删除（``tray.notify``
+        # 方法本身保留：托盘右键「诊断信息（写入日志）」还在用它）。
         self._splash(1.0, "就绪")
         log.info("启动完成")
         QTimer.singleShot(SPLASH_HOLD_MS, self.windows.hide_splash)

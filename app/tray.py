@@ -1,7 +1,14 @@
 """托盘常驻。
 
-应用启动后默认只存在于托盘：不显示主窗口，左键点击托盘图标切换快捷面板，
+应用启动后只存在于托盘：不显示主窗口，左键点击托盘图标切换快捷面板，
 右键弹出菜单。
+
+⚠️ 2026-10-01（第二轮）用户指令「托盘整组连着相关的逻辑和代码一块删掉」：
+托盘不再有任何可配置项 —— 恒常驻（``application.py::_boot_tray`` 直接 show）、
+提示文字由 ``application.py`` 传 ``app.name``、左键恒唤出快捷面板、启动不再弹
+气泡（``tray.notify`` 仅剩托盘「诊断信息」在用）。原来的
+``enabled`` / ``tooltip`` / ``show_on_click`` / ``notify_on_start`` 四个配置键、
+``set_tooltip()`` 与设置页那一组卡片都已删除，**别再往回加**。
 """
 
 from __future__ import annotations
@@ -104,9 +111,6 @@ class TrayIcon(QObject):
     def hide(self) -> None:
         self._tray.hide()
 
-    def set_tooltip(self, text: str) -> None:
-        self._tray.setToolTip(text)
-
     def notify(self, title: str, message: str) -> None:
         self._tray.showMessage(title, message, build_app_icon(), 4000)
 
@@ -141,6 +145,8 @@ class TrayIcon(QObject):
         self._menu.addAction(quit_action)
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        # 左键（单击 / 双击）恒唤出快捷面板：原来的「左键打开快捷面板」设置项
+        # 已按 2026-10-01（第二轮）用户指令删除，这里不再有开关判断。
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
             QSystemTrayIcon.ActivationReason.DoubleClick,

@@ -2895,6 +2895,34 @@ def main() -> int:
                 corner.value == 2,
                 f"corner={corner.value}（0=Default / 2=Round）",
             )
+            # 设置首页的警示横幅（2026-10-02 用户指令「给设置的主页先挂上
+            # resources 里面的警告黄色横幅 位置稍微靠下」）：初始页就是 Home，
+            # 趁窗口还开着查树。断言三件事：图在、源是 WARNING.png、映射到
+            # 窗口内容区后落在头部之下 —— 「稍微靠下」的具体像素不写死（那
+            # 会跟 FluentPage 头部高度耦合），只拦「图没挂上」和「顶到最上面」
+            # 两种明显回退。
+            banner = _wait_named(settings.contentItem(), "homeWarningBanner")
+            banner_src = ""
+            banner_y = -1
+            if banner is not None:
+                banner_src = banner.property("source").toString()
+                banner_y = banner.mapToItem(settings.contentItem(), 0, 0).y()
+            banner_ok = (
+                banner is not None
+                and banner.isVisible()
+                and banner_src.endswith("WARNING.png")
+                and banner.width() > 100
+                and banner_y > 60
+            )
+            check(
+                "设置首页挂了 WARNING.png 横幅且位于头部之下",
+                banner_ok,
+                "" if banner_ok else (
+                    f"banner={'无' if banner is None else '有'} "
+                    f"visible={banner is not None and banner.isVisible()} "
+                    f"src={banner_src!r} y={banner_y:.0f}"
+                ),
+            )
             app.backend.settingsCloseRequested.emit()
             check("设置窗口可关闭", not settings.isVisible())
 

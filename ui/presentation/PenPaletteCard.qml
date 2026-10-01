@@ -10,19 +10,22 @@ import Luminalium
     吗？并且当目前工具已经是笔的时候弹出如图的选单 `@image`，图片的只供参考，
     实际的颜色列表要更多更丰富」。
 
-    版式照那张参考图的骨架 —— 两段，各带一个小标题::
+    ## 版式（Fluent 2 flyout）
 
-        颜色
+    两段内容 + 中间一条 1px 分隔线，各段带 ``Caption`` 小标题（12px / 600，
+    Fluent 2 的分段标题档）::
+
+        颜色                     ← Caption，secondary
         ● ● ● ● ● ● ● ● ● ●
         ● ● ● ● ● ● ● ● ● ●
         ● ● ● ● ● ● ● ● ● ●
+        ─────────────────────    ← 1px hairline（分区线不比卡片描边扎眼）
+        预览                     ← Caption，secondary
+        ⌒⌒⌒⌒⌒⌒⌒⌒⌒⌒⌒           ← 次级底板（Subtle fill）上的波浪笔迹
 
-        预览
-        ～～～～～～～～～～～～
-
-    色板**不写死在这里**：它来自 ``presentation.pen.palette``（30 色 = 3 行 ×
-    10 列，前 20 色就是 PowerPoint 自己的 InkColorPicker 网格），用户改配置就能
-    换。卡片只负责「怎么摆」。
+    动效照 Fluent 2 的 flyout enter：**淡入 + 从触发点外侧滑入**
+    （卡片在条上方 → 从贴近条的位置向上浮），``OutQuint``（decelerate）；
+    收起反向、更快（accelerate 的直觉：退出比进入干脆）。
 
     ## 与「区域塑形」的关系（改这块前必读）
 
@@ -45,6 +48,13 @@ import Luminalium
     ``selectedColor`` 是**唯一**的选中依据（由调用方给：后端记着的墨迹色，
     没选过时是配置里的 ``pen.default``）。色点自己不存状态 —— 于是「换一行
     配置就全对」。
+
+    ## 自检相关的镜像属性
+
+    * ``reveal``（0..1 的展开进度）：自检要等它到 1 再读卡片几何，否则会读到
+      进出场动画**半路**的 y（这条坑项目在「手动档位」上踩过一次）；
+    * 色点上的 ``swatchColor`` / ``swatchSelected``、预览的 ``strokeColor``：
+      效果层（border / ShapePath）PySide 读不到，全部另挂一份。
 */
 Item {
     id: root
@@ -58,7 +68,7 @@ Item {
     /*! 当前选中的颜色；``transparent`` = 还没有选中任何一格（此时预览画一道
         中性线，也不点亮任何色点）。 */
     property color selectedColor: "transparent"
-    /*! 展开 / 收起。 */
+    /*! 展开 / 收起（语义上的开关；动画进度见 ``reveal``）。 */
     property bool opened: false
 
     /*! 点了一格色点 —— 交给调用方去落配置并驱动 PowerPoint。 */
@@ -72,7 +82,7 @@ Item {
     /*! 小标题与它下面那块内容之间的间距。 */
     readonly property int titleGap: 8
     /*! 两段（颜色 / 预览）之间的间距。 */
-    readonly property int sectionGap: 14
+    readonly property int sectionGap: Lumi.dockPaletteSectionGap
 
     /*! 预览笔迹的颜色：没选过色时退成一道中性线（否则 ``transparent`` 什么都
         看不见，用户会以为预览坏了）。 */
@@ -91,7 +101,7 @@ Item {
     readonly property real gridWidth: columns * swatchSize
         + Math.max(columns - 1, 0) * swatchSpacing
 
-    /*! 尺寸含投影余量（与 ``FlyoutSurface`` / ``EditorZoomBar`` 同一套约定：
+    /*! 尺寸含投影余量（与 ``FlyoutSurface`` 同一套约定：
         摆放方按 ``implicit*`` 摆，卡片本体在 ``shadowMargin`` 处）。 */
     implicitWidth: card.width + shadowMargin * 2
     implicitHeight: card.height + shadowMargin * 2
@@ -101,7 +111,23 @@ Item {
     readonly property real cardWidth: card.width
     readonly property real cardHeight: card.height
 
-    visible: opened
+    // ------------------------------------------------ 动画（Fluent 2 flyout）
+    /*! 展开进度 0..1。``opened`` 是语义开关，``reveal`` 是它的动画影子 ——
+        自检等 ``reveal`` 到位再读几何，别读半路值。 */
+    property real reveal: 0
+    onOpenedChanged: reveal = opened ? 1 : 0
+    Behavior on reveal {
+        NumberAnimation {
+            // 展开：淡入快、滑入慢一档（RinUI 自家 Flyout 也是这个分工）；
+            // 收起整体更快 —— 退出要比进入干脆，这是 Fluent 2 的直觉。
+            duration: opened ? Lumi.dockPaletteEnterDuration
+                             : Lumi.dockPaletteFadeDuration
+            easing.type: Easing.OutQuint
+        }
+    }
+    opacity: reveal
+    /*! 收起动画期间还得画着（不然淡出没了），归零后才真正藏起。 */
+    visible: reveal > 0.001
 
     /*! 某一格是不是当前选中的那格。大小写不敏感（配置里可能写成小写），
         带 alpha 的写法（``#AARRGGBB``）取后六位。 */
@@ -127,7 +153,9 @@ Item {
         objectName: "penPaletteCard"
 
         x: root.shadowMargin
-        y: root.shadowMargin
+        // Fluent 2 flyout enter：从「贴近触发点」的位置向外滑入。卡片在条
+        // 上方 → 起点比终点低（往下偏），reveal=1 时归位。
+        y: root.shadowMargin + (1 - root.reveal) * Lumi.dockPaletteEnterOffset
         // 宽度**直接由列宽算**（不靠内容撑）：卡片与下面那条预览波浪一定是
         // 同一个右沿。位置器的 ``implicitWidth`` 在这种纯显式尺寸的子项上
         // 不够直观，写死算出来的值反而好读。
@@ -144,6 +172,13 @@ Item {
             转换器），复制一份给自检读。 */
         readonly property color surfaceBorderColor: border.color
         readonly property real effectiveRadius: radius
+    }
+
+    /*! 与工具栏底板同一道「渐变边框高光」—— 抽出的 ``SurfaceHighlight``，
+        两块浮出层共用一个实现才像一家人。 */
+    SurfaceHighlight {
+        objectName: "penPaletteHighlight"
+        source: card
     }
 
     /*! 吞掉落在卡片范围内的点击 —— 不吞的话会穿到底下的舞台（放映画面）上，
@@ -168,7 +203,8 @@ Item {
             Rin.Text {
                 objectName: "penPaletteTitleColor"
                 text: root.titleColor
-                typography: Rin.Typography.BodyStrong
+                // Caption = Fluent 2 的分段标题档（12px / 600）
+                typography: Rin.Typography.Caption
                 color: Lumi.dockPaletteLabel
             }
 
@@ -195,15 +231,25 @@ Item {
                         width: root.swatchSize
                         height: width
                         radius: width / 2
-                        // 圆点自己画（见下面两块内容），按钮底层留空
+                        // 圆点自己画（见下面几块内容），按钮底层留空
                         color: "transparent"
                         padding: 0
+                        hoverEnabled: true
                         onClicked: root.colorPicked(modelData)
 
+                        // Fluent 2 的可点表面三态：hover 外圈、按下缩一点、
+                        // 选中描环。没有 hover 态的色板划过去毫无反馈。
+                        scale: tile.down ? 0.88 : 1.0
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Lumi.dockPaletteFadeDuration
+                                easing.type: Easing.OutQuint
+                            }
+                        }
+
                         /*! 选中环：一圈描边贴着色点的**外沿**，色点缩进去
-                            让出「环宽 + 空隙」—— 就是参考图里「黄点外套一圈白」
-                            的那个样子。环色取主题文本色（深色=白 / 浅色=黑），
-                            见 ``Lumi.dockSwatchRingColor``。 */
+                            让出「环宽 + 空隙」。环色取主题文本色
+                            （深色=白 / 浅色=黑），见 ``Lumi.dockSwatchRingColor``。 */
                         Rectangle {
                             objectName: "penSwatchRing"
                             visible: tile.swatchSelected
@@ -214,7 +260,19 @@ Item {
                             border.color: Lumi.dockSwatchRingColor
                         }
 
-                        /*! 色点本体。选中时缩进去，把外圈让给白环。
+                        /*! hover 环（1px，比选中环淡一档）。选中的那格不画 ——
+                            它已经有更重的环，两圈叠一起反而含糊。 */
+                        Rectangle {
+                            objectName: "penSwatchHoverRing"
+                            visible: tile.hovered && !tile.swatchSelected
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: Lumi.dockSwatchHoverRingWidth
+                            border.color: Lumi.dockSwatchHoverRing
+                        }
+
+                        /*! 色点本体。选中时缩进去，把外圈让给环。
                             描边是**必须**的：卡片底色在深浅两档都接近中性，
                             纯白/纯黑的色点没有这一圈就与底色糊在一起。 */
                         Rectangle {
@@ -230,14 +288,22 @@ Item {
 
                             Behavior on width {
                                 NumberAnimation {
-                                    duration: Lumi.durationFast
-                                    easing.type: Easing.OutQuart
+                                    duration: Lumi.dockPaletteFadeDuration
+                                    easing.type: Easing.OutQuint
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+
+        // ========================================================== 分隔线
+        Rectangle {
+            objectName: "penPaletteDivider"
+            width: root.gridWidth
+            height: 1
+            color: Lumi.dockPaletteDivider
         }
 
         // ========================================================== 预览
@@ -247,56 +313,68 @@ Item {
             Rin.Text {
                 objectName: "penPaletteTitlePreview"
                 text: root.titlePreview
-                typography: Rin.Typography.BodyStrong
+                typography: Rin.Typography.Caption
                 color: Lumi.dockPaletteLabel
             }
 
-            /*! 一笔波浪 —— 用 ``Shape`` 画（不是贴图）：颜色要跟着选中的那一格
-                实时变，而且曲线在任何 DPR 下都得是干净的。
-
-                ``CurveRenderer``：默认的几何渲染器会把弧打散成折线（这里没有
-                弧，只有三次贝塞尔，但曲线段在默认渲染器下走的是同一条
-                折线化路径），直接用曲线渲染器最稳。 */
-            Shape {
-                id: preview
-                objectName: "penPalettePreview"
+            /*! 次级底板（Subtle fill）：波浪画在块上，「预览」才像一块独立的
+                只读区域，而不是直接飘在卡片底色上。嵌套圆角比外层小一档。 */
+            Rectangle {
+                objectName: "penPalettePreviewSurface"
                 width: root.gridWidth
                 height: root.previewHeight
-                preferredRendererType: Shape.CurveRenderer
+                radius: Lumi.dockPalettePreviewRadius
+                color: Lumi.dockPalettePreviewFill
 
-                /*! 镜像给自检读（``ShapePath`` 是 QObject 不是 Item，
-                    Python 侧的 ``childItems()`` 够不着它）。 */
-                readonly property color strokeColor: root.strokeColor
-                readonly property real strokeWidth: Lumi.dockPalettePreviewStroke
+                /*! 一笔波浪 —— 用 ``Shape`` 画（不是贴图）：颜色要跟着选中的
+                    那一格实时变，而且曲线在任何 DPR 下都得是干净的。
 
-                ShapePath {
-                    fillColor: "transparent"
-                    strokeColor: preview.strokeColor
-                    strokeWidth: preview.strokeWidth
-                    capStyle: ShapePath.RoundCap
-                    joinStyle: ShapePath.RoundJoin
+                    ``CurveRenderer``：默认的几何渲染器会把弧打散成折线（这里没有
+                    弧，只有三次贝塞尔，但曲线段在默认渲染器下走的是同一条
+                    折线化路径），直接用曲线渲染器最稳。 */
+                Shape {
+                    id: preview
+                    objectName: "penPalettePreview"
+                    x: Lumi.dockPalettePreviewPad
+                    width: parent.width - Lumi.dockPalettePreviewPad * 2
+                    height: parent.height - Lumi.dockPalettePreviewPad * 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    preferredRendererType: Shape.CurveRenderer
 
-                    // 起笔在左下，先扬起来、再沉下去、最后挑上去 —— 与参考图
-                    // 那一笔同形（两个三次贝塞尔接起来，中点在正中收口）。
-                    startX: 0
-                    startY: preview.height * 0.62
+                    /*! 镜像给自检读（``ShapePath`` 是 QObject 不是 Item，
+                        Python 侧的 ``childItems()`` 够不着它）。 */
+                    readonly property color strokeColor: root.strokeColor
+                    readonly property real strokeWidth: Lumi.dockPalettePreviewStroke
 
-                    PathCubic {
-                        control1X: preview.width * 0.18
-                        control1Y: preview.height * 0.04
-                        control2X: preview.width * 0.32
-                        control2Y: preview.height * 0.04
-                        x: preview.width * 0.5
-                        y: preview.height * 0.5
-                    }
+                    ShapePath {
+                        fillColor: "transparent"
+                        strokeColor: preview.strokeColor
+                        strokeWidth: preview.strokeWidth
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
 
-                    PathCubic {
-                        control1X: preview.width * 0.68
-                        control1Y: preview.height * 0.96
-                        control2X: preview.width * 0.82
-                        control2Y: preview.height * 0.96
-                        x: preview.width
-                        y: preview.height * 0.38
+                        // 起笔在左下，先扬起来、再沉下去、最后挑上去 —— 与参考图
+                        // 那一笔同形（两个三次贝塞尔接起来，中点在正中收口）。
+                        startX: 0
+                        startY: preview.height * 0.62
+
+                        PathCubic {
+                            control1X: preview.width * 0.18
+                            control1Y: preview.height * 0.04
+                            control2X: preview.width * 0.32
+                            control2Y: preview.height * 0.04
+                            x: preview.width * 0.5
+                            y: preview.height * 0.5
+                        }
+
+                        PathCubic {
+                            control1X: preview.width * 0.68
+                            control1Y: preview.height * 0.96
+                            control2X: preview.width * 0.82
+                            control2Y: preview.height * 0.96
+                            x: preview.width
+                            y: preview.height * 0.38
+                        }
                     }
                 }
             }

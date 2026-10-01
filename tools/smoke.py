@@ -1945,6 +1945,40 @@ def main() -> int:
                                  QPoint(int(round(center.x())), int(round(center.y()))))
                 QTest.qWait(90)
 
+            def _nudge_top() -> None:
+                """把顶层窗口抬起来催一次曝光（动画由渲染循环推进，同
+                ``_nudge_editor`` 的教训：窗口不被暴露时动画会卡在中间值）。"""
+                overlay.raise_()
+                overlay.requestActivate()
+                QTest.qWait(120)
+
+            def _wait_reveal(target: float, *, timeout_ms: int = 2500) -> bool:
+                """等笔选单的**进出场动画**走完（``reveal`` 到位）。
+
+                选单现在是 Fluent 2 的 flyout 动效（滑入 250ms / 淡出 167ms），
+                ``_click_dock_item`` 只等 90ms —— 不等它就半路读几何，会拿到
+                动画中间值（「摆放」那类断言首当其冲）。这里等的是**目标值**，
+                中途抬一次窗口催曝光。
+                """
+                def there() -> bool:
+                    v = palette.property("reveal")
+                    # 容差要小到与 ``visible`` 的判据（>0.001 在画）相容：
+                    # 松了会在淡出半路（reveal≈0.017）就放行，紧跟着的
+                    # ``isVisible() is False`` 当场红。
+                    return v is not None and abs(float(v) - target) <= 0.004
+
+                waited = 0
+                nudged = False
+                while waited <= timeout_ms:
+                    if there():
+                        return True
+                    QTest.qWait(60)
+                    waited += 60
+                    if not nudged and waited >= timeout_ms // 2:
+                        nudged = True
+                        _nudge_top()
+                return there()
+
             arrow_item = _find_named(cdock, "dockTool_arrow")
             pen_item = _find_named(cdock, "dockTool_pen")
             palette = _find_named(cdock, "penPalette")
@@ -1977,10 +2011,32 @@ def main() -> int:
                 f"opened={palette.property('opened')}",
             )
             _click_dock_item(pen_item)
+            opened_settled = _wait_reveal(1.0)
             check(
-                "工具已经是笔时再点一下 → 弹出选单",
-                palette.property("opened") is True and palette.isVisible(),
-                f"opened={palette.property('opened')} visible={palette.isVisible()}",
+                "工具已经是笔时再点一下 → 弹出选单（且进出场动画走完）",
+                palette.property("opened") is True and palette.isVisible()
+                and opened_settled,
+                f"opened={palette.property('opened')} visible={palette.isVisible()} "
+                f"reveal={palette.property('reveal')}",
+            )
+            # Fluent 2 化的守卫：圆角、动画、高光 —— 都钉在真机上
+            check(
+                "选单卡片圆角 = 8（Fluent 2 的 Overlay/Flyout 档，不是自造的 14）",
+                abs(float(card.property("effectiveRadius")) - 8) <= 0.01,
+                f"radius={card.property('effectiveRadius')}",
+            )
+            check(
+                "选单进出场是动画不是硬切（reveal 从 0 驱动到 1）",
+                palette.property("reveal") is not None and opened_settled
+                and float(palette.property("reveal")) >= 0.98,
+                f"reveal={palette.property('reveal')}",
+            )
+            highlight = _find_named(cdock, "penPaletteHighlight")
+            check(
+                "选单与工具栏底板同一道渐变边框高光（SurfaceHighlight 共用）",
+                highlight is not None and highlight.property("ringVisible") is True,
+                "" if highlight is not None
+                else "找不到 penPaletteHighlight（高光没挂上）",
             )
             # 笔分页上那圈「选项开着」的提示环（整窗穿透、选单又没有关闭按钮，
             # 用户唯一的退路就是「再点一下这个工具」——得有东西告诉他）
@@ -2024,6 +2080,45 @@ def main() -> int:
                 and round(tiles[per_row].y()) > round(tiles[0].y()),
                 f"列={per_row} 首行 y={sorted(same_row)} "
                 f"第二行首格 y={round(tiles[per_row].y()) if len(tiles) > per_row else None}",
+            )
+            # ---- Fluent 2 的 hover 态：划过色点要有一圈淡环 ----
+            hover_tile = next((t for t in tiles if not t.property("swatchSelected")),
+                              tiles[0] if tiles else None)
+            hover_ring = (_find_named(hover_tile, "penSwatchHoverRing")
+                          if hover_tile is not None else None)
+            if hover_tile is not None:
+                hc = hover_tile.mapToScene(
+                    QPointF(hover_tile.width() / 2, hover_tile.height() / 2))
+                QTest.mouseMove(overlay, QPoint(int(round(hc.x())), int(round(hc.y()))))
+                QTest.qWait(120)
+            check(
+                "色点 hover 有一圈淡环（Fluent 2 的 hover 态，划过不再毫无反馈）",
+                hover_tile is not None and hover_ring is not None
+                and hover_tile.property("hovered") is True
+                and hover_ring.property("visible") is True,
+                "" if hover_tile is not None and hover_ring is not None
+                else f"tile={hover_tile} ring={hover_ring} "
+                     f"hovered={hover_tile.property('hovered') if hover_tile else None}",
+            )
+            # ---- Fluent 2 的分区：分隔线 + 预览次级底板 + Caption 小标题 ----
+            divider = _find_named(cdock, "penPaletteDivider")
+            preview_surface = _find_named(cdock, "penPalettePreviewSurface")
+            title_color = _find_named(cdock, "penPaletteTitleColor")
+            title_font = (title_color.property("font")
+                          if title_color is not None else None)
+            check(
+                "两段之间有 1px 分隔线、预览有自己的次级底板（Fluent 2 分区）",
+                divider is not None and divider.height() == 1
+                and preview_surface is not None
+                and abs(float(preview_surface.property("radius")) - 4) <= 0.01,
+                f"divider={divider} 高={divider.height() if divider else None} "
+                f"预览底板={preview_surface} "
+                f"radius={preview_surface.property('radius') if preview_surface else None}",
+            )
+            check(
+                "小标题是 Caption 档（12px，Fluent 2 的分段标题）",
+                title_font is not None and title_font.pixelSize() == 12,
+                f"pixelSize={title_font.pixelSize() if title_font else None}",
             )
             # ---- 选中色：后端是唯一依据 ----
             # 还没选过 → 配置里的 ``pen.default`` 预点亮（否则弹出来一格都不亮，
@@ -2107,15 +2202,20 @@ def main() -> int:
 
             # ---- 关闭：再点一下「笔」/ 点别的工具 / 换工具 ----
             _click_dock_item(pen_item)
+            closed_settled = _wait_reveal(0.0)
             closed_rect = cdock.property("interactiveRect")
             check(
-                "再点一下「笔」→ 选单收起（命中矩形缩回条本身）",
-                palette.property("opened") is False
+                "再点一下「笔」→ 选单收起（淡出动画走完、命中矩形缩回条本身）",
+                palette.property("opened") is False and closed_settled
+                and not palette.isVisible()
                 and closed_rect.y() >= pad_bar - 1,
-                f"opened={palette.property('opened')} rect.y={closed_rect.y():.0f}",
+                f"opened={palette.property('opened')} "
+                f"reveal={palette.property('reveal')} "
+                f"visible={palette.isVisible()} rect.y={closed_rect.y():.0f}",
             )
             _click_dock_item(pen_item)
             _click_dock_item(arrow_item)
+            _wait_reveal(0.0)
             check(
                 "切到别的工具 → 选单自动收起（它属于「笔」这个工位）",
                 palette.property("opened") is False

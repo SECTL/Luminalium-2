@@ -252,12 +252,21 @@ QtObject {
     readonly property int dockPaletteGap: 10
     /*! 卡片内边距（四周同档）。 */
     readonly property int dockPalettePadding: 16
-    /*! 卡片圆角。**不是胶囊**（L1 的圆语言只用在控制条本体上）：这是一块独立
-        浮出的大表面，走 Fluent 的 OverlayCornerRadius 一档。 */
-    readonly property int dockPaletteRadius: 14
+    /*! 卡片圆角。8 = Fluent 2 的 **Overlay / Flyout corner radius** 一档 ——
+        与编辑器里那个浮出缩放条（``editorFloatRadius``）同一个口径：独立浮出的
+        大表面用 8，胶囊圆语言只留给控制条本体。（14 那档是哪来的都没有 ——
+        Fluent 2 里浮出层没有 14。） */
+    readonly property int dockPaletteRadius: 8
     /*! 卡片投影余量 —— 与 ``dockShadowMargin`` 同一个用途（留出画阴影的地方），
         但卡片是从零起的一块矩形，不需要那么大的余量。 */
     readonly property int dockPaletteShadowMargin: 20
+    /*! 进出场动画：Fluent 2 的 flyout enter = **淡入 + 从触发点外侧滑入**。
+        位移量取 12（RinUI 自家 ``Flyout`` 用 15，这里收一档落在 4px 网格上）；
+        时长沿用 RinUI 的分工 —— opacity 快（167）、位移慢一档（250），
+        easing 都是 ``OutQuint``（Fluent 2 的 decelerate 曲线）。 */
+    readonly property int dockPaletteEnterOffset: 12
+    readonly property int dockPaletteEnterDuration: Rin.Utils.animationSpeed
+    readonly property int dockPaletteFadeDuration: durationFast
     /*! 色板圆点的直径 / 圆点间距。 */
     readonly property int dockSwatchSize: 30
     readonly property int dockSwatchSpacing: 10
@@ -270,6 +279,10 @@ QtObject {
     readonly property int dockSwatchRingWidth: 2
     readonly property int dockSwatchRingGap: 2
     readonly property color dockSwatchRingColor: textPrimary
+    /*! 色点 hover 的外圈（Fluent 2 的 ControlStrokeColorSecondary 一档）——
+        没有它鼠标划过色板毫无反馈，Fluent 2 的每个可点表面都有 hover 态。 */
+    readonly property color dockSwatchHoverRing: fade(textPrimary, 0.45)
+    readonly property int dockSwatchHoverRingWidth: 1
     /*! 预览区高度（波浪笔迹画在它里面）。 */
     readonly property int dockPalettePreviewHeight: 54
     /*! 预览笔迹的粗细 —— 比 PowerPoint 的实际笔迹细一点：这里是「看颜色」的
@@ -283,6 +296,17 @@ QtObject {
     readonly property color dockPaletteBorder: hairline
     /*! 卡片里两个小标题（「颜色」「预览」）的字体色。 */
     readonly property color dockPaletteLabel: textSecondary
+    /*! 两段（颜色 / 预览）之间的间距，以及中间那条 1px 分隔线。
+        16 = Fluent 2 的 8px 节奏；分隔线用 ``hairline`` 同源（与卡片描边一致，
+        分区线不该比卡片自己的边框更扎眼）。 */
+    readonly property int dockPaletteSectionGap: 16
+    readonly property color dockPaletteDivider: hairline
+    /*! 预览区的**次级底板**（Fluent 2 的 Subtle fill 一档）+ 圆角与内留白：
+        波浪画在块上，「预览」才像一块独立的只读区域，而不是直接飘在卡片
+        底色上。嵌套圆角比外层（8）小一档 → 4（RinUI 的 smallRadius 同款）。 */
+    readonly property color dockPalettePreviewFill: fade(textPrimary, 0.04)
+    readonly property int dockPalettePreviewRadius: 4
+    readonly property int dockPalettePreviewPad: 10
     /*! 还没选中任何一格时，预览笔迹用的颜色（= 卡片底色上一道中性线）。 */
     readonly property color dockPaletteIdleStroke: fade(textPrimary, 0.35)
 

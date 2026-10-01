@@ -1,5 +1,4 @@
 import QtQuick
-import Qt5Compat.GraphicalEffects
 import RinUI as Rin
 import Luminalium
 
@@ -107,67 +106,15 @@ Item {
     }
 
     // ==================================== CW2 同款渐变边框高光
-    // 三层：渐变填充 → 「只有描边的形状」蒙版裁环 → 高斯模糊柔化。
-    // 前两层结构与 CW2 Widget.qml 的「渐变边框」段一致：内层矩形开 layer 走
-    // LinearGradient，外层 Item 开 layer 用 OpacityMask 裁掉内部。
-    // 注意 maskSource 的矩形**不要设填充**（透明填充 + 不透明描边 =
-    // 只保留描边像素；描边色无所谓，蒙版只看 alpha）。
-    // 第三层（最外）是本项目加的：把硬边环摊成柔光晕，见组件头注释。
-    Item {
+    // 三层结构已抽到 ``SurfaceHighlight.qml``（笔选单卡片同一道光 —— 两块
+    // 浮出层必须像一家人）。这里只传参；环的可见性照旧由 ``highlightEnabled``
+    // 说了算（``highlightRingVisible`` 属性转发给自检）。
+    SurfaceHighlight {
         id: highlight
+        source: surface
         visible: root.highlightEnabled
-        /*! 模糊需要四周留透明边界，否则外侧的光晕会被图层边界切平成硬边。
-            取 2×半径，仍在窗口预留的 shadowMargin（24）之内。 */
-        readonly property real blurPad: root.highlightBlur > 0
-                                         ? Math.ceil(root.highlightBlur * 2) : 0
-        x: surface.x - blurPad
-        y: surface.y - blurPad
-        width: surface.width + blurPad * 2
-        height: surface.height + blurPad * 2
-
-        /*! 环本体：与 ``surface`` 同尺寸、同圆角、同心（模糊只负责柔化，
-            不改变光的落点，所以渐变方向也按它算）。 */
-        Item {
-            id: highlightRing
-            anchors.centerIn: parent
-            width: surface.width
-            height: surface.height
-
-            Rectangle {
-                anchors.fill: parent
-                radius: surface.radius
-                layer.enabled: true
-                layer.effect: LinearGradient {
-                    start: Qt.point(0, 0)
-                    end: Qt.point(highlightRing.width, highlightRing.height)
-                    gradient: Gradient {
-                        GradientStop { position: 0.0; color: Lumi.dockHighlightColor }
-                        GradientStop { position: 0.5; color: "transparent" }
-                        GradientStop { position: 0.6; color: "transparent" }
-                        GradientStop { position: 1.0; color: Lumi.dockHighlightColor }
-                    }
-                }
-            }
-
-            layer.enabled: true
-            layer.effect: OpacityMask {
-                maskSource: Rectangle {
-                    width: highlightRing.width
-                    height: highlightRing.height
-                    radius: surface.radius
-                    color: "transparent"
-                    border.width: root.highlightWidth
-                }
-            }
-        }
-
-        layer.enabled: root.highlightBlur > 0
-        layer.effect: GaussianBlur {
-            radius: root.highlightBlur
-            // samples 越大越接近真高斯；radius 必须 ≤ samples/2
-            samples: Math.ceil(root.highlightBlur * 2) + 1
-            transparentBorder: true
-        }
+        highlightWidth: root.highlightWidth
+        blur: root.highlightBlur
     }
 
     Flow {

@@ -719,35 +719,58 @@ def _check_editor(app) -> None:
         f"（展开面板后的全景 {fit_now:.4f}；未展开时 {fit:.4f}）",
     )
 
-    # 落点：把选中项的中心摆到视口中央，再按「画面比视口大才允许越界」钳制 ——
-    # 所以贴边的控制条（下中 / 左右中）会被顶住、只有一个轴精确居中。
+    # 落点：把选中项的中心摆到视口中央。
+    # 2026-10-01（第八轮）用户指令：「我希望聚焦的时候其实那个组件可以在预览区的
+    # 正中间，无论是否靠近边界」—— 位移钳制从此在**编辑态额外放宽**（允许的区间里
+    # 恒含「取景目标居中」那一点），于是贴边的控制条（下中那条）也精确居中，
+    # 代价是画面会往左上越出去一截、视口里露出没画面的留白。
     # 这里**逐轴复算** QML 里那份公式（与下面「控制条落在角落」同一个路子：
     # QML 侧是副本，漂了两边的取景就不一样）。
     def _expected_origin(content: float, view: float, base: float) -> float:
+        """``clampOriginX/Y`` 的解析解（编辑态那支）。"""
         if content <= view:
-            return (view - content) / 2
-        return min(0.0, max(view - content, base))
+            lo = hi = (view - content) / 2
+        else:
+            lo, hi = view - content, 0.0
+        lo, hi = min(lo, base), max(hi, base)   # 第八轮：编辑态恒含「居中」
+        return min(hi, max(lo, base))
 
     scale = plane.scale()
     base_x = viewport.width() / 2 - (sx + sw / 2) * scale
     base_y = viewport.height() / 2 - (sy + sh / 2) * scale
     want_x = _expected_origin(info["width"] * scale, viewport.width(), base_x)
     want_y = _expected_origin(info["height"] * scale, viewport.height(), base_y)
+
+    # 用户真正要的是「组件落在预览区正中」—— 单独守一条，因为上面那条解析解是
+    # **自检自己复算的公式**：QML 那边要是整体改了（比如又把钳制收紧），只要自检
+    # 跟着漂就一起变绿。这条拿「组件可见表面的中心在视口里的落点」直接对，
+    # 与公式怎么写无关。等目标值（不是等「不变」——动画会卡在中间值）。
+    def _centered() -> bool:
+        s = plane.scale()
+        return (abs(plane.x() + (sx + sw / 2) * s - viewport.width() / 2) <= 1.5
+                and abs(plane.y() + (sy + sh / 2) * s - viewport.height() / 2) <= 1.5)
+
+    _wait_cam(_centered)
     check(
         "聚焦取景落点 = 「选中项居中 → 越界钳制」的解析解",
         abs(plane.x() - want_x) <= 1.5 and abs(plane.y() - want_y) <= 1.5,
         f"plane=({plane.x():.1f},{plane.y():.1f}) 期望=({want_x:.1f},{want_y:.1f}) "
         f"居中轴 x={abs(base_x - want_x) <= 1.5} y={abs(base_y - want_y) <= 1.5}",
     )
+    check(
+        "聚焦把组件摆到预览区**正中**（贴边的下中工具栏也精确居中）",
+        _centered(),
+        f"组件中心=({plane.x() + (sx + sw / 2) * plane.scale():.1f},"
+        f"{plane.y() + (sy + sh / 2) * plane.scale():.1f}) "
+        f"视口中心=({viewport.width() / 2:.1f},{viewport.height() / 2:.1f}) "
+        f"角={corner_name} 屏幕内=({sx:.0f},{sy:.0f}) {sw:.0f}x{sh:.0f} "
+        f"scale={plane.scale():.4f}",
+    )
 
     # 暗罩：**铺满面板左边的整块区域**，选中项周围留洞。
     # 2026-10-01 用户指令：「左边的压暗你应该占满左半边啊而不是留一圈亚克力」——
     # 所以它还挂在窗口坐标里（不在 planeLayer 里），左右沿一路顶到窗口边 /
     # 设置面板边，视口四周那圈留白也得压上。
-    top = _find_named(dim, "editorDimTop")
-    bottom = _find_named(dim, "editorDimBottom")
-    left = _find_named(dim, "editorDimLeft")
-    right = _find_named(dim, "editorDimRight")
     check(
         "非选中区域压了一层暗罩",
         dim.isVisible() and abs(float(dim.property("opacity")) - DIM_OPACITY) <= 0.02,
@@ -770,6 +793,19 @@ def _check_editor(app) -> None:
     # 洞：几何在**窗口坐标**里复算 —— 取景矩形活在 1:1 屏幕坐标系里，要经相机
     # （planeLayer 的比例与位移）+ 视口偏移换过来，各边外扩「描边间隙 + 洞留白」，
     # 最后夹进视口（手动放大到 400% 时洞会比视口还宽）。
+    #
+    # 2026-10-01（第八轮）用户指令：「我希望压暗附近的时候不要只是粗略的矩形排除，
+    # 而是除了那个组件以外的全压暗」。洞不再是**四块 Rectangle 拼的矩形**，而是
+    # ``Shape`` + ``ShapePath``（``OddEvenFill``）挖出来的**圆角矩形**。
+    # 守三件事：
+    #   ① 边界的**外扩公式**没变（组件 + 描边间隙 + 洞留白，再夹进视口）；
+    #   ② 圆角 = **短边一半** —— 与选中描边同一套几何（描边半径也是短边一半），
+    #      于是两者同心；半径恰好等于「描边半径 + 洞留白」；
+    #   ③ 圆角**真的生效** —— 早先的矩形洞半径恒为 0，这条就是它的反面。
+    dim_shape = _find_named(dim, "editorDimShape")
+    stale_dims = {name: _find_named(dim, name) is not None
+                  for name in ("editorDimTop", "editorDimBottom",
+                               "editorDimLeft", "editorDimRight")}
     hole_pad = DIM_HOLE_PAD + RING_GAP
     view_x = viewport.x() + DRAG
     view_y = viewport.y()
@@ -782,18 +818,35 @@ def _check_editor(app) -> None:
     hole_h = max(0.0, min(view_y + viewport.height(),
                           raw_y + sh * plane.scale() + hole_pad * 2) - hole_y)
     check(
-        "暗罩在选中项处留出了洞（四块矩形拼出中间挖空，且夹在视口内）",
-        None not in (top, bottom, left, right)
-        and abs(top.width() - dim.width()) <= 1
-        and abs(top.height() - hole_y) <= 1
-        and abs(left.x() + left.width() - hole_x) <= 1
-        and abs(left.height() - hole_h) <= 1
-        and abs(bottom.y() - (hole_y + hole_h)) <= 1,
-        "没找齐四块" if None in (top, bottom, left, right) else
-        f"top={top.x():.0f},{top.y():.0f},{top.width():.0f},{top.height():.0f} "
-        f"left={left.x():.0f},{left.y():.0f},{left.width():.0f},{left.height():.0f} "
-        f"bottom.y={bottom.y():.0f} 期望洞=({hole_x:.0f},{hole_y:.0f},"
-        f"{hole_w:.0f},{hole_h:.0f})",
+        "暗罩在选中项处留出了洞（外扩公式不变、夹在视口内，四块矩形的旧拼法已撤）",
+        dim_shape is not None and not any(stale_dims.values())
+        and abs(float(dim.property("holeX")) - hole_x) <= 1
+        and abs(float(dim.property("holeY")) - hole_y) <= 1
+        and abs(float(dim.property("holeW")) - hole_w) <= 1
+        and abs(float(dim.property("holeH")) - hole_h) <= 1,
+        f"shape={dim_shape is not None} "
+        + " ".join(f"{k}={v}" for k, v in stale_dims.items())
+        + f" 洞=({float(dim.property('holeX')):.0f},{float(dim.property('holeY')):.0f},"
+        f"{float(dim.property('holeW')):.0f},{float(dim.property('holeH')):.0f}) "
+        f"期望=({hole_x:.0f},{hole_y:.0f},{hole_w:.0f},{hole_h:.0f})",
+    )
+
+    # 圆角：与选中描边同一套几何 —— 描边半径是「短边一半」，洞再往外多一圈
+    # ``DIM_HOLE_PAD``，所以期望 ``ring.radius + DIM_HOLE_PAD``。两个数都从活着的
+    # 控件上读（不写死像素），谁单方面改了圆角这条就红。
+    dim_radius = 0.0 if dim_shape is None else float(dim_shape.property("holeRadius") or 0)
+    ring_radius = float(ring.property("radius") or 0)
+    check(
+        "暗罩的洞是**组件自己的形状**（圆角 = 短边一半的胶囊，与选中描边同心）",
+        dim_shape is not None
+        and hole_w > 0 and hole_h > 0
+        and abs(dim_radius - min(hole_w, hole_h) / 2) <= 0.6
+        and abs(dim_radius - (ring_radius + DIM_HOLE_PAD)) <= 1.5
+        and dim_radius > 1,
+        "没找到挖洞的 Shape" if dim_shape is None else
+        f"洞半径={dim_radius:.1f} 期望={min(hole_w, hole_h) / 2:.1f}"
+        f"（描边半径 {ring_radius:.1f} + 洞留白 {DIM_HOLE_PAD} "
+        f"= {ring_radius + DIM_HOLE_PAD:.1f}） 洞={hole_w:.0f}x{hole_h:.0f}",
     )
 
     # 选中描边：几何跟着相机，宽度不跟着缩放（画在视口坐标里）
@@ -1117,7 +1170,7 @@ def _check_editor(app) -> None:
     )
     if exit_item is not None and exit_combo is not None and selected_is_toolbar:
         # 版式：平铺之后标题独占一行，不会被挤成两行；但下拉仍得宽到选项文字
-        # 不截断（「危险红图标（L1）」是三项里最长的选项文字）。
+        # 不截断（「红色（Luminalium 1）」是两项里最长的选项文字）。
         exit_title = _find_text(exit_item, "退出键样式")
         combo_text = exit_combo.property("contentItem")
         typed_width = float(
@@ -1333,13 +1386,38 @@ def _check_editor(app) -> None:
         f" 尝试={select_attempts}",
     )
 
-    _click_viewport(viewport.width() / 2, viewport.height() / 2)
-    _settle()
+    # ⚠️ 2026-10-01（第八轮）：聚焦之后被选中的那条**就落在预览区正中**（用户要的
+    #    就是它），所以「点正中央」不再是一处空白 —— 会命中控制条、留在编辑态。
+    #    改成**找一个真的空白点**（上/左/右三边贴内沿各试几个位置），并用 ``dockAt``
+    #    反查确认 —— 寻址的权威在 QML 侧，别让自检自己猜哪儿是空的。
+    def _blank_viewport_point():
+        for vy, vx in ((28.0, viewport.width() / 2),
+                       (28.0, 40.0),
+                       (viewport.height() - 28.0, viewport.width() / 2),
+                       (viewport.height() / 2, 40.0)):
+            if str(editor.dockAt((vx - plane.x()) / plane.scale(),
+                                 (vy - plane.y()) / plane.scale())) == "":
+                return vx, vy
+        return None
+
+    blank = _blank_viewport_point()
+    check(
+        "（前置）给「点空白」挑的点确实不压在控制条上",
+        blank is not None,
+        "" if blank is not None else
+        f"视口 {viewport.width():.0f}x{viewport.height():.0f} 里找不到空白点"
+        f"（控制条占满了？target={corner_name}）",
+    )
+    if blank is not None:
+        _click_viewport(*blank)
+        _settle()
     check(
         "点画面空白处 → 回到全景（不会卡在编辑态）",
-        str(editor.property("selectedCorner")) == ""
+        blank is not None
+        and str(editor.property("selectedCorner")) == ""
         and editor.property("editing") is False
         and abs(plane.scale() - fit) <= 1e-3,
+        f"点={None if blank is None else (round(blank[0]), round(blank[1]))} "
         f"selectedCorner={editor.property('selectedCorner')!r} "
         f"scale={plane.scale():.4f} fit={fit:.4f}",
     )

@@ -1,5 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
+// 编辑态暗罩要按**组件的形状**挖洞（`Shape` + `ShapePath` 的奇偶填充），
+// 四块 Rectangle 拼出来的矩形洞已经不够用了 —— 2026-10-01 第八轮。
+import QtQuick.Shapes
 import RinUI as Rin
 import Luminalium
 
@@ -81,7 +84,8 @@ import Luminalium
     两项改完**预览与真机同时变**（配置广播 → 预览副本重建、真机侧重建控制条）。
 
     「编辑态压暗」盖的是**面板左边的整块区域**（见 ``dimMask``），不是只盖屏幕 ——
-    否则视口四周那圈留白会露出没压暗的亚克力。
+    否则视口四周那圈留白会露出没压暗的亚克力。挖出来的「洞」是**选中组件自己的
+    形状**（圆角矩形 / 胶囊），不是粗略的矩形排除。
 
     ## 亚克力
 
@@ -552,6 +556,10 @@ Rin.FluentWindowBase {
     //
     // 洞还要**夹在视口内**：手动放大到 400% 时洞会比视口还宽，不夹的话亮区会漫到
     // 视口外面那圈留白上，跟「铺满左半边」的初衷正好相反。
+    //
+    // 2026-10-01（第八轮）用户指令：「我希望压暗附近的时候不要只是粗略的矩形排除，
+    // 而是除了那个组件以外的全压暗」—— 洞的形状从**矩形**换成了**组件自己的圆角
+    // 形状**（见下面 ``editorDimShape`` 的说明）。
     Item {
         id: dimMask
         objectName: "editorDimMask"
@@ -567,8 +575,8 @@ Rin.FluentWindowBase {
         y: 0
         width: Math.max(0, parent.width - editorWindow.inspectorInset + edgeBleed)
         height: parent.height + edgeBleed
-        // 四块矩形的坐标是「洞相对暗罩」算出来的，洞越出视口时会溢出到面板 /
-        // 窗口外 —— 裁掉。
+        // 洞的坐标是「相对暗罩」算出来的，洞越出视口时会溢出到面板 / 窗口外 ——
+        // 裁掉（同时也是下面「洞退化时挪到画外」那条退路的兜底）。
         clip: true
         opacity: editorWindow.editing ? Lumi.editorDimOpacity : 0
         visible: opacity > 0.002
@@ -604,37 +612,65 @@ Rin.FluentWindowBase {
         readonly property real holeW: Math.max(0, holeRight - holeX)
         readonly property real holeH: Math.max(0, holeBottom - holeY)
 
-        Rectangle {
-            objectName: "editorDimTop"
-            x: 0
-            y: 0
-            width: dimMask.width
-            height: Math.max(0, dimMask.holeY)
-            color: "#000000"
-        }
-        Rectangle {
-            objectName: "editorDimBottom"
-            x: 0
-            y: dimMask.holeY + dimMask.holeH
-            width: dimMask.width
-            height: Math.max(0, dimMask.height - dimMask.holeY - dimMask.holeH)
-            color: "#000000"
-        }
-        Rectangle {
-            objectName: "editorDimLeft"
-            x: 0
-            y: dimMask.holeY
-            width: Math.max(0, dimMask.holeX)
-            height: dimMask.holeH
-            color: "#000000"
-        }
-        Rectangle {
-            objectName: "editorDimRight"
-            x: dimMask.holeX + dimMask.holeW
-            y: dimMask.holeY
-            width: Math.max(0, dimMask.width - dimMask.holeX - dimMask.holeW)
-            height: dimMask.holeH
-            color: "#000000"
+        /*! 压暗本体 —— 铺满整块暗罩，中间按**选中组件的真实形状**挖洞。
+
+            早先是**四块 ``Rectangle`` 拼出来的矩形洞**。可控制条的底板是**全圆
+            胶囊**（``Lumi.dockSurfaceRadius`` = 999，由 ``FlyoutSurface`` 按短边
+            钳成 高/2），于是画面里「选中描边是圆的、它外面那圈亮区却是方的」——
+            四个角白亮出一大块，读起来就是个粗制滥造的矩形排除。
+
+            现在改用**奇偶填充**（``ShapePath.OddEvenFill``）把洞减出来：一条外圈
+            铺满、一条内圈是**与选中描边同心**的圆角矩形（半径 = 短边一半 = 胶囊），
+            亮区就是组件自己的形状，其余**全**压暗。
+
+            ⚠️ 外圈与内圈必须在**同一个** ``ShapePath`` 里才会相减 ——
+            ``fillRule`` 是 ShapePath 级别的，拆成两个 ShapePath 只会叠出两块实心。 */
+        Shape {
+            id: dimShape
+            objectName: "editorDimShape"
+            anchors.fill: parent
+            // 圆角走**解析曲线**渲染器：几何渲染器会把弧打散成折线，半径几十像素的
+            // 圆角能看出棱角。
+            preferredRendererType: Shape.CurveRenderer
+
+            /*! 洞被夹没了（组件整个在视口外 —— 只在相机动画的过渡帧里可能出现）
+                时把内圈挪到画布外：奇偶填充下它不参与「外圈内部」的计数，铺满的
+                暗罩照旧完整。真跑到这一步罕见得很，纯属不留一个亮不起来的死角。 */
+            readonly property bool holeValid: dimMask.holeW > 0.5 && dimMask.holeH > 0.5
+            readonly property real pathHoleX: holeValid ? dimMask.holeX : -1000
+            readonly property real pathHoleY: holeValid ? dimMask.holeY : -1000
+            readonly property real pathHoleW: holeValid ? dimMask.holeW : 1
+            readonly property real pathHoleH: holeValid ? dimMask.holeH : 1
+
+            /*! 洞的圆角半径 = 短边一半（胶囊），与 ``selectionRing`` 同一套几何
+                （那边也是 ``Math.min(width, height) / 2``）—— 于是描边与洞同心。
+                镜像给自检读：``ShapePath`` 的子路径 Python 侧摸不到。 */
+            readonly property real holeRadius: Math.min(pathHoleW, pathHoleH) / 2
+
+            ShapePath {
+                objectName: "editorDimPath"
+
+                fillColor: "#000000"
+                strokeColor: "transparent"
+                fillRule: ShapePath.OddEvenFill
+
+                // 外圈：铺满整块暗罩
+                PathRectangle {
+                    x: 0
+                    y: 0
+                    width: dimMask.width
+                    height: dimMask.height
+                    radius: 0
+                }
+                // 内圈：洞 —— 就是组件自己的形状（圆角矩形 / 胶囊）
+                PathRectangle {
+                    x: dimShape.pathHoleX
+                    y: dimShape.pathHoleY
+                    width: dimShape.pathHoleW
+                    height: dimShape.pathHoleH
+                    radius: dimShape.holeRadius
+                }
+            }
         }
     }
 
@@ -725,19 +761,43 @@ Rin.FluentWindowBase {
         /*! 钳制位移：画面比视口大 → 允许在范围内拖（但不许把画面拖出视口留出空档）；
             画面比视口小 → 钉在居中（于是全景态永远居中，拖不动）。
             ``clamp(clamp(v)) == clamp(v)``，所以 ``setOrigin`` 可以放心地
-            拿「已钳制值」反推 ``panD*``。 */
+            拿「已钳制值」反推 ``panD*``。
+
+            ⚠️ **编辑态额外放宽**（2026-10-01 第八轮用户指令：「我希望聚焦的时候其实
+            那个组件可以在预览区的正中间，无论是否靠近边界」）：允许的区间里**恒含
+            「取景目标居中」那一点**，于是右下角那条控制条也能精确落在视口正中。
+
+            不放开的话贴边组件永远偏在一边 —— 「不许把画面拖出视口留出空档」这条
+            钳制会先顶住位移，居中的需求根本排不上。放宽的幅度就**恰好是**「居中
+            位移」本身（``lo = min(lo, base)``、``hi = max(hi, base)``），所以：
+            聚焦一定居中，而拖动**再往外一步也不让**（画面不会整个飞出视口）。
+
+            代价是画面会往左上越出去一截、视口里露出没画面的留白 —— 与 Figma
+            聚焦画布边缘的对象时一个样子，是「居中优先」必然的样貌。 */
         function clampOriginX(value) {
             var content = screenWidth * stageScale
-            if (content <= width)
-                return (width - content) / 2
-            return Math.min(0, Math.max(width - content, value))
+            var centered = (width - content) / 2
+            var lo = content <= width ? centered : width - content
+            var hi = content <= width ? centered : 0
+            if (editorWindow.editing) {
+                var base = baseOriginX()
+                lo = Math.min(lo, base)
+                hi = Math.max(hi, base)
+            }
+            return Math.min(hi, Math.max(lo, value))
         }
 
         function clampOriginY(value) {
             var content = screenHeight * stageScale
-            if (content <= height)
-                return (height - content) / 2
-            return Math.min(0, Math.max(height - content, value))
+            var centered = (height - content) / 2
+            var lo = content <= height ? centered : height - content
+            var hi = content <= height ? centered : 0
+            if (editorWindow.editing) {
+                var base = baseOriginY()
+                lo = Math.min(lo, base)
+                hi = Math.max(hi, base)
+            }
+            return Math.min(hi, Math.max(lo, value))
         }
 
         /*! 直接把画面原点摆到 ``(vx, vy)``（拖动平移用）。 */
@@ -1253,7 +1313,7 @@ Rin.FluentWindowBase {
                     Rin.ComboBox {
                         objectName: "editorSettingExitStyleCombo"
                         Layout.preferredWidth: 200
-                        model: [qsTr("普通圆钮"), qsTr("危险红图标（L1）")]
+                        model: [qsTr("白色"), qsTr("红色（Luminalium 1）")]
                         currentIndex: Backend.settings.presentation_exit_style === "danger" ? 1 : 0
                         onActivated: Backend.setSetting(
                             "presentation_exit_style",

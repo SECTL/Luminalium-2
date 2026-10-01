@@ -358,7 +358,12 @@ class WindowManager(QObject):
         # 输入模式：True = 区域塑形（首选，系统级穿透）；False = 整窗穿透轮询（兜底）
         self._region_mode = False
         self._region_scale: Optional[float] = None  # SetWindowRgn 的实际坐标单位倍率
-        self._last_region_box: Optional[tuple[int, int, int, int]] = None
+        # 上次**实际应用**到 Win32 区域的矩形集 —— 判据必须是 rects 本身：
+        # 2026-10-01 实锤，用外接 box 当判据会漏掉「新块完全落在旧外接矩形
+        # **内部**」的变化（笔选单：左右竖版翻页块从 y=383 就开始了，比卡片
+        # 顶 578 更靠上 → 加进卡片后 box 纹丝不动 → 被当成「区域没变」短路，
+        # 卡片那块从未进过 Win32 区域，账面对、屏幕上整块画不出来）。
+        self._last_region_rects: Optional[tuple[tuple[int, int, int, int], ...]] = None
 
         # 顶层窗口是否至少显示过一次：没显示过的话 Win32 矩形还是 Qt 的默认
         # 160x160（诊断里看着像「窗口尺寸不对」，其实只是从未用过）
@@ -523,7 +528,7 @@ class WindowManager(QObject):
         self._docks.clear()
         # 区域塑形是按控制条的矩形算的，形状变了必须重算（否则穿透区域还留在
         # 旧位置，新的控制条点不动）
-        self._last_region_box = None
+        self._last_region_rects = None
 
     def rebuild_docks(self) -> None:
         """按当前配置**重建**全部控制条（角落集合变了时）。
@@ -1251,7 +1256,7 @@ class WindowManager(QObject):
         if self.overlay is not None and self.overlay.isVisible():
             if self.overlay.isVisible():
                 _set_window_region(int(self.overlay.winId()), None)
-            self._last_region_box = None
+            self._last_region_rects = None
             self.overlay.hide()
         self._click_through = True
 
@@ -1313,8 +1318,19 @@ class WindowManager(QObject):
             y = (height - dock.height()) // 2
         else:
             y = height - dock.height() - margin_y + shadow
+        prev_x, prev_y = dock.x(), dock.y()
         dock.setX(x)
         dock.setY(y)
+        # ⚠️ 位置变了必须补一次区域重算：``interactiveRect`` 是 dock **局部**
+        # 坐标（不随 x/y 变），挪动不会触发 ``hitRectChanged`` —— 区域里留着
+        # 的是旧位置的块。实测（2026-10-01）：「显示按钮文本」收窄时宽度先变、
+        # x 后归位，中间态里区域被算成「旧 x + 新宽」的缝合块
+        # （(519,885,357,101)，条实际已在 x=698），工具栏中心恰好被切出去。
+        # 旧判据（外接 box）碰巧因「box 不变→短路」跳过了那次错块重建，这里
+        # 修的是根：重摆结束就同步。
+        if (int(x) != int(prev_x) or int(y) != int(prev_y)) \
+                and self._region_mode:
+            self._schedule_region_sync()
 
     # ------------------------------------------------------- 穿透 / 可见性
 
@@ -1574,7 +1590,8 @@ class WindowManager(QObject):
             min(r[0] for r in rects), min(r[1] for r in rects),
             max(r[0] + r[2] for r in rects), max(r[1] + r[3] for r in rects),
         )
-        if self._last_region_box == box and self._region_scale is not None:
+        rects_key = tuple(tuple(r) for r in rects)
+        if rects_key == self._last_region_rects and self._region_scale is not None:
             return self._region_scale
 
         dpr = self.overlay.devicePixelRatio() or 1.0
@@ -1595,7 +1612,7 @@ class WindowManager(QObject):
             if actual is None or abs(actual[2] - expected_w) > 2 or abs(actual[3] - expected_h) > 2:
                 continue
             self._region_scale = scale
-            self._last_region_box = box
+            self._last_region_rects = rects_key
             # 改了区域 Qt 不一定知道：显式要一帧，避免第一屏画不出来
             try:
                 self.overlay.requestUpdate()

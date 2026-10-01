@@ -2199,6 +2199,20 @@ def main() -> int:
                 f"卡片中心(scene)=({scene_center.x():.0f},{scene_center.y():.0f}) "
                 f"区域块={app.windows._dock_rects_local()}",
             )
+            # ⚠️ 账面对还不够：``_update_overlay_region`` 的「没变就短路」曾用
+            # **外接 box** 当判据 —— 选单的块完全落在既有块的外接矩形**内部**
+            # （左右竖版翻页块比卡片顶更靠上），box 纹丝不动 → 被当成「区域没变」，
+            # 卡片那块从未进过 Win32 区域，账面对、屏幕上整块画不出来
+            # （2026-10-01 用户实锤「颜色选单会被截断」）。判据已换成 rects 本身
+            # （``_last_region_rects``）；这条守卫钉的是「已应用的矩形与账面
+            # **逐项一致**」—— 比 box 会少三块、被裁时整块缺失，都会红。
+            applied = app.windows._last_region_rects
+            check(
+                "选单的块已实际应用到 Win32 区域（已应用矩形 = 账面，逐项一致）",
+                applied is not None
+                and applied == tuple(tuple(r) for r in app.windows._dock_rects_local()),
+                f"已应用={applied} 账面={app.windows._dock_rects_local()}",
+            )
 
             # ---- 关闭：再点一下「笔」/ 点别的工具 / 换工具 ----
             _click_dock_item(pen_item)
@@ -2540,16 +2554,12 @@ def main() -> int:
         )
         region_rects = app.windows._dock_rects_local()
         if app.windows._region_mode:
-            box = (
-                min(r[0] for r in region_rects), min(r[1] for r in region_rects),
-                max(r[0] + r[2] for r in region_rects),
-                max(r[1] + r[3] for r in region_rects),
-            )
             check(
                 "区域塑形按重建后的矩形重算（新的翻页栏照样点得动）",
-                app.windows._last_region_box == box and len(region_rects) >= 3,
-                f"区域盒={app.windows._last_region_box} 期望={box} "
-                f"矩形数={len(region_rects)}",
+                app.windows._last_region_rects
+                == tuple(tuple(r) for r in region_rects) and len(region_rects) >= 3,
+                f"已应用={app.windows._last_region_rects} "
+                f"期望={tuple(tuple(r) for r in region_rects)}",
             )
 
         app.backend.setSetting("presentation_pager_position", pager_prev)

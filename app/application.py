@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from PySide6.QtCore import QTimer
@@ -152,7 +154,7 @@ class LuminaliumApplication:
         self.backend.shortcutTriggered.connect(self._on_shortcut)
         self.backend.actionTriggered.connect(self._on_action)
         self.backend.settingsRequested.connect(self._open_settings)
-        self.backend.reloadRequested.connect(self._reload)
+        self.backend.restartRequested.connect(self._restart)
         self.backend.quitRequested.connect(self.quit)
         self.backend.themeChangeRequested.connect(self._apply_theme)
         self.backend.accentChangeRequested.connect(self._apply_accent)
@@ -270,12 +272,48 @@ class LuminaliumApplication:
         self.rinui.theme_manager.set_theme_color(color)
         log.info("切换强调色: %s", color)
 
-    def _reload(self) -> None:
-        log.info("重新加载配置")
-        self.config = Config()
-        self.backend.reload_from_config()
-        self.ppt.apply_config(self.config)
-        self.ppt.refresh_now()
+    def _restart(self) -> None:
+        """重启整个程序（快捷面板底栏按钮）。
+
+        2026-10-02 用户指令「快捷面板的重新加载按钮实则应当是重新启动程序
+        按钮 点了之后需要重启程序」—— 原来这个按钮只重读配置，用户点了
+        感知不到任何变化。现在的流程：先把配置落盘（新进程要读），再拉起
+        一个**分离的**新进程（与当前控制台 / 父进程解绑，本进程退出不会
+        连带杀掉它），最后走正常退出流程（停探测 / 收窗口 / 存托盘）。
+
+        命令行怎么拼：
+
+        * 打包后（``sys.frozen``）：直接再跑 ``sys.executable``；
+        * 源码运行：``sys.executable + 脚本绝对路径``。工程入口是根目录的
+          ``main.py``（文档化用法 ``python main.py``），``sys.argv[0]`` 就是
+          它；解析成绝对路径保证与启动时的工作目录无关。
+        """
+        log.info("重启应用")
+        self.config.save()
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable]
+            cwd = str(Path(sys.executable).parent)
+        else:
+            script = Path(sys.argv[0] if sys.argv else "main.py").resolve()
+            cmd = [sys.executable, str(script)]
+            cwd = str(script.parent)
+        # DETACHED_PROCESS：脱离控制台（GUI 程序本来也没有）；窗口控制在
+        # DWM/Win32 侧，不需要继承任何句柄。close_fds 兜底防句柄泄漏。
+        creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
+        try:
+            subprocess.Popen(
+                cmd,
+                cwd=cwd,
+                close_fds=True,
+                creationflags=creationflags,
+            )
+        except OSError:
+            # 拉不起来就别退了 —— 退了用户手里就什么都不剩了。
+            log.exception("重启失败：无法拉起新进程 %r，保持当前实例运行", cmd)
+            return
+        self.quit()
 
     # ============================================================ 放映控制
 

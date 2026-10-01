@@ -3673,6 +3673,39 @@ def main() -> int:
             "; ".join(stale_refs[:6]),
         )
 
+        # 快捷面板底栏「重启」按钮（2026-10-02 用户指令「重新加载按钮实则应当
+        # 是重新启动程序按钮」）：原 id=reload 只重读配置，用户点了没感知。
+        # 钉三层源码形态：配置里 id=restart、QML 分发到 requestRestart、
+        # Python 侧 _restart 真拉新进程（Popen）—— 缺任何一环都等于「点了没反应」。
+        # （defaults 上面「删除项静态守卫」已加载过，直接用。）
+        footer_actions = (
+            ((defaults.get("quick_panel") or {}).get("footer") or {}).get("actions") or []
+        )
+        restart_ids = [str(a.get("id")) for a in footer_actions]
+        check(
+            "快捷面板底栏动作是 restart + exit（不再有 reload）",
+            "restart" in restart_ids and "reload" not in restart_ids,
+            f"actions={restart_ids}",
+        )
+        qml_src = (ROOT / "ui" / "QuickPanel.qml").read_text(encoding="utf-8")
+        check(
+            "QuickPanel.qml 把 restart 分发到 Backend.requestRestart()",
+            'actionId === "restart"' in qml_src and "requestRestart()" in qml_src,
+            f"restart 分发={'actionId === \"restart\"' in qml_src} "
+            f"requestRestart={'requestRestart()' in qml_src}",
+        )
+        app_src = (ROOT / "app" / "application.py").read_text(encoding="utf-8")
+        restart_body = app_src.split("def _restart", 1)[-1].split("\n    def ", 1)[0]
+        check(
+            "application._restart 真拉起新进程（Popen）再退出，失败不退出",
+            "subprocess.Popen(" in restart_body
+            and "self.quit()" in restart_body
+            and "log.exception" in restart_body,
+            f"Popen={'subprocess.Popen(' in restart_body} "
+            f"quit={'self.quit()' in restart_body} "
+            f"失败兜底={'log.exception' in restart_body}",
+        )
+
         # 已删「放映」设置页的残留引用（2026-10-01 第四轮）。
         # ⚠️ 用**带目录**的字面量 ``settings/Presentation.qml``：不带前缀的话
         # 本函数里的 check 标题也会命中（虽然本文件已在 skip 里，但收窄一点更稳）。

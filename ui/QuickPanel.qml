@@ -146,8 +146,8 @@ Rin.Window {
                 tooltip: modelData.tooltip !== undefined ? modelData.tooltip : ""
                 onClicked: {
                     const actionId = modelData.id
-                    if (actionId === "reload") {
-                        Backend.requestReload()
+                    if (actionId === "restart") {
+                        Backend.requestRestart()
                     } else if (actionId === "exit") {
                         Backend.requestQuit()
                     } else {

@@ -42,9 +42,9 @@
     "//shortcuts_locked": "true 时面板禁用编辑模式（策略锁定）",
     "shortcuts_locked": false,
     "footer": {
-      "//actions": "CW2 惯例：窗口右下角（卡片外）一排扁平图标按钮，各自带 ToolTip",
+      "//actions": "CW2 惯例：窗口右下角（卡片外）一排扁平图标按钮，各自带 ToolTip。原「重新加载」（id=reload，只重读配置）已于 2026-10-02 按用户指令改成「重启」—— 用户语义里这个按钮就该重启整个程序，见 app/application.py::_restart",
       "actions": [
-        { "id": "reload", "icon": "ic_fluent_arrow_counterclockwise_20_regular", "tooltip": "重新加载" },
+        { "id": "restart", "icon": "ic_fluent_arrow_counterclockwise_20_regular", "tooltip": "重启 Luminalium" },
         { "id": "exit", "icon": "ic_fluent_arrow_exit_20_regular", "tooltip": "退出 Luminalium" }
       ]
     }

@@ -96,7 +96,10 @@ class Backend(QObject):
     panelHideRequested = Signal()
     shortcutTriggered = Signal(str)
     actionTriggered = Signal(str)
-    reloadRequested = Signal()
+    #: 重启整个程序（快捷面板底栏的「重启」按钮）：由应用层拉起新进程后退出。
+    #: 原 ``reloadRequested``（仅重读配置）已按 2026-10-02 用户指令改成重启 ——
+    #: 用户语义里这个按钮就该是「重启程序」，只重读配置反而「点了没反应」。
+    restartRequested = Signal()
     quitRequested = Signal()
     settingsRequested = Signal()
     settingsCloseRequested = Signal()
@@ -640,8 +643,8 @@ class Backend(QObject):
         self.settingsRequested.emit()
 
     @Slot()
-    def requestReload(self) -> None:
-        self.reloadRequested.emit()
+    def requestRestart(self) -> None:
+        self.restartRequested.emit()
 
     @Slot()
     def requestQuit(self) -> None:

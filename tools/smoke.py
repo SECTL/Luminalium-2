@@ -2031,12 +2031,13 @@ def main() -> int:
                 and float(palette.property("reveal")) >= 0.98,
                 f"reveal={palette.property('reveal')}",
             )
+            # 2026-10-02 用户指令：「颜色选单这个场景就不需要高光了」——
+            # 渐变边框高光只留在工具栏底板上，选单保持素净（反面守卫）。
             highlight = _find_named(cdock, "penPaletteHighlight")
             check(
-                "选单与工具栏底板同一道渐变边框高光（SurfaceHighlight 共用）",
-                highlight is not None and highlight.property("ringVisible") is True,
-                "" if highlight is not None
-                else "找不到 penPaletteHighlight（高光没挂上）",
+                "选单**不带**渐变边框高光（那是工具栏底板的材质）",
+                highlight is None,
+                "" if highlight is None else "penPaletteHighlight 还挂着",
             )
             # 笔分页上那圈「选项开着」的提示环（整窗穿透、选单又没有关闭按钮，
             # 用户唯一的退路就是「再点一下这个工具」——得有东西告诉他）
@@ -2090,11 +2091,17 @@ def main() -> int:
                 hc = hover_tile.mapToScene(
                     QPointF(hover_tile.width() / 2, hover_tile.height() / 2))
                 QTest.mouseMove(overlay, QPoint(int(round(hc.x())), int(round(hc.y()))))
-                QTest.qWait(120)
+                # hover 事件偶发晚到一拍（鼠标投递是异步的）—— 轮询到位再断言
+                hover_settled = False
+                for _ in range(10):
+                    if hover_tile.property("hovered") is True:
+                        hover_settled = True
+                        break
+                    QTest.qWait(30)
             check(
                 "色点 hover 有一圈淡环（Fluent 2 的 hover 态，划过不再毫无反馈）",
                 hover_tile is not None and hover_ring is not None
-                and hover_tile.property("hovered") is True
+                and hover_settled
                 and hover_ring.property("visible") is True,
                 "" if hover_tile is not None and hover_ring is not None
                 else f"tile={hover_tile} ring={hover_ring} "

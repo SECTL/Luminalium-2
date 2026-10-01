@@ -174,13 +174,6 @@ Item {
         readonly property real effectiveRadius: radius
     }
 
-    /*! 与工具栏底板同一道「渐变边框高光」—— 抽出的 ``SurfaceHighlight``，
-        两块浮出层共用一个实现才像一家人。 */
-    SurfaceHighlight {
-        objectName: "penPaletteHighlight"
-        source: card
-    }
-
     /*! 吞掉落在卡片范围内的点击 —— 不吞的话会穿到底下的舞台（放映画面）上，
         用户点在自己的选单上却给幻灯片画了一笔。 */
     MouseArea {

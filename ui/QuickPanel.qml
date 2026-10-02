@@ -249,7 +249,10 @@ Rin.Window {
                     delegate: Rin.SettingCard {
                         title: modelData.title !== undefined ? modelData.title : ""
                         clickable: true
-                        icon.name: modelData.icon !== undefined ? modelData.icon : ""
+                        icon.name: modelData.iconSource !== undefined && modelData.iconSource !== ""
+                            ? "" : (modelData.icon !== undefined ? modelData.icon : "")
+                        icon.source: modelData.iconSource !== undefined && modelData.iconSource !== ""
+                            ? Backend.resourceFile(modelData.iconSource) : ""
                         onClicked: Backend.setShortcutEnabled(modelData.id, true)
 
                         IconButton {

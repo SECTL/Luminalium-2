@@ -406,9 +406,13 @@ QtObject {
     readonly property color splashTrackFill: accent
 
     /*! 字母 / 数字用 Segoe UI Variable Text，中日韩回退到 Microsoft YaHei UI
-        —— Win11 上 Fluent 应用的标准组合，别退回 Candara 那类装饰体。 */
+        —— Win11 上 Fluent 应用的标准组合，别退回 Candara 那类装饰体。
+        ⚠️ UI 语言为日语（app/i18n.py 已把默认 QLocale 设成 ja_*）时改用
+        Yu Gothic UI —— 与 RinUI 字体补丁（app/rinui_patch.py 改写
+        Utils.fontFamily）保持同一套日语字体策略。 */
     readonly property string splashFontFamily: "Segoe UI Variable Text"
-    readonly property string splashFontFamilyCjk: "Microsoft YaHei UI"
+    readonly property string splashFontFamilyCjk: Qt.locale().name.startsWith("ja")
+        ? "Yu Gothic UI" : "Microsoft YaHei UI"
 
     /*! 字阶：**Fluent 2 ramp**，不再按设计稿折算。
         版本行起初是照「相对标题的高度比 0.62」取了对得最像的 ``bodyLarge``（18），

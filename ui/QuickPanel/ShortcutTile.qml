@@ -21,6 +21,10 @@ Item {
 
     property string title: ""
     property string iconName: ""
+    // 图片源（``resources/`` 下的文件名，如 ``settings.png``）。非空时**优先**于
+    // ``iconName``（Fluent 字体图标）—— 快捷面板的「设置」入口用的就是
+    // ``settings.png``（2026-10-02 用户指令）。
+    property string iconSource: ""
     property bool editing: false
 
     signal clicked()
@@ -44,7 +48,8 @@ Item {
 
             Rin.Icon {
                 anchors.centerIn: parent
-                icon: root.iconName
+                icon: root.iconSource === "" ? root.iconName : ""
+                source: root.iconSource === "" ? "" : Backend.resourceFile(root.iconSource)
                 size: Lumi.shortcutIconSize
                 color: Lumi.textPrimary
             }

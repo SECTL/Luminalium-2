@@ -30,6 +30,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from . import i18n
 from .paths import ASSETS_DIR, RESOURCES_DIR
 
 log = logging.getLogger(__name__)
@@ -121,26 +122,29 @@ class TrayIcon(QObject):
     # ------------------------------------------------------------- internals
 
     def _build_menu(self) -> None:
-        open_action = QAction("打开快捷面板", self._menu)
+        # 菜单在启动时建一次；语言随 app.language 在重启后生效。
+        open_action = QAction(i18n.tr("Tray", "打开快捷面板"), self._menu)
         open_action.triggered.connect(self.panelToggleRequested.emit)
         self._menu.addAction(open_action)
 
-        settings_action = QAction("设置", self._menu)
+        settings_action = QAction(i18n.tr("Tray", "设置"), self._menu)
         settings_action.triggered.connect(self.settingsRequested.emit)
         self._menu.addAction(settings_action)
 
         # 探测没认出放映窗口时的兜底：不依赖探测，直接把控制条叫出来
-        overlay_action = QAction("显示/隐藏放映控制条（手动）", self._menu)
+        overlay_action = QAction(
+            i18n.tr("Tray", "显示/隐藏放映控制条（手动）"), self._menu
+        )
         overlay_action.triggered.connect(self.overlayToggleRequested.emit)
         self._menu.addAction(overlay_action)
 
-        diagnose_action = QAction("诊断信息（写入日志）", self._menu)
+        diagnose_action = QAction(i18n.tr("Tray", "诊断信息（写入日志）"), self._menu)
         diagnose_action.triggered.connect(self.diagnoseRequested.emit)
         self._menu.addAction(diagnose_action)
 
         self._menu.addSeparator()
 
-        quit_action = QAction("退出", self._menu)
+        quit_action = QAction(i18n.tr("Tray", "退出"), self._menu)
         quit_action.triggered.connect(self.quitRequested.emit)
         self._menu.addAction(quit_action)
 

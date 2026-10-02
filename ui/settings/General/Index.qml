@@ -63,16 +63,37 @@ Rin.FluentPage {
     }
 
     Rin.SettingCard {
+        id: card
         Layout.fillWidth: true
         title: qsTr("界面语言")
         description: qsTr("切换后需要重新加载应用")
         icon.name: "ic_fluent_local_language_20_regular"
 
+        /*! 语言名单：code 落 ``app.language`` 配置（zh_CN / en_US / ja_JP），
+            name 用**各自语言的母语名**显示（「界面语言」这一项本身该让
+            看不懂当前语言的人也认得，惯例同 Windows / VS Code）。
+            name 不参与存储与匹配，改显示名不用动配置。 */
+        readonly property var languages: [
+            { code: "zh_CN", name: "简体中文" },
+            { code: "en_US", name: "English" },
+            { code: "ja_JP", name: "日本語" }
+        ]
+
         Rin.ComboBox {
             Layout.preferredWidth: 150
-            model: ["zh_CN", "en_US"]
-            currentIndex: Math.max(0, model.indexOf(Backend.settings.language))
-            onActivated: Backend.setSetting("language", model[currentIndex])
+            model: card.languages
+            textRole: "name"
+            currentIndex: {
+                var index = 0
+                for (var i = 0; i < card.languages.length; ++i) {
+                    if (card.languages[i].code === Backend.settings.language) {
+                        index = i
+                        break
+                    }
+                }
+                return index
+            }
+            onActivated: Backend.setSetting("language", card.languages[currentIndex].code)
         }
     }
 }

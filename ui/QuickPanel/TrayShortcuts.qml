@@ -103,6 +103,7 @@ ColumnLayout {
                     anchors.fill: parent
                     title: cell.modelData.title !== undefined ? cell.modelData.title : ""
                     iconName: cell.modelData.icon !== undefined ? cell.modelData.icon : ""
+                    iconSource: cell.modelData.iconSource !== undefined ? cell.modelData.iconSource : ""
                     editing: root.editing
                     onClicked: {
                         if (Backend.activateShortcut(cell.modelData.id)) {

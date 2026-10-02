@@ -46,6 +46,13 @@ Rin.FluentWindow {
         而不是窗口宽度，所以那边默认是 961 —— 换显示器 / 改这里的比例后两处都要重算。
         真实值由 ``config/default_config.json`` 的 ``settings.width_ratio`` 等覆盖。 */
     title: qsTr("设置")
+
+    // 窗口标题栏图标：``FluentWindowBase.icon`` → ``NavigationBar.windowIcon``
+    // → 标题栏返回按钮旁那枚 16px 图标。用 ``resources/settings.png``（品牌图标，
+    // 而非 Fluent 字体图标）。``titleEnabled: false`` 只关自绘标题栏的
+    // 「图标+文字」那一条，不影响左侧导航栏塞进 ``titleBarLeadingHost`` 的这个
+    // 图标（它由 ``NavigationBar`` 自己画）。
+    icon: Backend.resourceFile("settings.png")
     visible: false
     width: Math.min(Screen.width - 80, Math.max(1000, Screen.width * widthRatio))
     height: Math.min(Screen.height - 120, Math.max(640, Screen.height * heightRatio))

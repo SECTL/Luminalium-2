@@ -21,6 +21,8 @@ from PySide6.QtWidgets import QApplication, QMenu
 from RinUI import BackdropEffect, RinUIWindow, Theme
 
 from . import __version__
+from . import i18n
+from . import rinui_patch
 from .bridge import Backend
 from .config import Config
 from .paths import APP_NAME, LOG_DIR, UI_DIR, ensure_runtime_dirs
@@ -92,6 +94,16 @@ class LuminaliumApplication:
         self.qt_app.setQuitOnLastWindowClosed(False)
         # 窗口图标：任务栏 / Alt-Tab / 自绘标题栏都取同一份品牌图标
         self.qt_app.setWindowIcon(build_app_icon())
+
+        # ---- i18n / UI 字体 ----
+        # ⚠️ 必须在引擎加载任何 QML 之前做完：翻译器要赶在 qsTr 求值前装好；
+        # 默认 QLocale 是 RinUI 字体补丁的语言信号（日语 → Yu Gothic UI）。
+        # 翻译 / 字体都在重启后生效（设置页文案「切换后需要重新加载应用」）。
+        language = str(self.config.get("app.language", i18n.SOURCE_LANGUAGE))
+        i18n.apply_locale(language)
+        i18n.install_translators(self.qt_app, language)
+        i18n.apply_ui_font(self.qt_app, language)
+        rinui_patch.apply()
 
         # ---- 后端 ----
         self.backend = Backend(self.config, self.qt_app)
@@ -170,7 +182,7 @@ class LuminaliumApplication:
         之间都会回一次事件循环，启动画面才真的画得出来。
         """
         self.windows.show_splash()
-        self._splash(0.15, "初始化")
+        self._splash(0.15, i18n.tr("Splash", "初始化"))
         # 第一步也要占满一个节拍 —— 否则 ``singleShot(0)`` 会在同一帧就把进度推到
         # 0.60，「初始化」这一档用户根本看不到（左标签会一直停在「正在启动」）。
         QTimer.singleShot(SPLASH_STEP_MS, self._boot_tray)
@@ -194,7 +206,7 @@ class LuminaliumApplication:
         else:
             log.warning("系统托盘不可用，直接显示快捷面板作为兜底")
             self.windows.show_panel()
-        self._splash(0.60, "创建托盘图标")
+        self._splash(0.60, i18n.tr("Splash", "创建托盘图标"))
         QTimer.singleShot(SPLASH_STEP_MS, self._boot_presenter)
 
     def _boot_presenter(self) -> None:
@@ -204,13 +216,13 @@ class LuminaliumApplication:
             "/".join(COM_PROG_IDS),
         )
         self.ppt.start()
-        self._splash(0.88, "启动放映探测")
+        self._splash(0.88, i18n.tr("Splash", "启动放映探测"))
         QTimer.singleShot(SPLASH_STEP_MS, self._boot_ready)
 
     def _boot_ready(self) -> None:
         # 「启动时提示」气泡已按 2026-10-01（第二轮）用户指令删除（``tray.notify``
         # 方法本身保留：托盘右键「诊断信息（写入日志）」还在用它）。
-        self._splash(1.0, "就绪")
+        self._splash(1.0, i18n.tr("Splash", "正在进行启动后操作"))
         log.info("启动完成")
         QTimer.singleShot(SPLASH_HOLD_MS, self.windows.hide_splash)
 
@@ -256,7 +268,10 @@ class LuminaliumApplication:
             log.info("%s", line)
         log.info("顶层窗口状态: %s", self.windows.overlay_report())
         log.info("顶层窗口结论: %s", self.windows.overlay_hint())
-        self.tray.notify("诊断信息", "已写入 logs/luminalium.log")
+        self.tray.notify(
+            i18n.tr("App", "诊断信息"),
+            i18n.tr("App", "已写入 logs/luminalium.log"),
+        )
 
     def _open_settings(self, page: str = "") -> None:
         """打开设置：先把托盘面板收起（否则两个浮窗会叠在一起）。"""
@@ -378,8 +393,8 @@ class LuminaliumApplication:
 
         menu = QMenu()
         menu.setStyleSheet(OVERFLOW_MENU_QSS)
-        menu.addAction("上一页", self.backend.previousSlide)
-        menu.addAction("下一页", self.backend.nextSlide)
+        menu.addAction(i18n.tr("Overflow", "上一页"), self.backend.previousSlide)
+        menu.addAction(i18n.tr("Overflow", "下一页"), self.backend.nextSlide)
         menu.addSeparator()
         for item in self.config.get("presentation.actions", []) or []:
             action_id = str(item.get("id", ""))
@@ -389,7 +404,7 @@ class LuminaliumApplication:
                 lambda aid=action_id: self.backend.triggerAction(aid),
             )
         menu.addSeparator()
-        menu.addAction("退出放映", self.backend.exitPresentation)
+        menu.addAction(i18n.tr("Overflow", "退出放映"), self.backend.exitPresentation)
 
         # 必须持有引用：menu 是局部变量，回收后菜单会立刻消失
         self._overflow_menu = menu

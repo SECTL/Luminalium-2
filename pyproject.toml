@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "luminalium"
-version = "1.6.633.1"
+version = "1.6.642.1"
 description = ""
 readme = "README.md"
 requires-python = ">=3.9"

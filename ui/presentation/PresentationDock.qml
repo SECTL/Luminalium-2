@@ -50,6 +50,28 @@ Item {
 
     // ------------------------------------------------------------ 配置读取
     readonly property var cfg: Backend.presentationConfig
+
+    /*! **组件整体缩放倍率**（``presentation.scale``，入口：设置 → 主界面 →
+        「缩放大小」滑块，50%~200%）。1.0 = 设计原档。
+
+        画法是一个 ``scale`` 变换打在底板上 —— 于是投影、渐变高光、图标、页码
+        文字**一起**等比缩放，不用逐项乘。代价是「内部」尺寸（``contentHeight`` /
+        ``hitSize`` / ``pillRadius`` …）仍活在**设计单位**里，而 ``width`` /
+        ``height`` / ``shadowMargin`` / ``interactiveRect`` 这几个**对外**的量
+        要换算成屏幕像素：Python 摆位（``windows.py::_position_dock``）与区域
+        塑形、编辑器预览的命中测试读的都是后者，换算好了那三处**一行都不用改**。
+
+        ⚠️ 别把倍率乘进下面那些尺寸令牌（``barHeight`` / ``hitSize`` …）：那是
+        「设计单位」，再乘一遍就是**双重缩放**，条会变成设计值的平方倍。 */
+    readonly property real scaleFactor: {
+        var value = cfg.scale !== undefined ? Number(cfg.scale) : 1.0
+        if (!(value > 0))
+            return 1.0
+        // 手改配置兜底：滑块只给 0.5~2.0，越界值钳到 0.25~4.0，别让一个手滑的
+        // 0 把控制条缩没（也挡住负数）。
+        return Math.max(0.25, Math.min(4.0, value))
+    }
+
     readonly property var cornerCfg: {
         var corners = cfg.corners !== undefined ? cfg.corners : ({})
         return corners[corner] !== undefined ? corners[corner] : ({})
@@ -83,7 +105,8 @@ Item {
         ? surfaceCfg.radius : Lumi.dockSurfaceRadius
     readonly property real surfaceOpacity: surfaceCfg.opacity !== undefined
         ? surfaceCfg.opacity : Lumi.dockSurfaceOpacity
-    /*! 钳制后的**实际**圆角（胶囊时为 高/2）。自检读这个值。 */
+    /*! 钳制后的**实际**圆角（胶囊时为 高/2）。自检读这个值。
+        ⚠️ **设计单位**（缩放变换之前）—— 屏幕上量到的半径还要乘 ``scaleFactor``。 */
     readonly property real pillRadius: bar.effectiveRadius
 
     /*! 内容行高度：底板扣掉上下 padding —— 图标按钮、退出键共用这一档。 */
@@ -131,8 +154,13 @@ Item {
     // ---- 开关 ----
     readonly property bool shadowEnabled: shadowCfg.enabled !== undefined
         ? shadowCfg.enabled : true
-    readonly property int shadowMargin: shadowCfg.margin !== undefined
+    /*! 投影余量（**设计单位**）—— 传给 ``FlyoutSurface`` 用，别外传。 */
+    readonly property int shadowMarginBase: shadowCfg.margin !== undefined
         ? shadowCfg.margin : Lumi.dockShadowMargin
+    /*! 投影余量（**屏幕像素**）—— Python 摆位与编辑器预览读的是这个：
+        ``windows.py::_position_dock`` 用它把 ``margin_x/margin_y``（视觉距离）
+        换算成 Item 坐标。跟着 ``scaleFactor`` 走，否则缩放后贴边距离会漂。 */
+    readonly property int shadowMargin: Math.round(shadowMarginBase * scaleFactor)
     readonly property real shadowBlur: shadowCfg.blur !== undefined ? shadowCfg.blur : 18
     readonly property real shadowOffsetY: shadowCfg.offset_y !== undefined
         ? shadowCfg.offset_y : 6
@@ -289,14 +317,19 @@ Item {
         变化时会发 ``hitRectChanged``，Python 侧（``windows.py``）据此**立刻**
         重算窗口区域，不用等 800ms 一拍的 ``_assert_topmost``。 */
     readonly property rect interactiveRect: {
-        // 控制条底板表面：围在投影余量内侧
-        var left = bar.x + bar.margin
-        var right = bar.x + bar.implicitWidth - bar.margin
-        var top = bar.y + bar.margin
-        var bottom = bar.y + bar.implicitHeight - bar.margin
+        // 控制条底板表面：围在投影余量内侧。全部换算到**根 Item 坐标**
+        // （= 屏幕像素）—— 底板自己活在设计单位里（``scaleFactor`` 变换之前），
+        // 而读它的 Python 摆位 / 区域塑形要的是屏幕上真实占多大。
+        var s = scaleFactor
+        var left = (bar.x + bar.margin) * s
+        var right = (bar.x + bar.implicitWidth - bar.margin) * s
+        var top = (bar.y + bar.margin) * s
+        var bottom = (bar.y + bar.implicitHeight - bar.margin) * s
         if (paletteOpened && penPalette.visible) {
+            // 选单也跟着 ``scaleFactor`` 缩放（见 ``penPalette`` 的 scale）：
+            // 它的 x/y 已经是根 Item 坐标，宽高要乘倍率。
             left = Math.min(left, penPalette.x)
-            right = Math.max(right, penPalette.x + penPalette.width)
+            right = Math.max(right, penPalette.x + penPalette.width * s)
             top = Math.min(top, penPalette.y)
         }
         return Qt.rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
@@ -307,21 +340,30 @@ Item {
 
     onInteractiveRectChanged: hitRectChanged()
 
-    implicitWidth: bar.implicitWidth
-    implicitHeight: bar.implicitHeight
+    /*! 根 Item 的尺寸 = **缩放后**的屏幕像素（Python 摆位 / 区域塑形 / 编辑器预览
+        都读它，见 ``scaleFactor`` 的说明）。 */
+    implicitWidth: Math.round(bar.implicitWidth * scaleFactor)
+    implicitHeight: Math.round(bar.implicitHeight * scaleFactor)
     width: implicitWidth
     height: implicitHeight
 
     FlyoutSurface {
         id: bar
-        anchors.fill: parent
+        // ⚠️ **不能用 ``anchors.fill: parent``**：根 Item 已经是**缩放后**的尺寸，
+        //    再铺满就等于把缩放算了两遍。底板保持设计尺寸，缩放交给下面这个
+        //    ``scale`` 变换 —— ``transformOrigin: TopLeft`` 让底板左上角钉在根
+        //    Item 的 0 点，两边坐标原点重合。
+        width: implicitWidth
+        height: implicitHeight
+        scale: dock.scaleFactor
+        transformOrigin: Item.TopLeft
         paddingX: dock.effPaddingAlong
         paddingY: dock.effPaddingCross
         surfaceRadius: dock.surfaceRadius
         surfaceOpacity: dock.surfaceOpacity
         highlightEnabled: dock.highlightEnabled
         shadowEnabled: dock.shadowEnabled
-        shadowMargin: dock.shadowMargin
+        shadowMargin: dock.shadowMarginBase
         shadowBlur: dock.shadowBlur
         shadowOffsetY: dock.shadowOffsetY
 
@@ -493,18 +535,26 @@ Item {
         columns: dock.penPaletteColumns
         selectedColor: dock.penSelectedColor
 
+        // 与底板同倍率缩放 —— 整块选单跟着组件一起放大 / 缩小。
+        // ``transformOrigin: TopLeft``：下面算的 x/y 是**根 Item 坐标**（未缩放
+        // 的定位），缩放围绕左上角做，落点才不跟着漂。
+        scale: dock.scaleFactor
+        transformOrigin: Item.TopLeft
+
         // 贴着工具栏底板上沿往上摆：卡片**本体**（不含投影余量）的底边距底板上
         // 沿 ``Lumi.dockPaletteGap``。卡片自己的坐标含 shadowMargin，所以两边都
-        // 要各扣/加一次。
-        y: bar.y + bar.margin - Lumi.dockPaletteGap
-           - penPalette.shadowMargin - penPalette.cardHeight
+        // 要各扣/加一次。⚠️ 整条式子乘 ``scaleFactor``：底板的可见上沿在
+        // ``bar.margin * scaleFactor`` 处（底板被缩放变换过），落点要跟着走。
+        y: (bar.y + bar.margin - Lumi.dockPaletteGap
+            - penPalette.shadowMargin - penPalette.cardHeight) * dock.scaleFactor
         // 左沿与底板的左沿对齐；卡片比条还宽，贴右下的角落会溢出屏幕 ——
         // 这时整块往左收（可用宽度从父级拿：父级是铺满整屏的容器）。
         x: {
-            var want = bar.margin - penPalette.shadowMargin
+            var s = dock.scaleFactor
+            var want = (bar.margin - penPalette.shadowMargin) * s
             var limit = dock.parent ? dock.parent.width - dock.x : 0
-            if (limit > 0 && want + penPalette.width > limit) {
-                want = limit - penPalette.width
+            if (limit > 0 && want + penPalette.width * s > limit) {
+                want = limit - penPalette.width * s
             }
             return want
         }

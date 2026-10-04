@@ -1,83 +1,138 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
 <TS version="2.1" language="ja_JP">
-<!--
-  Luminalium 2 日本語訳（QML 側）。
-
-  * 生成方法:
-      .venv/Scripts/pyside6-lupdate.exe -recursive ui -ts translations/luminalium_ja_JP.ts -no-obsolete
-      .venv/Scripts/pyside6-lrelease.exe translations/luminalium_ja_JP.ts -qm translations/luminalium_ja_JP.qm
-  * ⚠️ 本文件只收 QML 的 qsTr() 字符串（lupdate 扫描 ui/ 自动维护）。
-    Python 侧的可见文案（托盘菜单 / 启动画面阶段文案 / 溢出菜单）在
-    luminalium_py_ja_JP.ts，别混进来 —— lupdate -no-obsolete 会把
-    源码里扫不到的条目当「过时」删掉。
--->
 <context>
     <name>About</name>
     <message>
-        <location filename="../ui/settings/About.qml" line="130"/>
+        <location filename="../ui/settings/About.qml" line="189"/>
         <source>关于</source>
         <translation>バージョン情報</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="150"/>
+        <location filename="../ui/settings/About.qml" line="209"/>
         <source>© 2025-2026 Seirai Haraguchi / @SECTL Studio</source>
         <translation>© 2025-2026 Seirai Haraguchi / @SECTL Studio</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="151"/>
+        <location filename="../ui/settings/About.qml" line="210"/>
         <source>本程序基于 MIT License 获得许可</source>
         <translation>本ソフトウェアは MIT License の下で提供されています</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="168"/>
+        <location filename="../ui/settings/About.qml" line="227"/>
         <source>（Codename %1）</source>
         <translation>（コードネーム %1）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="177"/>
+        <location filename="../ui/settings/About.qml" line="236"/>
         <source>查看本仓库</source>
         <translation>リポジトリを表示</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="195"/>
+        <location filename="../ui/settings/About.qml" line="254"/>
         <source>反馈问题或功能建议</source>
         <translation>問題の報告・機能の提案</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="196"/>
+        <location filename="../ui/settings/About.qml" line="255"/>
         <source>在 GitHub 上提交 Issue</source>
         <translation>GitHub で Issue を作成</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="221"/>
+        <location filename="../ui/settings/About.qml" line="280"/>
         <source>依赖与参考</source>
         <translation>依存ライブラリと参考</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="230"/>
+        <location filename="../ui/settings/About.qml" line="289"/>
         <source>Qt &amp; Qt Quick</source>
         <translation>Qt &amp; Qt Quick</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="235"/>
+        <location filename="../ui/settings/About.qml" line="294"/>
         <source>Qt for Python（PySide6）</source>
         <translation>Qt for Python（PySide6）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="240"/>
+        <location filename="../ui/settings/About.qml" line="299"/>
         <source>Fluent Design System</source>
         <translation>Fluent Design System</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="245"/>
+        <location filename="../ui/settings/About.qml" line="304"/>
         <source>RinUI</source>
         <translation>RinUI</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="250"/>
+        <location filename="../ui/settings/About.qml" line="309"/>
         <source>pywin32</source>
         <translation>pywin32</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="549"/>
+        <source>诊断信息</source>
+        <translation>診断情報</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="339"/>
+        <source>查看诊断信息</source>
+        <translation>診断情報を表示</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="340"/>
+        <source>用于排查问题；分享前请检查其中包含的路径等信息</source>
+        <translation>問題の調査用です。共有する前に、含まれているパスなどの情報を確認してください</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="399"/>
+        <source>点击卡片获取回声洞句子</source>
+        <translation>カードをクリックしてエコーケイブの一文を取得</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="401"/>
+        <source>获取中...</source>
+        <translation>取得中...</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="403"/>
+        <source>暂无回声洞</source>
+        <translation>エコーケイブはありません</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="405"/>
+        <source>获取失败，请稍后重试</source>
+        <translation>取得に失敗しました。しばらくしてから再試行してください</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="454"/>
+        <source>回声洞</source>
+        <translation>エコーケイブ</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="483"/>
+        <location filename="../ui/settings/About.qml" line="668"/>
+        <source>已复制</source>
+        <translation>コピーしました</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="483"/>
+        <source>复制</source>
+        <translation>コピー</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="618"/>
+        <source>加载中...</source>
+        <translation>読み込み中...</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="659"/>
+        <source>关闭</source>
+        <translation>閉じる</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="668"/>
+        <source>复制全部</source>
+        <translation>すべてコピー</translation>
     </message>
 </context>
 <context>
@@ -88,44 +143,75 @@
         <translation>デバッグ</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="64"/>
+        <location filename="../ui/DebugWindow.qml" line="66"/>
         <source>诊断</source>
         <translation>診断</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="69"/>
+        <location filename="../ui/DebugWindow.qml" line="71"/>
         <source>日志级别</source>
         <translation>ログレベル</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="70"/>
+        <location filename="../ui/DebugWindow.qml" line="72"/>
         <source>排查问题时改成 DEBUG，日志写在 logs/luminalium.log</source>
         <translation>問題調査時は DEBUG に変更します。ログは logs/luminalium.log に書き込まれます</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="83"/>
+        <location filename="../ui/DebugWindow.qml" line="85"/>
         <source>放映检测轮询间隔</source>
         <translation>スライドショー検出のポーリング間隔</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="86"/>
+        <location filename="../ui/DebugWindow.qml" line="88"/>
         <source>越短越跟手，CPU 占用略高</source>
         <translation>短いほど反応が速くなりますが、CPU 使用率はわずかに上がります</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="108"/>
+        <location filename="../ui/DebugWindow.qml" line="110"/>
         <source>开发专用</source>
         <translation>開発専用</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="113"/>
+        <location filename="../ui/DebugWindow.qml" line="115"/>
         <source>开发中水印</source>
         <translation>開発版ウォーターマーク</translation>
     </message>
     <message>
-        <location filename="../ui/DebugWindow.qml" line="114"/>
+        <location filename="../ui/DebugWindow.qml" line="116"/>
         <source>每个窗口左下角的「开发中版本」角标；改动在重启后生效</source>
         <translation>各ウィンドウ左下の「開発版」バッジです。変更は再起動後に有効になります</translation>
+    </message>
+    <message>
+        <location filename="../ui/DebugWindow.qml" line="139"/>
+        <source>错误处理</source>
+        <translation>エラー処理</translation>
+    </message>
+    <message>
+        <location filename="../ui/DebugWindow.qml" line="145"/>
+        <source>手动报错</source>
+        <translation>手動エラー</translation>
+    </message>
+    <message>
+        <location filename="../ui/DebugWindow.qml" line="146"/>
+        <source>弹出一张错误报告（非致命），主按钮为「忽略」</source>
+        <translation>致命的でないエラーレポートを表示します。主ボタンは「無視」です</translation>
+    </message>
+    <message>
+        <location filename="../ui/DebugWindow.qml" line="161"/>
+        <source>手动崩溃</source>
+        <translation>手動クラッシュ</translation>
+    </message>
+    <message>
+        <location filename="../ui/DebugWindow.qml" line="162"/>
+        <source>弹出一张崩溃报告（致命）；走真实的未捕获异常链路，主按钮为「重新启动」</source>
+        <translation>致命的なクラッシュレポートを表示します。実際の未捕捉例外の経路を通り、主ボタンは「再起動」です</translation>
+    </message>
+    <message>
+        <location filename="../ui/DebugWindow.qml" line="152"/>
+        <location filename="../ui/DebugWindow.qml" line="168"/>
+        <source>触发</source>
+        <translation>実行</translation>
     </message>
 </context>
 <context>
@@ -150,6 +236,53 @@
     </message>
 </context>
 <context>
+    <name>ErrorReportWindow</name>
+    <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="146"/>
+        <source>提交 Issue</source>
+        <translation>Issue を送信</translation>
+    </message>
+    <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="153"/>
+        <source>复制</source>
+        <translation>コピー</translation>
+    </message>
+    <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="162"/>
+        <source>重新启动</source>
+        <translation>再起動</translation>
+    </message>
+    <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="162"/>
+        <source>忽略</source>
+        <translation>無視</translation>
+    </message>
+    <message>
+        <source>查看详细信息</source>
+        <translation>詳細を表示</translation>
+    </message>
+    <message>
+        <source>收起详细信息</source>
+        <translation>詳細を隠す</translation>
+    </message>
+    <message>
+        <source>操作系统</source>
+        <translation>オペレーティング システム</translation>
+    </message>
+    <message>
+        <source>应用版本</source>
+        <translation>アプリ バージョン</translation>
+    </message>
+    <message>
+        <source>发生时间</source>
+        <translation>発生日時</translation>
+    </message>
+    <message>
+        <source>来源</source>
+        <translation>発生源</translation>
+    </message>
+</context>
+<context>
     <name>Home</name>
     <message>
         <location filename="../ui/settings/Home.qml" line="26"/>
@@ -160,37 +293,52 @@
 <context>
     <name>Index</name>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="31"/>
+        <location filename="../ui/settings/General/Index.qml" line="39"/>
         <source>通用</source>
         <translation>全般</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="37"/>
+        <location filename="../ui/settings/General/Index.qml" line="49"/>
+        <source>启动</source>
+        <translation>スタートアップ</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="56"/>
+        <source>开机自启</source>
+        <translation>スタートアップ時に起動</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="57"/>
+        <source>登录系统后自动启动 Luminalium</source>
+        <translation>サインイン後に Luminalium を自動的に起動します</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="86"/>
         <source>快捷面板</source>
         <translation>クイックパネル</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="42"/>
+        <location filename="../ui/settings/General/Index.qml" line="91"/>
         <source>快捷方式锁定</source>
         <translation>ショートカットのロック</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="43"/>
+        <location filename="../ui/settings/General/Index.qml" line="92"/>
         <source>锁定后面板上的「编辑」按钮消失，防止误改</source>
         <translation>ロックするとパネルの「編集」ボタンが消え、誤操作を防げます</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="62"/>
+        <location filename="../ui/settings/General/Index.qml" line="111"/>
         <source>语言</source>
         <translation>言語</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="67"/>
+        <location filename="../ui/settings/General/Index.qml" line="117"/>
         <source>界面语言</source>
         <translation>UI 言語</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="68"/>
+        <location filename="../ui/settings/General/Index.qml" line="118"/>
         <source>切换后需要重新加载应用</source>
         <translation>変更後、アプリの再起動が必要です</translation>
     </message>
@@ -198,94 +346,109 @@
 <context>
     <name>MainInterface</name>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="30"/>
+        <location filename="../ui/settings/MainInterface.qml" line="34"/>
         <source>主界面</source>
         <translation>メイン画面</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="86"/>
+        <location filename="../ui/settings/MainInterface.qml" line="90"/>
         <source>编辑主界面的新方式</source>
         <translation>メイン画面を編集する新しい方法</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="91"/>
+        <location filename="../ui/settings/MainInterface.qml" line="95"/>
         <source>右键托盘图标或唤出快捷面板，点「主界面编辑器」即可体验：
 点击任意组件聚焦放大，右侧面板里调整它的设置。</source>
         <translation>トレイアイコンを右クリックするか、クイックパネルから「メイン画面エディター」を開いてください：
 任意のコンポーネントをクリックしてフォーカスし、右側のパネルで設定を調整できます。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="101"/>
+        <location filename="../ui/settings/MainInterface.qml" line="105"/>
         <source>打开主界面编辑器</source>
         <translation>メイン画面エディターを開く</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="117"/>
+        <location filename="../ui/settings/MainInterface.qml" line="124"/>
+        <source>缩放</source>
+        <translation>拡大縮小</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="131"/>
+        <source>缩放大小</source>
+        <translation>拡大率</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="132"/>
+        <source>整体放大或缩小控制条上的组件；位置与边距不受影响</source>
+        <translation>コントロールバーの部品をまとめて拡大・縮小します。位置と余白は変わりません</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="156"/>
         <source>位置</source>
         <translation>位置</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="124"/>
+        <location filename="../ui/settings/MainInterface.qml" line="163"/>
         <source>水平边距</source>
         <translation>水平マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="125"/>
+        <location filename="../ui/settings/MainInterface.qml" line="164"/>
         <source>控制条距屏幕左右边缘的距离</source>
         <translation>コントロールバーと画面の左右の端との距離</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="146"/>
+        <location filename="../ui/settings/MainInterface.qml" line="185"/>
         <source>垂直边距</source>
         <translation>垂直マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="147"/>
+        <location filename="../ui/settings/MainInterface.qml" line="186"/>
         <source>控制条距屏幕上下边缘的距离，以整屏边缘为准</source>
         <translation>コントロールバーと画面の上下の端との距離（画面全体の端が基準）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="166"/>
+        <location filename="../ui/settings/MainInterface.qml" line="205"/>
         <source>目标显示器</source>
         <translation>対象ディスプレイ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="167"/>
+        <location filename="../ui/settings/MainInterface.qml" line="206"/>
         <source>控制条跟着放映窗口走，还是固定在主显示器上</source>
         <translation>コントロールバーをスライドショーウィンドウに追従させるか、メインディスプレイに固定するか</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="172"/>
+        <location filename="../ui/settings/MainInterface.qml" line="211"/>
         <source>跟随放映窗口</source>
         <translation>スライドショーに追従</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="172"/>
+        <location filename="../ui/settings/MainInterface.qml" line="211"/>
         <source>主显示器</source>
         <translation>メインディスプレイ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="183"/>
+        <location filename="../ui/settings/MainInterface.qml" line="222"/>
         <source>外观</source>
         <translation>外観</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="190"/>
+        <location filename="../ui/settings/MainInterface.qml" line="229"/>
         <source>底板不透明度</source>
         <translation>パネルの不透明度</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="191"/>
+        <location filename="../ui/settings/MainInterface.qml" line="230"/>
         <source>越透明，放映画面透出来越多，边缘高光也越明显</source>
         <translation>透明度が高いほどスライドショーが透けて見え、縁のハイライトも際立ちます</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="211"/>
+        <location filename="../ui/settings/MainInterface.qml" line="250"/>
         <source>阴影</source>
         <translation>影</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="212"/>
+        <location filename="../ui/settings/MainInterface.qml" line="251"/>
         <source>底板下方的柔和投影；纯色背景下关掉更清爽</source>
         <translation>パネルの下に柔らかい影を落とします。無地の背景ではオフのほうがすっきりします</translation>
     </message>
@@ -592,6 +755,24 @@
         <location filename="../ui/SplashWindow.qml" line="262"/>
         <source>正在启动</source>
         <translation>起動中</translation>
+    </message>
+</context>
+<context>
+    <name>SplitActionButton</name>
+    <message>
+        <location filename="../ui/ErrorReport/SplitActionButton.qml" line="194"/>
+        <source>退出程序</source>
+        <translation>アプリを終了</translation>
+    </message>
+    <message>
+        <location filename="../ui/ErrorReport/SplitActionButton.qml" line="199"/>
+        <source>重新启动</source>
+        <translation>再起動</translation>
+    </message>
+    <message>
+        <location filename="../ui/ErrorReport/SplitActionButton.qml" line="204"/>
+        <source>忽略</source>
+        <translation>無視</translation>
     </message>
 </context>
 <context>

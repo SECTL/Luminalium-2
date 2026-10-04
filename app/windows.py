@@ -351,6 +351,8 @@ class WindowManager(QObject):
         self.debug: Optional[QQuickWindow] = None
         #: 主界面编辑器（入口：快捷面板的「主界面编辑器」快捷方式）
         self.editor: Optional[QQuickWindow] = None
+        #: 错误 / 崩溃报告（入口：``ErrorHandler`` 捕获到未捕获异常）
+        self.error_report: Optional[QQuickWindow] = None
         self.overlay: Optional[QQuickWindow] = None
         self._docks: Dict[str, QQuickItem] = {}
         self._components: List[QQmlComponent] = []
@@ -897,6 +899,10 @@ class WindowManager(QObject):
         if self.settings is None:
             log.info("设置界面不可用")
             return
+        # 每次打开都让 QML 重取一遍设置项：``settings`` 里混着**实时状态**
+        # （「开机自启」读的是注册表，用户可能在任务管理器里刚把它禁掉），
+        # 而页面是按需创建、之后只隐藏不销毁的 —— 不主动刷就会显示上次的旧值。
+        self._backend.refreshSettings()
         self._position_settings()
         self.settings.show()
         self.settings.raise_()
@@ -1175,6 +1181,70 @@ class WindowManager(QObject):
             self.hide_editor()
         else:
             self.show_editor()
+
+    # ======================================================= 错误 / 崩溃报告
+
+    def _create_error_report(self) -> None:
+        """按需创建错误 / 崩溃报告窗口。
+
+        入口是 ``ErrorHandler`` 捕获到未捕获异常（``application.py`` 把
+        ``reportRequested`` 连到 :meth:`show_error_report`）。与设置 / 调试 /
+        编辑器窗口同理：不出现就一个对象都不建。
+        """
+        if self.error_report is not None:
+            return
+        qml_path = UI_DIR / "ErrorReport" / "ErrorReportWindow.qml"
+        if not qml_path.exists():
+            log.warning("错误报告窗口不存在，跳过: %s", qml_path)
+            return
+        root = self._create(qml_path, {"visible": False})
+        if root is None:
+            log.error("错误报告窗口创建失败: %s", qml_path)
+            return
+        self.error_report = root
+        # 同设置窗口：不接管的话没有系统阴影 / 圆角，且 WS_CAPTION 会露原生标题栏
+        if not self._attach_to_rinui(root):
+            self._keep_frameless(root)
+
+    def show_error_report(self) -> None:
+        """弹出报告窗口（``ErrorHandler.reportRequested`` 的接收端）。
+
+        ⚠️ 整体包 try：这条路径是在**异常处理栈里**被调用的（excepthook →
+        信号 → 这里），自己再抛出去会变成「异常套异常」，把原始崩溃盖掉。
+        """
+        try:
+            self._create_error_report()
+            if self.error_report is None:
+                log.info("错误报告窗口不可用")
+                return
+            self._position_error_report()
+            self.error_report.show()
+            self.error_report.raise_()
+            self.error_report.requestActivate()
+        except Exception:  # pragma: no cover - 报告窗本身建不起来时只剩日志
+            log.exception("显示错误报告窗口失败")
+
+    def hide_error_report(self) -> None:
+        if self.error_report is not None and self.error_report.isVisible():
+            self.error_report.hide()
+
+    def _position_error_report(self) -> None:
+        """居中到光标所在显示器（多屏时不会跑到别的屏幕上）。
+
+        窗口尺寸由 QML 自己按屏幕夹（上限 720×600，见 ``ErrorReportWindow.qml``）；
+        屏幕比它还小时这里再按可用区夹一刀，免得报告窗的按钮落在屏幕外点不到。
+        """
+        if self.error_report is None:
+            return
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        width = min(int(self.error_report.width()), area.width())
+        height = min(int(self.error_report.height()), area.height())
+        x = area.left() + (area.width() - width) // 2
+        y = area.top() + (area.height() - height) // 2
+        self.error_report.setPosition(int(x), int(y))
 
     # ================================================================ 顶层窗口
 
@@ -1766,6 +1836,7 @@ class WindowManager(QObject):
         self.hide_settings()
         self.hide_debug()
         self.hide_editor()
+        self.hide_error_report()
         self.hide_docks()
         self._docks.clear()
         self._components.clear()
@@ -1773,4 +1844,5 @@ class WindowManager(QObject):
         self.settings = None
         self.debug = None
         self.editor = None
+        self.error_report = None
         self.overlay = None

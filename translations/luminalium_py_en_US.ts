@@ -83,4 +83,93 @@
         <translation>Written to logs/luminalium.log</translation>
     </message>
 </context>
+<context>
+    <name>ErrorHandler</name>
+    <message>
+        <source>崩溃报告</source>
+        <translation>Crash report</translation>
+    </message>
+    <message>
+        <source>错误报告</source>
+        <translation>Error report</translation>
+    </message>
+    <message>
+        <source>程序崩溃了！</source>
+        <translation>The program has crashed!</translation>
+    </message>
+    <message>
+        <source>程序出现了一个错误！</source>
+        <translation>The program ran into an error!</translation>
+    </message>
+    <message>
+        <source>{app_name} 遇到了一个自己无法恢复的问题，不得不停下来。你可以尝试重新启动；如果它反复出现，请把下面的详细信息反馈给我们。</source>
+        <translation>{app_name} ran into a problem it could not recover from and had to stop. You can try restarting; if it keeps happening, please send us the details below.</translation>
+    </message>
+    <message>
+        <source>{app_name} 遇到了一个问题。程序还可以继续运行，但最好把下面的详细信息反馈给我们，方便我们修掉它。</source>
+        <translation>{app_name} ran into a problem. The app can keep running, but please send us the details below so we can fix it.</translation>
+    </message>
+    <message>
+        <source>主线程</source>
+        <translation>Main thread</translation>
+    </message>
+    <message>
+        <source>后台线程</source>
+        <translation>Background thread</translation>
+    </message>
+    <message>
+        <source>线程 {name}</source>
+        <translation>Thread {name}</translation>
+    </message>
+    <message>
+        <source>环境信息</source>
+        <translation>Environment</translation>
+    </message>
+    <message>
+        <source>应用版本</source>
+        <translation>App version</translation>
+    </message>
+    <message>
+        <source>报告类型</source>
+        <translation>Report type</translation>
+    </message>
+    <message>
+        <source>发生时间</source>
+        <translation>Time</translation>
+    </message>
+    <message>
+        <source>来源</source>
+        <translation>Source</translation>
+    </message>
+    <message>
+        <source>操作系统</source>
+        <translation>OS</translation>
+    </message>
+    <message>
+        <source>摘要</source>
+        <translation>Summary</translation>
+    </message>
+    <message>
+        <source>堆栈</source>
+        <translation>Traceback</translation>
+    </message>
+    <message>
+        <source>未知</source>
+        <translation>Unknown</translation>
+    </message>
+    <message>
+        <source>(无)</source>
+        <translation>(none)</translation>
+    </message>
+    <message>
+        <source>RuntimeError: 这是一条手动触发的错误报告</source>
+        <translation>RuntimeError: This is a manually triggered error report</translation>
+    </message>
+    <message>
+        <source>这条报告来自调试窗口的「手动报错」，程序本身并没有出错。
+用途：核对错误报告窗的版式、表情图与主按钮（忽略）。</source>
+        <translation>This report came from &quot;Trigger an error&quot; in the debug window; the app did not actually fail.
+Purpose: check the layout, emoji, and primary button (&quot;Ignore&quot;) of the error report window.</translation>
+    </message>
+</context>
 </TS>

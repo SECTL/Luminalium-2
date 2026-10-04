@@ -51,6 +51,21 @@ Item {
 
     // ------------------------------------------------------------ 配置读取
     readonly property var cfg: Backend.presentationConfig
+
+    /*! **组件整体缩放倍率**（``presentation.scale``，与横版工具栏同一个开关）。
+        1.0 = 设计原档。画法与横版 ``PresentationDock`` 完全一致：一个 ``scale``
+        变换打在底板上（投影 / 高光 / 页码文字一起缩放），而 ``width`` /
+        ``height`` / ``shadowMargin`` / ``interactiveRect`` 这几个**对外**的量
+        换算成屏幕像素，于是 Python 摆位与区域塑形、编辑器预览都不用改。
+        ⚠️ 别把倍率乘进下面的尺寸令牌（``pillWidth`` / ``contentHeight`` …）——
+        那些是设计单位，再乘一遍就是双重缩放。 */
+    readonly property real scaleFactor: {
+        var value = cfg.scale !== undefined ? Number(cfg.scale) : 1.0
+        if (!(value > 0))
+            return 1.0
+        return Math.max(0.25, Math.min(4.0, value))
+    }
+
     readonly property var surfaceCfg: cfg.surface !== undefined ? cfg.surface : ({})
     readonly property var shadowCfg: surfaceCfg.shadow !== undefined ? surfaceCfg.shadow : ({})
     readonly property var buttonsCfg: cfg.buttons !== undefined ? cfg.buttons : ({})
@@ -105,26 +120,38 @@ Item {
     readonly property real shadowBlur: shadowCfg.blur !== undefined ? shadowCfg.blur : 18
     readonly property real shadowOffsetY: shadowCfg.offset_y !== undefined
         ? shadowCfg.offset_y : 6
-    /*! 投影余量（Python 摆放时扣掉；竖条垂直居中时它上下对称，无需特殊处理）。 */
-    readonly property int shadowMargin: bar.margin
+    /*! 投影余量（**屏幕像素**）—— Python 摆放时扣掉；竖条垂直居中时它上下对称，
+        无需特殊处理。跟着 ``scaleFactor`` 走，否则缩放后贴边 / 居中会漂。 */
+    readonly property int shadowMargin: Math.round(bar.margin * scaleFactor)
     /*! 高光环是否真的在画（自检用；经 FlyoutSurface 透出，与横版同名同义）。 */
     readonly property bool highlightRingVisible: bar.highlightRingVisible
 
-    /*! 本条表面（不含投影余量）的交互矩形，坐标相对本 Item。 */
-    readonly property rect interactiveRect: Qt.rect(
-        bar.margin, bar.margin,
-        Math.max(width - bar.margin * 2, 0),
-        Math.max(height - bar.margin * 2, 0)
-    )
+    /*! 本条表面（不含投影余量）的交互矩形，坐标相对本 Item（= 屏幕像素，
+        已按 ``scaleFactor`` 换算）。 */
+    readonly property rect interactiveRect: {
+        var s = scaleFactor
+        var m = bar.margin * s
+        return Qt.rect(m, m,
+            Math.max(bar.implicitWidth * s - m * 2, 0),
+            Math.max(bar.implicitHeight * s - m * 2, 0))
+    }
 
-    implicitWidth: bar.implicitWidth
-    implicitHeight: bar.implicitHeight
+    /*! 根 Item 的尺寸 = **缩放后**的屏幕像素（Python 摆位 / 区域塑形 / 编辑器
+        预览都读它，见 ``scaleFactor`` 的说明）。 */
+    implicitWidth: Math.round(bar.implicitWidth * scaleFactor)
+    implicitHeight: Math.round(bar.implicitHeight * scaleFactor)
     width: implicitWidth
     height: implicitHeight
 
     FlyoutSurface {
         id: bar
-        anchors.fill: parent
+        // ⚠️ 不能用 ``anchors.fill: parent``：根 Item 已是缩放后的尺寸，再铺满
+        //    就是双重缩放。底板保持设计尺寸，缩放交给 ``scale``（左上角钉死，
+        //    与根 Item 的 0 点重合）。
+        width: implicitWidth
+        height: implicitHeight
+        scale: pager.scaleFactor
+        transformOrigin: Item.TopLeft
         vertical: true
         // 横版的两个留白档原样转置：沿轴 4（横版的左右）、横向 9（横版的上下）
         paddingX: pager.crossPadding

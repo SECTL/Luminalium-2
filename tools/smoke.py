@@ -18,6 +18,13 @@
    （含卡内控件：下拉与 8 个色板圆点 + 当前色标记），「通用」页只剩 2 张卡；
    「放映」页**整页删除** —— 导航层 / 页面层 / 文件层 / 源码残留四层守卫；
    快捷方式目录里的 ``presentation`` 项随页面一起删（否则成了死链）
+5c. 「通用 → 启动 → 开机自启」（2026-10-04 用户指令：「打开之后程序会随操作系统
+   启动而启动，关闭也必须有效无误」）：卡与开关在、开关回显的是**注册表实际状态**
+   （不是 ``config.json`` 里的影子值）、``SETTING_PATHS`` 里有 ``autostart``；
+   并且**真的开关一次本机注册表** —— 开 → ``HKCU\\...\\Run`` 里出现 ``Luminalium2``
+   且命令行指向本工程入口；关 → 那个值**被删掉**（不是写空串）；再真实鼠标点一下
+   开关，证明 QML ``onToggled`` 真接上了后端。⚠️ 动的是开发机真实注册表，测完
+   原样还原（``_restore_run_value``）并断言无副作用
 6. 配置读取与日志写入正常
 7. 启动画面（设计稿还原）：按 2984:1679 比例居中、无标题栏且**刻意不登记 RinUI**、
    各元素落在设计稿位置（按 ``k = 宽/2984`` 缩放）、描边贴住外沿、进度填充与
@@ -25,7 +32,8 @@
 8. 主界面编辑器（独立窗口）：懒创建、能从快捷面板的快捷方式派发打开、
    交给 RinUI 管、只隐藏不销毁；设置导航里「外观」已改名「主界面」，
    且「主界面」页里有推广卡「编辑主界面的新方式」（左图 + 右文 + 右下按钮，
-   按钮能真的把编辑器叫起来）
+   按钮能真的把编辑器叫起来）；「主界面」页的「缩放大小」滑块（2026-10-05
+   用户指令）能把顶层窗口里的组件按倍率放大 / 缩小（``presentation.scale``）
 9. 编辑器的**顶层窗口预览舞台**：舞台平面 = 放映显示器 1:1 坐标系、外框跟着
    相机、控制条副本与配置里启用的角落一一对应且位置与
    ``windows.py::_position_dock`` 同源、预览层有鼠标屏蔽、亚克力已打到窗口
@@ -49,6 +57,41 @@
     项（仓库 / 反馈 / 依赖）齐全并默认展开、**「开源许可」项已按用户指令删掉**、
     **仓库地址在打开按钮左边且是等宽字体**、**依赖与参考的标题与链接同列上下排**
     （后两条是用户指定的版式，改错了截图未必看得出）
+13. 设置页「关于」的**回声洞**（照 L1 ``#echo-cave-item`` 复刻的有状态机交互）：
+    初始提示语且「复制」藏着 → 点击进「获取中...」→ 后端异步取句 → **打字机**
+    逐字打完（50ms/字）后「复制」才出现 → 点「复制」把**完整句子**送进剪贴板
+    （不是中途前缀）。⚠️ 走的是真实入口（MouseArea → requestSentence），不是
+    直接调函数 —— 否则验不到「复制按钮压在 MouseArea 上」的层级。
+    等取句的预算给到 15s：本环境下**进程内第一次**网络调用会被拖住几秒，而那笔
+    一次性开销记在第一个碰网络的线程头上（正好是取句线程）。``echo_cave.warm_up()``
+    已在启动时把大头提前结掉，这里再留余量防慢机器 / 沙箱假失败
+14. 设置页「关于」的**诊断信息**（ClassIsland 那版：独立一张卡 + 只读文本框弹窗）：
+    入口是**页面上的独立 ``SettingCard``**（自带 chevron，且**不得**再挂在
+    ``aboutAppCard`` 里 —— 2026-10-04 用户指令「移出程序信息那一栏」）→ 点开是
+    ``Rin.Dialog``，有「加载中...」态（验标签与 ``dialog.loading`` 的绑定，不去抢
+    那几十毫秒的窗口）→ 正文是**只读多行文本框**（2026-10-04 用户指令「dialog
+    内套文本框」；必须是 ``Rin.ScrollableTextArea`` —— ``Rin.TextArea`` 不会滚，
+    用户指令「滚不动」），``readOnly`` 且 ``enabled`` 仍为真，``contentItem`` 是
+    内容溢出的 ``Flickable``（写 ``contentY`` 认账才算「能滚」），
+    内容 = 采集到的 ``Key: Value`` 逐行、条数与字段数一致、含 ``AppVersion`` →
+    对话框比 RinUI 默认上限 600 更宽（用户指令「宽度不够宽」）→
+    footer 是 RinUI 的**标准底栏 ``Rin.DialogButtonBox``**（2026-10-04 用户指令
+    「RinUI 的 dialog 是有标准样式的」；裸 ``RowLayout`` 不算），里面的
+    「复制全部」复制出同一份文本（**与文本框逐字一致**）且按钮回显「已复制」→
+    **等它真的关掉**（模态遮罩不撤会吃掉后面「真鼠标点击」那几项）。
+    文本口径与 ClassIsland ``GetDiagnosticInfo()`` 对齐（2026-10-04 用户指令
+    「内容也和 ClassIsland 的那种诊断信息统一」）：**英文 PascalCase 键 + 原始值，
+    不做中文映射** —— 所以这里断言的是 ``SystemOsVersion: `` 这种行，而不是
+    旧版的「系统类型: 」。
+    ⚠️ 对话框本体是 ``QQC2.Popup``（QObject 而非 Item），必须按 QObject 树找，
+    且要从**窗口**往下找（``contentItem`` 那条链上没有 QML 对象）；
+    ``property var`` 读回来是 ``QJSValue``，要过 ``_js_list`` 才能当 list 用
+15. 设置窗口标题栏的**版本号**（2026-10-04 用户指令「在设置的三大键左侧显示程序
+    的版本号」）：挂在 ``titleBarHost``（RinUI ``TitleBar`` 里那块 ``fillWidth``
+    的中间区，夹在导航标题与三个窗口按钮之间），文案 = ``Backend.appVersion``，
+    几何上必须落在三个 ``CtrlBtn`` 的**左边**（按钮本身没有 objectName，按类名
+    找），且**不得越过 ``titleBarHost`` 的右缘** —— 那块带 ``clip: true``，
+    负的 ``rightMargin`` 会把版本号裁成 ``26.0`` 半截
 
 用法::
 
@@ -64,6 +107,7 @@ import os
 import re
 import sys
 import traceback
+import winreg
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -71,11 +115,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from PySide6.QtCore import Q_ARG, QMetaObject, QPoint, QPointF, Qt, QTimer  # noqa: E402
+from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QPoint, QPointF, Qt, QTimer  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtGui import QColor, QCursor, QGuiApplication  # noqa: E402
 
 from app import ppt_controller  # noqa: E402
+from app import autostart  # noqa: E402
 from app.application import LuminaliumApplication  # noqa: E402
 from app.bridge import SETTING_PATHS  # noqa: E402
 from app.paths import DEFAULT_CONFIG_FILE  # noqa: E402
@@ -138,6 +183,99 @@ def _wait_named(item, name: str, timeout_ms: int = 4000, step_ms: int = 50):
         QTest.qWait(step_ms)
         waited += step_ms
     return None
+
+
+def _find_object(root, name: str):
+    """在 **QObject** 树里按 ``objectName`` 找对象（含 ``Popup`` 这类非 Item）。
+
+    ⚠️ 为什么不能只用 :func:`_find_named`：``Rin.Dialog`` 底子是
+    ``QQC2.Popup`` —— 它是 ``QObject`` 而**不是** ``QQuickItem``，不在
+    ``childItems()`` 那棵树里（``_find_named`` 因此永远找不到它）。而它的
+    ``contentItem`` / ``footer`` 虽然真是 Item，却被挂在窗口的 overlay 下，
+    也不在页面子树里。所以对话框本体按 QObject 找，内部控件再从它的
+    ``contentItem`` / ``footer`` 往下找。
+    """
+    if root is None:
+        return None
+    found = root.findChild(QObject, name)
+    return found
+
+
+def _wait_property(item, name: str, predicate, timeout_ms: int = 4000,
+                   step_ms: int = 50):
+    """轮询等某个属性满足条件，返回它最后一次读到的值（超时也返回）。
+
+    ⚠️ ``step_ms`` 别调大。``QTest.qWait`` 会**攥着 GIL** 转（PySide6 没在它
+    外面放锁），而这里等的东西有不少是**纯 Python 后台线程**的产物（诊断采集
+    ``app/diagnostics.py``、回声洞取句）。步长一大，worker 就只能趁每次循环那点
+    字节码间隙蹭时间片 —— 实测把步长从 50ms 调到 600ms，本机 130ms 就能采完的
+    诊断信息拖到 6s+ 还没回来（``tools/scroll_probe.py`` 里留了对照）。50ms 这
+    一档正好：主线程每轮松一次手，worker 攒够时间把活干完。
+    """
+    waited = 0
+    value = None
+    while waited <= timeout_ms:
+        value = item.property(name)
+        if predicate(value):
+            return value
+        QTest.qWait(step_ms)
+        waited += step_ms
+    return value
+
+
+def _wait_text(item, expected: str, timeout_ms: int = 1500, step_ms: int = 20) -> bool:
+    """轮询等 ``text`` 属性等于 ``expected``（用于抓一闪而过的加载态）。"""
+    waited = 0
+    while waited <= timeout_ms:
+        if str(item.property("text")) == expected:
+            return True
+        QTest.qWait(step_ms)
+        waited += step_ms
+    return False
+
+
+def _field_of(field, key: str) -> str:
+    """从 QML 回传的 ``{"key":..., "value":...}`` 里取一个值（dict / 对象都认）。"""
+    try:
+        return str(field.get(key, ""))
+    except AttributeError:
+        return str(getattr(field, key, ""))
+
+
+def _ancestor_named(item, name: str):
+    """沿 ``parentItem()`` 往上找第一个 ``objectName`` 命中的祖先（含自身）。
+
+    用来验**结构归属**：「某项必须 / 不得挂在某张卡里面」这种断言只看
+    ``_find_named`` 是不够的 —— 它在树里找得到，但看不出来是挂在谁下面。
+    """
+    node = item
+    while node is not None:
+        if node.objectName() == name:
+            return node
+        node = node.parentItem()
+    return None
+
+
+def _js_list(value):
+    """把 QML ``property var`` 读回来的东西统一成 Python ``list``。
+
+    ⚠️ 从 QObject 上直接 ``property("fields")`` 读 ``property var`` 拿到的是
+    **``QJSValue``**（不是 list、也不是 dict），直接 ``list()`` 会抛
+    ``TypeError: QJSValue object is not iterable``；``bool()`` 更糟 —— 它对任何
+    QJSValue 都返回 True，看着像「已经拿到数据了」，其实是空的。必须先
+    ``toVariant()`` 转成 Python 对象再判断。
+    """
+    if value is None:
+        return []
+    to_variant = getattr(value, "toVariant", None)
+    if callable(to_variant):
+        try:
+            value = to_variant()
+        except Exception:  # noqa: BLE001 - 转不动就当作空
+            return []
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return []
 
 
 def _collect_named(item, prefix: str):
@@ -254,6 +392,38 @@ def _prop(obj, path: str):
             return None
         cur = cur.property(part)
     return cur
+
+
+def _run_value():
+    """原样读 ``HKCU\\...\\Run`` 里的开机自启值（没有则 ``None``）。
+
+    ⚠️ 这是**本机真实注册表**：自检里会真的开关一次开机自启，用完必须原样
+    还原（见 :func:`_restore_run_value`），别把开发机的启动项改坏。
+    直接读注册表而不是走 ``autostart.is_enabled()``，是为了能断言
+    「关闭之后值**被删掉**了」—— ``is_enabled`` 只给一个 bool，看不出
+    「值还在、只是被任务管理器禁用」这种半吊子状态。
+    """
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, autostart.RUN_KEY_PATH, 0, winreg.KEY_READ
+        ) as key:
+            return winreg.QueryValueEx(key, autostart.VALUE_NAME)[0]
+    except FileNotFoundError:
+        return None
+
+
+def _restore_run_value(previous) -> None:
+    """把自启值还原成 ``previous``（``None`` = 本来就没有 → 删掉）。"""
+    with winreg.CreateKeyEx(
+        winreg.HKEY_CURRENT_USER, autostart.RUN_KEY_PATH, 0, winreg.KEY_SET_VALUE
+    ) as key:
+        if previous is None:
+            try:
+                winreg.DeleteValue(key, autostart.VALUE_NAME)
+            except FileNotFoundError:
+                pass
+        else:
+            winreg.SetValueEx(key, autostart.VALUE_NAME, 0, winreg.REG_SZ, previous)
 
 
 def _wait_stable(key, *, timeout_ms: int = 3000, step_ms: int = 120,
@@ -3124,6 +3294,355 @@ def main() -> int:
             "" if _find_named(page_st, "aboutLicenseItem") is None
             else "aboutLicenseItem 又回来了",
         )
+        # ---- 回声洞（2026-10-04 用户指令「参考 Luminalium 1 给关于页加回声洞」）----
+        #
+        # 照 L1 ``#echo-cave-item`` 复刻的是一条**有状态机**的交互，所以这里不能
+        # 只断言「控件在」：必须走真实链路（点击 → 异步取句 → 打字机）把四个状态
+        # 都跑一遍，否则「取句永远是空的」「打字机不动」这类坏法全都能蒙混过去。
+        echo_row_st = _find_named(page_st, "aboutEchoCave")
+        echo_text_st = _find_named(page_st, "aboutEchoContent")
+        echo_copy_st = _find_named(page_st, "aboutEchoCopyButton")
+        check(
+            "关于页有回声洞行（可点击的设置项 + 正文 + 复制按钮）",
+            echo_row_st is not None and echo_text_st is not None
+            and echo_copy_st is not None,
+            f"row={echo_row_st is not None} text={echo_text_st is not None} "
+            f"copy={echo_copy_st is not None}",
+        )
+        if echo_row_st is not None and echo_text_st is not None:
+            # ① 初始态 = 提示语，且「复制」还藏着（L1 是 display:none）
+            hint_ok = str(echo_text_st.property("text")) == "点击卡片获取回声洞句子"
+            check(
+                "回声洞初始是提示语、复制按钮不显示",
+                hint_ok and not bool(echo_copy_st.property("visible")),
+                f"正文={str(echo_text_st.property('text'))!r} "
+                f"复制可见={bool(echo_copy_st.property('visible'))}",
+            )
+
+            # ② 点击 → 走真实入口（MouseArea → requestSentence → 后端异步取句）
+            #
+            # ⚠️ 不能直接调 ``requestSentence()``：那样就绕过了 MouseArea 的层级
+            # 关系 —— 而「复制按钮压在 MouseArea 上面」正是靠层级实现的（见
+            # ``About.qml`` 里那两条注释），绕过去就验不到「点按钮不会顺带取句」。
+            QMetaObject.invokeMethod(echo_row_st, "requestSentence")
+            loading_seen = _wait_text(echo_text_st, "获取中...")
+            check(
+                "回声洞点击后先进入「获取中...」加载态",
+                loading_seen,
+                f"正文={str(echo_text_st.property('text'))!r}",
+            )
+
+            # ③ 取句回来 → 打字机逐字把句子打出来（50ms/字），打完才亮「复制」
+            #    ⚠️ 等的是**复制按钮出现**（= L1 ``await typewriteText`` 之后那一步），
+            #    不是「正文非空」—— 后者在打字打到第一个字时就成立了。
+            #
+            #    ⚠️ 预算给到 15s，不是「实现慢」：本环境下**进程内第一次**网络调用
+            #    会被拖住好几秒（实测 worker 线程里第一次 ``getaddrinfo`` 要 3s，
+            #    主线程只要 0.01s），而且那笔账记在第一个碰网络的线程头上 ——
+            #    正好是取句线程。``echo_cave.warm_up()`` 已经把大部分开销提前结掉，
+            #    这里再留足余量，免得自检在慢机器 / 沙箱里假失败。
+            _wait_property(echo_copy_st, "visible", lambda v: bool(v), timeout_ms=15000)
+            # ⚠️ 拿 ``fullText``（原始句子）而不是正文 ``text``：正文是富文本，
+            # 句子里若有 ``<`` ``&`` 会被转义（``escapeHtml``），拿它跟剪贴板比
+            # 会在含特殊字符的句子上假失败。复制按钮复制的正是 ``fullText``。
+            sentence = str(echo_row_st.property("fullText"))
+            typing_left = bool(echo_row_st.property("typing"))
+            check(
+                "回声洞取到句子并用打字机打完（打完后复制按钮才出现）",
+                sentence != "" and not typing_left
+                and bool(echo_copy_st.property("visible")),
+                f"句子={sentence!r} 仍在打字={typing_left} "
+                f"复制可见={bool(echo_copy_st.property('visible'))}",
+            )
+
+            # ④ 「复制」把**完整句子**送进剪贴板（不是打字机中途的前缀）
+            if sentence:
+                QMetaObject.invokeMethod(echo_copy_st, "clicked")
+                QTest.qWait(60)
+                check(
+                    "回声洞「复制」把完整句子送进剪贴板",
+                    QGuiApplication.clipboard().text() == sentence,
+                    f"剪贴板={QGuiApplication.clipboard().text()!r} "
+                    f"期望={sentence!r}",
+                )
+                check(
+                    "回声洞「复制」点后按钮文案变「已复制」",
+                    str(echo_copy_st.property("text")) == "已复制",
+                    f"按钮文案={str(echo_copy_st.property('text'))!r}",
+                )
+
+        # ---- 诊断信息（2026-10-04 用户指令「像 ClassIsland 那样加一条显示
+        #      诊断信息的入口」；同日第二轮：「移出程序信息那一栏」+「dialog
+        #      内套文本框」）----
+        #
+        # 现在钉的是：入口是**页面上的独立一张卡**（不再挂在应用信息卡里）、点开
+        # 有加载态、正文是**只读多行文本框**且内容 = 采集到的 ``键: 值`` 逐行、
+        # 「复制全部」与文本框逐字一致。
+        diag_entry_st = _find_named(page_st, "aboutDiagnosticsEntry")
+        # ⚠️ 对话框本体**不能**用 ``_find_named``：``Rin.Dialog`` 底子是
+        # ``QQC2.Popup``（QObject 而非 QQuickItem），不在 ``childItems()`` 树里；
+        # 而它的 ``contentItem`` / ``footer`` 又被挂到窗口 overlay 下，也不在页面
+        # 子树里。所以本体按 QObject 找，内部控件再从 contentItem/footer 往下找。
+        #
+        # ⚠️ 而且要从**窗口**（``settings``）往下找，不能从 ``page_st``
+        # （= ``settings.contentItem()``）：QML 建出来的对象挂在**窗口**的
+        # QObject 树下，``contentItem`` 那条链上只有 Qt 自己的两个内部项
+        # （实测 ``findChildren`` 只回 10 个对象、连 ``aboutEchoCave`` 都找不到）。
+        diag_dialog_st = _find_object(settings, "aboutDiagnosticsDialog")
+        check(
+            "关于页有「查看诊断信息」入口（SettingCard，自带 chevron）",
+            diag_entry_st is not None and bool(diag_entry_st.property("clickable")),
+            "" if diag_entry_st is not None else "未找到 aboutDiagnosticsEntry",
+        )
+        # 2026-10-04 用户指令「查看诊断信息那一个卡移出程序信息那一栏」：
+        # 它必须**不再**挂在应用信息卡（``aboutAppCard``）里，而是页面上的独立一张卡。
+        # 只断言「找得到」是抓不到这个回归的 —— 挪回卡里照样找得到。
+        diag_in_app_card = (diag_entry_st is not None
+                            and _ancestor_named(diag_entry_st,
+                                                "aboutAppCard") is not None)
+        check(
+            "「查看诊断信息」已移出应用信息卡、独立成卡",
+            diag_entry_st is not None and not diag_in_app_card,
+            f"入口={diag_entry_st is not None} 仍在应用信息卡内={diag_in_app_card}",
+        )
+        check(
+            "关于页有诊断信息对话框（Rin.Dialog）",
+            diag_dialog_st is not None,
+            "" if diag_dialog_st is not None else "未找到 aboutDiagnosticsDialog",
+        )
+        if diag_dialog_st is not None:
+            QMetaObject.invokeMethod(diag_dialog_st, "open")
+
+            # 2026-10-04 用户指令「宽度不够宽」：``Rin.Dialog`` 把 ``implicitWidth``
+            # 夹在 ``Utils.dialogMaximumWidth``（= 600）以内，诊断文本里
+            # ``AppExecutingEntrance: G:\...\.venv\Scripts\python.exe`` 这种长行一折
+            # 就断成两截。About.qml 在派生组件里重写了那条绑定把上限抬到 880 ——
+            # 只断言「对话框存在」是抓不到这个回归的。
+            diag_width = float(diag_dialog_st.property("width") or 0.0)
+            check(
+                "诊断对话框比 RinUI 默认上限（600）更宽",
+                diag_width > 600.0,
+                f"宽度={diag_width:.0f}（RinUI 默认上限 600）",
+            )
+
+            # 打开后 ``onOpened`` 才会跑（QQC2 的 open 是带转场的异步），等它落地。
+            content_st = _wait_property(
+                diag_dialog_st, "contentItem", lambda v: v is not None,
+                timeout_ms=3000)
+            footer_st = diag_dialog_st.property("footer")
+            loading_st = (_find_named(content_st, "aboutDiagnosticsLoading")
+                          if content_st is not None else None)
+
+            # 「加载中...」态：本机采集只要几十毫秒，硬抢时间点必然 flaky
+            # （``onOpened`` 里 loading=true → 线程采集 → ``diagnosticsReady``
+            # 里 loading=false，中间窗口可能不到一帧）。所以直接验**绑定**：
+            # QML 的简单绑定是同步求值的，把 ``loading`` 置 true，标签必须立刻
+            # 显形。这检的正是真风险 —— 标签没绑到 ``dialog.loading`` 上。
+            saw_transient = bool(diag_dialog_st.property("loading"))
+            loading_bind_ok = False
+            if loading_st is not None:
+                diag_dialog_st.setProperty("loading", True)
+                loading_bind_ok = bool(loading_st.property("visible"))
+                diag_dialog_st.setProperty("loading", False)
+            check(
+                "诊断对话框有「加载中...」态（标签绑在 dialog.loading 上）",
+                loading_st is not None and loading_bind_ok
+                and str(loading_st.property("text")) == "加载中...",
+                (f"绑定生效={loading_bind_ok} 抓到真实过渡={saw_transient} "
+                 f"文案={str(loading_st.property('text'))!r}")
+                if loading_st is not None else "未找到 aboutDiagnosticsLoading",
+            )
+
+            # 采集线程回填 ``fields``（``diagnosticsReady`` 信号）→ 等它非空
+            # ⚠️ 谓词必须过 ``_js_list``：``property var`` 读回来是 QJSValue，
+            # 直接 ``bool()`` 恒为 True，等于没等。
+            _wait_property(
+                diag_dialog_st, "fields", lambda v: bool(_js_list(v)),
+                timeout_ms=8000)
+            # ⚠️ 采集回填之后要**让出一帧**再读文本框。``fields`` 一变，
+            # ``plainText()`` 那条绑定的 ``text`` 立刻更新，但 ``QQuickTextEdit``
+            # 的 ``contentHeight`` 要等下一次布局才落定 —— 抢在中间读会拿到半截值
+            # （2026-10-04 实测：立刻读是 266，稳定后是 386），
+            # 「内容溢出 → 能滚」那条断言会因此假失败。
+            QTest.qWait(200)
+            fields = _js_list(diag_dialog_st.property("fields"))
+            keys = [_field_of(item, "key") for item in fields]
+            values = " ".join(_field_of(item, "value") for item in fields)
+            check(
+                "诊断字段被采齐（含应用版本与运行环境）",
+                len(keys) >= 15 and "AppVersion" in keys
+                and app.backend.appVersion in values
+                and "Python" in keys and "CPU" in keys,
+                f"字段数={len(keys)} 含AppVersion={'AppVersion' in keys} "
+                f"版本值命中={app.backend.appVersion in values}",
+            )
+            # 2026-10-04 用户指令「内容也和 ClassIsland 的那种诊断信息统一」：
+            # 键名要落到 ClassIsland ``GetDiagnosticInfo()`` 那一套英文 PascalCase
+            # 上（旧版是 OSType / DeviceModel / AppChannel / CurrentRunningDirectory）。
+            # 这条拦「采集侧改了键名、界面侧还照旧键拼文本」这种半拉子改动 ——
+            # 光断言「有 AppVersion」是抓不到的。
+            classisland_keys = {
+                "SystemOsVersion", "SystemOsArch", "SystemDeviceName",
+                "SystemDeviceVendor", "AppPackageRoot", "AppRoot",
+                "AppCurrentDirectory", "AppExecutingEntrance",
+                "AppCurrentMemoryUsage", "AppVersion", "AppSubChannel",
+            }
+            stale_keys = {"OSType", "OSVersion", "DeviceModel", "DeviceVendor",
+                          "AppChannel", "CurrentRunningDirectory"}
+            check(
+                "诊断键名与 ClassIsland 对齐（英文 PascalCase，无旧键残留）",
+                classisland_keys <= set(keys) and not (stale_keys & set(keys)),
+                f"缺={sorted(classisland_keys - set(keys))} "
+                f"残留旧键={sorted(stale_keys & set(keys))}",
+            )
+            check(
+                "诊断对话框不再显示「加载中...」（采集已回来）",
+                not bool(diag_dialog_st.property("loading")),
+            )
+
+            # 2026-10-04 用户指令「RinUI 的 dialog 是有标准样式的，你去看看 RinUI
+            # 的用法」：footer 必须是 RinUI 的**标准底栏** ``Rin.DialogButtonBox``
+            # （自带底栏背景 + 顶部分隔线）。裸 ``RowLayout`` 也「能用」—— 但那正是
+            # 被否掉的做法，只断言「按钮找得到」抓不到这个回归。
+            footer_class = ""
+            try:
+                footer_class = (str(footer_st.metaObject().className())
+                                if footer_st is not None else "")
+            except Exception:  # noqa: BLE001 - 拿不到类型名不该带崩自检
+                footer_class = ""
+            check(
+                "诊断对话框底栏是 RinUI 标准 DialogButtonBox（不是裸 RowLayout）",
+                "DialogButtonBox" in footer_class,
+                f"footer 类型={footer_class!r}",
+            )
+
+            # 2026-10-04 用户指令：「打开的 dialog 要是 ClassIsland 的那种，
+            # dialog 内套文本框」—— 正文必须是一个**只读多行文本框**，而不是
+            # 原来的键值表格（Flickable + Repeater）。
+            box_st = (_find_named(content_st, "aboutDiagnosticsBox")
+                      if content_st is not None else None)
+            # ⚠️ ``enabled`` 必须为真：``Rin.TextArea`` 把 ``enabled`` 绑在
+            # ``editable`` 上，用 ``editable: false`` 实现只读会把整框打成禁用 ——
+            # 那样既不能滚也不能选中文字，只剩个样子。只读要用 ``readOnly``。
+            #
+            # ⚠️ 别去读 ``wrapMode``：它是 ``QQuickTextEdit::WrapMode`` 枚举，
+            # PySide 没给这个类型注册转换器，``property("wrapMode")`` 直接抛
+            # ``RuntimeError: Can't find converter for ...``，会把整段自检带崩
+            # （踩过）。要验换行看 ``width`` / 行数这类可转换的量。
+            box_text = str(box_st.property("text")) if box_st is not None else ""
+            box_lines = [ln for ln in box_text.split("\n") if ln]
+            box_h = float(box_st.property("height")) if box_st is not None else 0.0
+            check(
+                "诊断对话框里是只读多行文本框（ClassIsland 那种）",
+                box_st is not None and bool(box_st.property("readOnly"))
+                and bool(box_st.property("enabled"))
+                and bool(box_st.property("visible"))
+                and box_h > 100,
+                f"框={box_st is not None} "
+                f"只读={bool(box_st.property('readOnly')) if box_st is not None else None} "
+                f"可用={bool(box_st.property('enabled')) if box_st is not None else None} "
+                f"高={box_h:.0f}",
+            )
+            # 2026-10-04 用户指令「滚不动」：文本框必须是 ``Rin.ScrollableTextArea``
+            # 而不是 ``Rin.TextArea``。后者是 ``QtQuick.Controls.Basic`` 的 TextArea，
+            # ``contentItem`` 取回来是 None，文本超长时只是把 ``implicitHeight`` 撑大
+            # （实测 652）再被 ``Layout.preferredHeight: 320`` 裁掉，滚轮一概无效。
+            #
+            # 这里钉三件事：① 类名是 ``ScrollableTextArea``；② 它的 ``contentItem``
+            # 是 ``QQuickFlickable``（ScrollView 给非 Flickable 内容套的那层）；
+            # ③ 内容比视口高、且写 ``contentY`` 认账 —— 这才是「能滚」的充要条件
+            # （Flickable 的滚轮 / 拖动是 Qt 自带行为，不用自己接事件）。
+            box_class = ""
+            try:
+                box_class = (str(box_st.metaObject().className())
+                             if box_st is not None else "")
+            except Exception:  # noqa: BLE001 - 拿不到类型名不该带崩自检
+                box_class = ""
+            scroll_ok = False
+            scroll_detail = "无 contentItem"
+            if box_st is not None:
+                box_ci = box_st.property("contentItem")
+                if box_ci is not None:
+                    ci_class = str(box_ci.metaObject().className())
+                    ci_h = float(box_ci.property("height") or 0.0)
+                    ci_content_h = float(box_ci.property("contentHeight") or 0.0)
+                    box_ci.setProperty("contentY", 120.0)
+                    ci_y = float(box_ci.property("contentY") or 0.0)
+                    box_ci.setProperty("contentY", 0.0)
+                    scroll_ok = ("Flickable" in ci_class
+                                 and ci_content_h > ci_h + 1
+                                 and ci_y > 1.0)
+                    scroll_detail = (f"contentItem={ci_class} "
+                                     f"contentHeight={ci_content_h:.0f} "
+                                     f"height={ci_h:.0f} 写contentY→{ci_y:.0f}")
+            check(
+                "诊断文本框能滚（ScrollableTextArea + 内容溢出的 Flickable）",
+                "ScrollableTextArea" in box_class and scroll_ok,
+                f"类名={box_class!r} {scroll_detail}",
+            )
+            check(
+                "文本框内容 = 「Key: Value」逐行（条数与采集字段一致）",
+                len(box_lines) == len(fields) and "AppVersion: " in box_text
+                and "SystemOsVersion: " in box_text
+                and app.backend.appVersion in box_text,
+                f"文本框行数={len(box_lines)} 字段数={len(fields)} "
+                f"含AppVersion行={'AppVersion: ' in box_text}",
+            )
+
+            # 「复制全部」= ``Key: Value`` 逐行，且与文本框里显示的一致。
+            #
+            # ⚠️ 底栏换成 ``Rin.DialogButtonBox`` 之后，按钮不再是 footer 的直接
+            # 子项 —— 它们被重挂到 DialogButtonBox 的 ``contentItem``（一个
+            # RowLayout）下面。``_find_named`` 走 ``childItems()`` 递归，正常情况
+            # 能穿到；这里再留一条 QObject 树的兜底，免得哪天 Qt 改了重挂方式就
+            # 只剩一句「footer 里未找到复制按钮」，看不出是结构变了还是真没了。
+            copy_btn_st = None
+            if footer_st is not None:
+                copy_btn_st = _find_named(footer_st, "aboutDiagnosticsCopyButton")
+                if copy_btn_st is None:
+                    copy_btn_st = footer_st.findChild(QObject, "aboutDiagnosticsCopyButton")
+            check(
+                "诊断对话框底部有「复制全部」按钮（在标准底栏里）",
+                copy_btn_st is not None,
+                "" if copy_btn_st is not None else "footer 里未找到复制按钮",
+            )
+            if copy_btn_st is not None:
+                QMetaObject.invokeMethod(copy_btn_st, "clicked")
+                QTest.qWait(80)
+                clipboard_text = QGuiApplication.clipboard().text()
+                check(
+                    "诊断「复制全部」复制出「Key: Value」逐行文本",
+                    "AppVersion: " in clipboard_text and "\n" in clipboard_text
+                    and app.backend.appVersion in clipboard_text
+                    and "LogFile: " in clipboard_text,
+                    f"前 80 字={clipboard_text[:80]!r}",
+                )
+                # 「看到的 = 复制到的」：文本框与剪贴板必须**逐字相同**（同源
+                # ``plainText()``）。这条拦「两边各拼一遍、拼法慢慢跑偏」。
+                check(
+                    "「复制全部」与文本框内容逐字一致（看到的 = 复制到的）",
+                    box_text != "" and clipboard_text == box_text,
+                    f"剪贴板 {len(clipboard_text)} 字 / 文本框 {len(box_text)} 字",
+                )
+                check(
+                    "诊断「复制全部」点后按钮文案变「已复制」",
+                    str(copy_btn_st.property("text")) == "已复制",
+                    f"按钮文案={str(copy_btn_st.property('text'))!r}",
+                )
+            # ⚠️ 必须**等它真的关掉**再往下走：``Rin.Dialog`` 是模态的
+            # （``QQC2.Overlay.modal`` 那层遮罩），而 ``close()`` 只是发起关闭 ——
+            # 退出转场（约 100~200ms）跑完之前 ``visible`` 仍是 true、遮罩还在。
+            # 不等的话后面「真鼠标点击」那几项会被遮罩整个吃掉，症状是
+            # 「热区结构全对、点击却 count=0」，看着像 MouseArea 坏了。
+            QMetaObject.invokeMethod(diag_dialog_st, "close")
+            left_visible = _wait_property(
+                diag_dialog_st, "visible", lambda v: not bool(v), timeout_ms=3000)
+            check(
+                "诊断对话框能关掉（模态遮罩随之撤掉）",
+                not bool(left_visible),
+                f"visible={left_visible!r}",
+            )
+            QTest.qWait(120)
         # ④ 两条版式：仓库地址在打开按钮左边（等宽字体）；依赖的标题与链接
         #    **同列、上下排**（并排时标题会被右栏推到卡片右边，``x`` 会很大）。
         url_st = _find_named(page_st, "aboutRepoUrl")
@@ -3311,8 +3830,204 @@ def main() -> int:
                     f"filter={'Y' if debug_hwnd in filter_hwnds_b else 'N'} "
                     f"theme={'Y' if debug_hwnd in theme_hwnds_b else 'N'}",
                 )
+                # ---- 错误处理：手动报错 / 手动崩溃（2026-10-05 用户指令
+                #      「在调试菜单中添加手动报错和手动崩溃」）----
+                #
+                # 两张卡各带一枚「触发」按钮：「手动报错」编一条**非致命**报告，
+                # 「手动崩溃」走**真实的**未捕获异常链路（``sys.excepthook``）。
+                # 断言分两层 —— ① 结构：两张卡 + 各自的按钮都在；② 行为：真鼠标
+                # 点下去之后 ``ErrorHandler`` 真的收到报告，且档位 / 主按钮对得上。
+                #
+                # 按钮按 ``objectName`` 找（不按类名数数量）：``Rin.Button`` 的
+                # 运行时类名带 QMLTYPE 后缀，``_collect_type`` 那种前缀匹配靠不住。
+                err_card = _find_item(
+                    debug_win.contentItem(),
+                    lambda it: it.objectName() == "debugSimulateError",
+                )
+                crash_card = _find_item(
+                    debug_win.contentItem(),
+                    lambda it: it.objectName() == "debugSimulateCrash",
+                )
+                err_btn = _find_item(
+                    debug_win.contentItem(),
+                    lambda it: it.objectName() == "debugSimulateErrorButton",
+                )
+                crash_btn = _find_item(
+                    debug_win.contentItem(),
+                    lambda it: it.objectName() == "debugSimulateCrashButton",
+                )
+                check(
+                    "调试窗口有「手动报错」「手动崩溃」两张卡（各带触发按钮）",
+                    None not in (err_card, crash_card, err_btn, crash_btn),
+                    f"card_err={'Y' if err_card is not None else 'N'} "
+                    f"card_crash={'Y' if crash_card is not None else 'N'} "
+                    f"btn_err={'Y' if err_btn is not None else 'N'} "
+                    f"btn_crash={'Y' if crash_btn is not None else 'N'}",
+                )
+                if None not in (err_card, crash_card, err_btn, crash_btn):
+                    eh = app.error_handler
+                    # 行为①：真鼠标点「手动报错」→ 出**错误**报告（主按钮=忽略）
+                    _bx, _by = _origin(debug_win, err_btn)
+                    QTest.mouseClick(
+                        debug_win, Qt.LeftButton, Qt.NoModifier,
+                        QPoint(int(_bx + err_btn.width() / 2),
+                               int(_by + err_btn.height() / 2)),
+                    )
+                    check(
+                        "点「手动报错」→ 出的是错误报告（主按钮=忽略）",
+                        eh.property("hasReport") is True
+                        and eh.property("isCrash") is False
+                        and eh.property("primaryAction") == "ignore",
+                        f"hasReport={eh.property('hasReport')} "
+                        f"isCrash={eh.property('isCrash')} "
+                        f"primary={eh.property('primaryAction')!r}",
+                    )
+                    # 行为②：真鼠标点「手动崩溃」→ 出**崩溃**报告（主按钮=重新启动）
+                    _bx, _by = _origin(debug_win, crash_btn)
+                    QTest.mouseClick(
+                        debug_win, Qt.LeftButton, Qt.NoModifier,
+                        QPoint(int(_bx + crash_btn.width() / 2),
+                               int(_by + crash_btn.height() / 2)),
+                    )
+                    check(
+                        "点「手动崩溃」→ 出的是崩溃报告（主按钮=重新启动）",
+                        eh.property("hasReport") is True
+                        and eh.property("isCrash") is True
+                        and eh.property("primaryAction") == "restart",
+                        f"hasReport={eh.property('hasReport')} "
+                        f"isCrash={eh.property('isCrash')} "
+                        f"primary={eh.property('primaryAction')!r}",
+                    )
+                    # 版式：2026-10-05 用户指令「错误报告程序为什么如此小 应当宽大
+                    # 一些 并且你需要看着像 dialog」。两件事分开断言 ——
+                    # ① 尺寸真的放大了（原来钉死 560×470，堆栈框只有 512 宽，
+                    #    一条 Python 回溯每行都要折）；
+                    # ② 按钮条是**顶着窗口下缘**的页脚（对话框的做法），而不是
+                    #    飘在正文流里 —— 后者底部会留出 24 的外边距。
+                    rep = app.windows.error_report
+                    rep_ci = rep.contentItem() if rep is not None else None
+                    footer = None if rep_ci is None else _find_item(
+                        rep_ci, lambda it: it.objectName() == "errorReportFooter")
+                    rep_size = (f"{rep.width()}x{rep.height()}"
+                                if rep is not None else "无")
+                    check(
+                        "报告窗够宽（≥640，不再是 560）",
+                        rep is not None and rep.width() >= 640,
+                        f"size={rep_size}（高度分收起/展开两档，不钉死）",
+                    )
+                    _gap = -1.0
+                    if footer is not None and rep_ci is not None:
+                        _fy = _origin(rep, footer)[1]
+                        _gap = rep_ci.height() - (_fy + footer.height())
+                    check(
+                        "报告窗的按钮条是顶着下缘的对话框页脚",
+                        # ⚠️ 阈值 20 而不是「贴死 0」：``Rin.Window`` 的内容区自己带
+                        # 一圈 ``Utils.windowDragArea`` 边距，实测收起档 14px /
+                        # 展开档 5px 都属正常。判据是「明显小于正文流的 24 外边距」。
+                        0 <= _gap <= 20,
+                        f"页脚底距窗口底 {_gap:.0f}px（飘在正文流里会 ≥24）",
+                    )
+                    # 照 Class Widgets 2 的版式（2026-10-05）：环境网格常显，
+                    # 技术细节（堆栈）**默认收起** —— 原来一上来就糊整段 traceback
+                    # 正是「敷衍」的来源。
+                    env_grid = None if rep_ci is None else _find_item(
+                        rep_ci, lambda it: it.objectName() == "errorReportEnvironment")
+                    toggle = None if rep_ci is None else _find_item(
+                        rep_ci, lambda it: it.objectName() == "errorReportDetailsToggle")
+                    trace_box = None if rep_ci is None else _find_item(
+                        rep_ci, lambda it: it.objectName() == "errorReportTracebackBox")
+                    check(
+                        "报告窗有环境网格，且技术细节默认收起",
+                        env_grid is not None and toggle is not None
+                        and trace_box is not None and not trace_box.isVisible(),
+                        f"env={'Y' if env_grid is not None else 'N'} "
+                        f"toggle={'Y' if toggle is not None else 'N'} "
+                        f"trace_visible="
+                        f"{None if trace_box is None else trace_box.isVisible()}",
+                    )
+                    # 真鼠标点「查看详细信息」→ 窗口变高 + 堆栈框现身
+                    _h_before = rep.height() if rep is not None else 0
+                    if toggle is not None and rep is not None:
+                        _tx, _ty = _origin(rep, toggle)
+                        QTest.mouseClick(
+                            rep, Qt.LeftButton, Qt.NoModifier,
+                            QPoint(int(_tx + toggle.width() / 2),
+                                   int(_ty + toggle.height() / 2)),
+                        )
+                        QTest.qWait(120)
+                    _h_after = rep.height() if rep is not None else 0
+                    check(
+                        "点「查看详细信息」→ 窗口变高且堆栈框现身",
+                        _h_after > _h_before and trace_box is not None
+                        and trace_box.isVisible(),
+                        f"高 {_h_before} → {_h_after}，堆栈可见="
+                        f"{None if trace_box is None else trace_box.isVisible()}",
+                    )
+
+                    # 收尾：崩溃那一步会请求弹出报告窗，把它收回去 —— 否则后面
+                    # 版本号 / 设置项的断言会落在一张浮着的报告窗后面。
+                    app.windows.hide_error_report()
+
                 app.backend.closeDebugWindow()
                 check("调试窗口可关闭", not debug_win.isVisible())
+
+            # ---- 标题栏版本号（2026-10-04 用户指令「在设置的三大键左侧显示程序
+            #      的版本号」）----
+            #
+            # 挂点是 ``titleBarHost``（``TitleBar`` 里那块 ``Layout.fillWidth`` 的
+            # 中间区），它在标题栏那条 RowLayout 里夹在「导航标题」与「三个窗口
+            # 按钮」之间 —— 所以往它右缘一贴就是三大键的正左边。
+            #
+            # ⚠️ 「在三大键左侧」必须拿**窗口按钮的实际坐标**比，不能只断言
+            # 「挂在 titleBarHost 里」：挂错成 ``titleBarLeadingHost`` 也照样挂在
+            # 标题栏里，但会跑到窗口左边去（那两个 alias 只差一个词）。
+            version_label = _find_item(
+                settings.contentItem(),
+                lambda it: it.objectName() == "settingsVersionLabel",
+            )
+            check(
+                "标题栏有版本号标签",
+                version_label is not None,
+                "" if version_label is not None else "未找到 settingsVersionLabel",
+            )
+            if version_label is not None:
+                label_x, _label_y = _origin(settings, version_label)
+                label_right = label_x + version_label.width()
+                # 三个窗口按钮是 RinUI 的 ``CtrlBtn``（mode 0=最大化 / 1=最小化 /
+                # 2=关闭），RinUI 没给它们 objectName，只能按类名找。
+                ctrl_btns = [
+                    it for it in _collect_type(settings.contentItem(), "CtrlBtn")
+                    if it.isVisible()
+                ]
+                ctrl_left = min((_origin(settings, it)[0] for it in ctrl_btns),
+                                default=float("inf"))
+                check(
+                    "版本号在三大键左侧（按钮在窗口右半区）",
+                    bool(ctrl_btns)
+                    and label_right <= ctrl_left
+                    and ctrl_left > settings.width() / 2,
+                    f"版本号 x=[{label_x:.0f},{label_right:.0f}] "
+                    f"三大键最左 x={ctrl_left:.0f} 按钮数={len(ctrl_btns)} "
+                    f"窗口宽={settings.width()}",
+                )
+                check(
+                    "版本号文案 = Backend.appVersion",
+                    str(version_label.property("text")) == app.backend.appVersion,
+                    f"文案={str(version_label.property('text'))!r} "
+                    f"期望={app.backend.appVersion!r}",
+                )
+                # ⚠️ 标签必须待在 ``titleBarHost`` 的**边界内**：那块带
+                # ``clip: true``，拿负的 ``rightMargin`` 把它顶出去会被裁成
+                # ``26.0`` 这种半截（2026-10-04 踩过）。
+                label_host = version_label.parentItem()
+                if label_host is not None:
+                    host_right = _origin(settings, label_host)[0] + label_host.width()
+                    check(
+                        "版本号没被 titleBarHost 的 clip 裁掉",
+                        label_right <= host_right + 0.5,
+                        f"标签右缘={label_right:.0f} 宿主右缘={host_right:.0f}",
+                    )
+
             app.backend.settingsCloseRequested.emit()
 
         # ---- 主界面编辑器（独立窗口，入口是快捷面板的快捷方式）----
@@ -3542,6 +4257,51 @@ def main() -> int:
                     f"{app.config.get('presentation.margin_x')} 期望 {prev_margin}",
                 )
 
+            # ---- 「缩放大小」滑块（2026-10-05 用户指令：「主界面设置新增缩放
+            #      大小滑块 用于调整顶层窗口中组件的大小」）----
+            # 三层守卫：① 卡在、是滑块、带 % 读数；② **真的接上了** —— 改
+            # ``presentation.scale`` 之后真机控制条的尺寸按倍率走（Python 摆位 /
+            # 区域塑形读的就是控制条的 width/height/shadowMargin，所以「尺寸变了」
+            # 等价于「屏幕上的组件变了」）；③ 自检不留副作用。
+            scale_card = _find_named(settings.contentItem(), "mainInterfaceScale")
+            scale_sliders = [] if scale_card is None else _collect_type(scale_card, "Slider")
+            scale_readout = ("" if scale_card is None else "/".join(
+                str(t.property("text")) for t in _collect_type(scale_card, "Text")))
+            check(
+                "「主界面」页有「缩放大小」滑块（带 % 读数）",
+                scale_card is not None and len(scale_sliders) == 1
+                and "%" in scale_readout,
+                "未找到 objectName=mainInterfaceScale" if scale_card is None
+                else f"滑块={len(scale_sliders)} 读数={scale_readout!r}",
+            )
+            # 真机验证挑**底中那条工具栏**（最宽的一条，量宽度最有区分度）。
+            scale_dock = app.windows._docks.get("bottom_center") or next(
+                iter(app.windows._docks.values()), None)
+            if scale_card is not None and scale_dock is not None:
+                prev_scale = app.config.get("presentation.scale", 1.0)
+                base_w = float(scale_dock.width())
+                app.backend.setSetting("presentation_scale", 2.0)
+                QTest.qWait(150)
+                big_w = float(scale_dock.width())
+                app.backend.setSetting("presentation_scale", 0.5)
+                QTest.qWait(150)
+                small_w = float(scale_dock.width())
+                check(
+                    "缩放滑块真的改变顶层窗口组件的大小（2.0 翻倍 / 0.5 减半）",
+                    abs(big_w - base_w * 2) <= 2 and abs(small_w - base_w * 0.5) <= 2,
+                    f"基准={base_w:.0f} ×2={big_w:.0f} ×0.5={small_w:.0f}",
+                )
+                app.backend.setSetting("presentation_scale", prev_scale)
+                QTest.qWait(150)
+                check(
+                    "缩放自检不留副作用（倍率与组件宽度都已还原）",
+                    abs(float(app.config.get("presentation.scale", 1.0))
+                        - float(prev_scale)) < 1e-6
+                    and abs(float(scale_dock.width()) - base_w) <= 1,
+                    f"scale={app.config.get('presentation.scale')} 期望 {prev_scale} "
+                    f"宽={scale_dock.width():.0f} 期望 {base_w:.0f}",
+                )
+
             # ---- 放映设置页：**整页删除**（2026-10-01 第四轮用户指令）----
             # 页内的设置项早在本轮之前就搬空了（位置 / 外观 → 主界面，退出键样式
             # → 编辑器，组分隔线与页码切换直接删）；这次连**空壳页面本身**也删掉。
@@ -3587,12 +4347,12 @@ def main() -> int:
                 )
                 cards = _collect_type(general, "SettingCard")
                 keep = [
-                    title for title in ("快捷方式锁定", "界面语言")
+                    title for title in ("开机自启", "快捷方式锁定", "界面语言")
                     if _find_text(general, title) is not None
                 ]
                 check(
-                    "通用页只剩 2 张卡（快捷方式锁定 + 界面语言）",
-                    len(cards) == 2 and len(keep) == 2,
+                    "通用页 3 张卡（开机自启 + 快捷方式锁定 + 界面语言）",
+                    len(cards) == 3 and len(keep) == 3,
                     f"卡数={len(cards)} 找到={keep}",
                 )
                 moved_away = [
@@ -3605,10 +4365,118 @@ def main() -> int:
                     f"还找到 {moved_away}",
                 )
                 check(
-                    "「快捷方式锁定」的开关还在（本次没动它）",
-                    len(_collect_type(general, "Switch")) == 1,
+                    "本页两只开关都在（开机自启 + 快捷方式锁定）",
+                    len(_collect_type(general, "Switch")) == 2,
                     f"Switch={len(_collect_type(general, 'Switch'))}",
                 )
+
+                # ---- 开机自启（2026-10-04 用户指令）----
+                # 「打开之后程序会随操作系统启动而启动，关闭也必须有效无误」。
+                # ⚠️ 验的是**注册表本身**而不是配置里那个影子值：光看
+                # ``config.json`` 变没变，验不出「关了却没关掉」——
+                # 那正是这项最容易坏的地方（值没删干净 / 被任务管理器单独禁用）。
+                autostart_card = _find_named(general, "generalAutostart")
+                autostart_switch = (
+                    None if autostart_card is None
+                    else (_collect_type(autostart_card, "Switch") or [None])[0]
+                )
+                check(
+                    "通用页有「开机自启」卡与它的开关",
+                    autostart_card is not None and autostart_switch is not None,
+                    f"card={autostart_card is not None} "
+                    f"switch={autostart_switch is not None}",
+                )
+                check(
+                    "开机自启开关回显注册表实际状态（不是配置里的影子值）",
+                    autostart_switch is not None
+                    and bool(autostart_switch.property("checked"))
+                    == autostart.is_enabled(),
+                    "checked="
+                    f"{None if autostart_switch is None else autostart_switch.property('checked')}"
+                    f" registry={autostart.is_enabled()}",
+                )
+                check(
+                    "SETTING_PATHS 里登记了 autostart（否则 QML 写入会被当未知项丢掉）",
+                    "autostart" in SETTING_PATHS,
+                )
+
+                prev_entry = _run_value()
+                try:
+                    app.backend.setSetting("autostart", True)
+                    QTest.qWait(150)
+                    check(
+                        "打开开机自启：真的写进了注册表 Run 键",
+                        autostart.is_enabled() and _run_value() is not None,
+                        f"is_enabled={autostart.is_enabled()} value={_run_value()!r}",
+                    )
+                    check(
+                        "打开后开关点亮（QML 的 checked 跟得上）",
+                        autostart_switch is not None
+                        and bool(autostart_switch.property("checked")),
+                        "checked="
+                        f"{None if autostart_switch is None else autostart_switch.property('checked')}",
+                    )
+                    check(
+                        "写入的命令行指向本工程入口（源码运行 = pythonw + main.py）",
+                        "main.py" in str(_run_value() or "")
+                        and str(_run_value() or "").startswith('"'),
+                        f"value={_run_value()!r}",
+                    )
+
+                    app.backend.setSetting("autostart", False)
+                    QTest.qWait(150)
+                    check(
+                        "关闭开机自启：注册表里的值被真的删掉了（不是写空串）",
+                        not autostart.is_enabled() and _run_value() is None,
+                        f"is_enabled={autostart.is_enabled()} value={_run_value()!r}",
+                    )
+                    check(
+                        "关闭后开关熄灭",
+                        autostart_switch is not None
+                        and not bool(autostart_switch.property("checked")),
+                        "checked="
+                        f"{None if autostart_switch is None else autostart_switch.property('checked')}",
+                    )
+
+                    # 真实鼠标点一下：上面走的是 Python 入口（``setSetting``），
+                    # 绕过了 QML 那一层。点一下才能证明 ``onToggled`` 真接上了
+                    # 后端 —— 接线断了的话，界面看着能拨、注册表纹丝不动。
+                    # ⚠️ 只在这一页刚 push 完（滚动条在顶部）时点：「开机自启」
+                    # 是页面第一张卡，位置够高；页面下半部分的卡片落在窗口外，
+                    # 鼠标事件发过去什么都不会发生（主界面那页的滑块踩过这坑）。
+                    if (autostart_switch is not None
+                            and autostart_switch.isVisible()
+                            and autostart_switch.width() > 0):
+                        before_click = autostart.is_enabled()
+                        spot = autostart_switch.mapToScene(
+                            QPointF(autostart_switch.width() / 2,
+                                    autostart_switch.height() / 2)
+                        )
+                        QTest.mouseClick(
+                            settings, Qt.LeftButton, Qt.NoModifier,
+                            QPoint(int(spot.x()), int(spot.y())),
+                        )
+                        QTest.qWait(250)
+                        check(
+                            "鼠标点开关真的改了注册表（QML onToggled → setSetting）",
+                            autostart.is_enabled() != before_click,
+                            f"{before_click} → {autostart.is_enabled()}"
+                            f"（点 ({spot.x():.0f},{spot.y():.0f})）",
+                        )
+                    else:
+                        check("开机自启开关可见可点", False, "开关不在可视区")
+                finally:
+                    # 无论上面怎么走，都要把开发机的启动项还原回去。
+                    # ⚠️ 顺序不能反：``setSetting`` 会写它**自己**的命令行，
+                    # 先拨后端状态、再原样还原注册表值，后者才不会又被覆盖掉。
+                    app.backend.setSetting("autostart", prev_entry is not None)
+                    _restore_run_value(prev_entry)
+                    QTest.qWait(120)
+                    check(
+                        "开机自启自检不留副作用",
+                        _run_value() == prev_entry,
+                        f"{_run_value()!r} 期望 {prev_entry!r}",
+                    )
 
             # ---- 个性化页：承接「应用主题 / 强调色」（第四轮新建）----
             # 搬整块时最容易漏的是**控件**（卡片搬走了、里面的下拉 / 色板没搬 →

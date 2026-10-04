@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import RinUI as Rin
+import Luminalium
 
 /*!
     设置窗口。
@@ -17,6 +18,9 @@ import RinUI as Rin
     * ``position: Rin.Position.Bottom`` 的项（关于 / 更新）钉在导航底部。
       调试项**不在导航里** —— 2026-09-30 起它是独立窗口（``DebugWindow.qml``），
       入口是连点左上角标题文本 10 次，见文件末尾的 ``debugTitleHotspot``。
+
+    标题栏右侧、三个窗口按钮的**正左边**还挂着一个版本号（``settingsVersionLabel``，
+    2026-10-04 用户指令），挂点与坑写在文件末尾那一段注释里。
 
     关闭按钮只隐藏窗口，不销毁 —— 桌面常驻应用里重建一个窗口没有必要。
 */
@@ -204,6 +208,45 @@ Rin.FluentWindow {
         height: parent ? parent.height : 0
         z: -1
         onClicked: settingsWindow.registerDebugTitleTap()
+    }
+
+    // ============================================================ 标题栏版本号
+    /*! 2026-10-04 用户指令：「在设置的三大键左侧显示程序的版本号」。
+
+        挂点是 ``titleBarHost`` —— ``FluentWindowBase`` 把 RinUI ``TitleBar`` 里
+        那块**可伸缩的中间区**（``TitleBar.qml`` 的 ``contentItem``）透出来的别名。
+        它在标题栏那条 ``RowLayout`` 里的位置正好是「导航标题
+        （``leadingContentItem``）之后、三个窗口按钮（``windowControls``）之前」，
+        而且 ``Layout.fillWidth: true`` —— 所以往它右边缘一贴，就是三大键**正左边**，
+        窗口拉宽拉窄都跟着走，不用自己算坐标。
+
+        ⚠️ 别挂 ``titleBarLeadingHost``：那是 ``leadingContentItem``，宽度是
+        ``childrenRect.width``（跟着内容走），贴它右边缘只会紧跟在导航标题文字
+        后面，跑不到窗口右侧。上面 ``debugTitleHotspot`` 用的才是那一个。
+
+        ⚠️ 也别想挂 ``windowControls``（三个按钮那一行）：``TitleBar`` 没为它透出
+        别名，从外面够不着。
+
+        纯 ``Text`` 不吃鼠标事件，压在标题栏那条拖拽 ``MouseArea`` 上不会挡拖动。
+
+        ⚠️ ``rightMargin`` 必须是**非负**的，别想着用负值把那 48px 的
+        ``RowLayout`` 间距吃掉：``titleBarHost``（``TitleBar.qml`` 的
+        ``contentItem``）带 ``clip: true``，子项一越过它的右边缘就被**裁掉** ——
+        负边距的版本号会显示成 ``26.0`` 这种半截（踩过）。所以它只能待在
+        ``titleBarHost`` 里，右缘离三大键保持那 48px。
+
+        ``wrapMode`` 不用管：``Rin.Text`` 默认的 ``Text.WordWrap`` 在这里不会生效
+        —— 只挂 ``anchors.right`` 时标签宽度就等于一行文字的自然宽（实测三种
+        ``wrapMode`` 都是 ``lineCount=1``、53×16），加不加都一样。 */
+    Rin.Text {
+        objectName: "settingsVersionLabel"
+        parent: settingsWindow.titleBarHost
+        anchors.right: parent.right
+        anchors.rightMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        typography: Rin.Typography.Caption
+        color: Lumi.textSecondary
+        text: Backend.appVersion
     }
 
     // ============================================================ 开发水印

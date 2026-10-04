@@ -7,12 +7,14 @@ QML 只依赖这里暴露的属性与槽函数，不直接触碰配置、Win32 �
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 
+from . import autostart
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
 from .ppt_controller import PresentationState
@@ -27,6 +29,11 @@ SETTING_PATHS: Dict[str, str] = {
     "accent": "app.accent",
     "language": "app.language",
     "log_level": "app.log_level",
+    # ⚠️ ``autostart`` 是**特例**：它的本体是 Windows 注册表（见 ``app/autostart.py``），
+    #    配置里的 ``app.autostart`` 只是给日志 / 排查看的一份影子。读写两边都走
+    #    注册表 —— ``_get_settings`` 每次回读真实状态，``setSetting`` 也单独分叉
+    #    （见 :meth:`Backend._apply_autostart`），不走下面通用的「改内存 + 延迟落盘」。
+    "autostart": "app.autostart",
     # ⚠️ ``tray.enabled`` / ``tray.tooltip`` / ``tray.show_on_click`` /
     #    ``tray.notify_on_start`` **没有**登记在这里，配置里的 ``tray`` 段也已删除：
     #    2026-10-01（第二轮）用户指令「托盘整组连着相关的逻辑和代码一块删掉」。
@@ -42,6 +49,9 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_margin_x": "presentation.margin_x",
     "presentation_margin_y": "presentation.margin_y",
     "presentation_bar_height": "presentation.bar_height",
+    # 控制条组件的整体缩放倍率（设置 → 主界面 → 「缩放大小」）。0.5~2.0 的**小数**
+    # （滑块按整数百分比走，写回时再除 100）—— 见 default_config.json 的 ``presentation.scale``。
+    "presentation_scale": "presentation.scale",
     "presentation_buttons_show_labels": "presentation.buttons.show_labels",
     "presentation_pager_position": "presentation.pager.position",
     "presentation_screen_index": "presentation.screen_index",
@@ -161,6 +171,11 @@ class Backend(QObject):
         self._save_timer.setInterval(self._SAVE_DEBOUNCE_MS)
         self._save_timer.timeout.connect(self._config.save)
 
+        #: 「关于」页两条**异步**链路的后台线程（取回声洞句子 / 采集诊断信息）。
+        #: 只为「同一件事不并发第二次」而持有；线程本身是 daemon，退出即回收。
+        self._echo_thread: Optional[threading.Thread] = None
+        self._diagnostics_thread: Optional[threading.Thread] = None
+
 
     # ==================================================================== 常量
 
@@ -247,6 +262,110 @@ class Backend(QObject):
         所以统一在这里拼绝对 URL。
         """
         return QUrl.fromLocalFile(str(RESOURCES_DIR / name)).toString()
+
+    @Slot(str)
+    def copyToClipboard(self, text: str) -> None:
+        """把一段文本放进系统剪贴板（回声洞的「复制」与诊断的「复制全部」共用）。"""
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(str(text))
+
+    # ================================================================ 回声洞
+
+    #: 取句结果：``(句子, 状态)``，状态 ∈ ``ok`` / ``empty``。
+    #:
+    #: 为什么是**信号**而不是 ``@Slot(result=str)``：取句可能要走一次本地
+    #: HTTP（见 ``echo_cave.py``），在槽里同步等会把 UI 线程按住 —— 这正是
+    #: L1 用 ``await fetch()`` 避免的事。改成后台线程取、取完发信号，界面
+    #: 期间能正常画出「获取中...」。
+    echoCaveResult = Signal(str, str)
+
+    @Slot()
+    def requestEchoCave(self) -> None:
+        """请求一条回声洞句子（异步）。
+
+        ⚠️ **重复点击直接忽略**：句子很短，一次取句通常几十毫秒就回来了；
+        真放行并发请求的话，晚回来的那个会盖掉用户刚看到的那句（L1 用
+        ``echoCaveAbort`` 取消前一次动画，这里更简单 —— 干脆不并发）。
+        """
+        if self._echo_thread is not None and self._echo_thread.is_alive():
+            return
+        self._echo_thread = threading.Thread(
+            target=self._fetch_echo_cave, name="echo-cave", daemon=True
+        )
+        self._echo_thread.start()
+
+    def _fetch_echo_cave(self) -> None:
+        """后台线程体：取句 → 发信号（在 Qt 里跨线程发信号会被排队到主线程）。"""
+        from .echo_cave import fetch_sentence
+
+        try:
+            sentence = fetch_sentence()
+        except Exception:  # noqa: BLE001 - 取句失败不该把线程带崩
+            log.exception("回声洞取句失败")
+            sentence = ""
+        self.echoCaveResult.emit(sentence, "ok" if sentence else "empty")
+
+    # ================================================================ 诊断信息
+
+    #: 诊断字段就绪：``QVariantList``，每项 ``{"key": ..., "value": ...}``。
+    #:
+    #: 同样走**信号**而不是同步返回：硬件查询里有 ``GlobalMemoryStatusEx``
+    #: 与注册表遍历，虽然都不起子进程，但没有理由压在 UI 线程上；更重要的是
+    #: 同步返回的话界面根本没机会画出「加载中...」——L1 那个加载态正是这么来的。
+    diagnosticsReady = Signal("QVariantList")
+
+    @Slot()
+    def requestDiagnostics(self) -> None:
+        """采集诊断信息（异步）。重复请求同样直接忽略。
+
+        ⚠️ **活体字段在这里先取好再交给线程**：``QGuiApplication.primaryScreen()``
+        不是线程安全的，不能在 worker 里调（见 :meth:`_live_diagnostic_fields`）。
+        """
+        if self._diagnostics_thread is not None and self._diagnostics_thread.is_alive():
+            return
+        extra = self._live_diagnostic_fields()
+        self._diagnostics_thread = threading.Thread(
+            target=self._collect_diagnostics, args=(extra,), name="diagnostics", daemon=True
+        )
+        self._diagnostics_thread.start()
+
+    def _live_diagnostic_fields(self) -> Dict[str, str]:
+        """只有活体对象才拿得到的字段（屏幕 / 放映状态 / 日志级别 / 版本号）。
+
+        ⚠️ 必须在**主线程**调用：``QGuiApplication.primaryScreen()`` 不是线程安全的。
+
+        键名照 ClassIsland 的诊断字段（``AppSubChannel`` 对应它的发布渠道），
+        与 ``app/diagnostics.py::FIELD_ORDER`` 里的键一一对上。
+        """
+        screen = QGuiApplication.primaryScreen()
+        screen_size = ""
+        if screen is not None:
+            geometry = screen.geometry()
+            screen_size = f"{geometry.width()} × {geometry.height()}"
+
+        presentation = "active" if self._presentation_active else "inactive"
+        if self._presentation_active:
+            presentation = f"active:{self._slide_index}/{self._slide_total}"
+
+        return {
+            "Screen": screen_size,
+            "AppVersion": self.appVersion,
+            "AppSubChannel": self.appChannel,
+            "Presentation": presentation,
+            "LogLevel": str(self._config.get("app.log_level", "INFO")),
+        }
+
+    def _collect_diagnostics(self, extra: Dict[str, str]) -> None:
+        """后台线程体：采集 → 发信号（``extra`` 由主线程预先取好）。"""
+        from .diagnostics import collect
+
+        try:
+            fields = [{"key": key, "value": value} for key, value in collect(extra)]
+        except Exception:  # noqa: BLE001 - 采集失败也要给界面一个交代
+            log.exception("诊断信息采集失败")
+            fields = []
+        self.diagnosticsReady.emit(fields)
 
     # ================================================================ 放映状态
 
@@ -449,7 +568,12 @@ class Backend(QObject):
     # ================================================================== 设置
 
     def _get_settings(self) -> Dict[str, Any]:
-        return {key: self._config.get(path) for key, path in SETTING_PATHS.items()}
+        values = {key: self._config.get(path) for key, path in SETTING_PATHS.items()}
+        # 「开机自启」的真相在**注册表**里，不在配置里：用户可能在「任务管理器 →
+        # 启动」里禁用它，也可能手动删过那个注册表值 —— 配置里那份影子会骗人。
+        # 所以每次都回读一次实际状态（注册表读取是微秒级的，代价可以忽略）。
+        values["autostart"] = autostart.is_enabled()
+        return values
 
     settings = Property("QVariantMap", _get_settings, notify=settingsChanged)
 
@@ -466,6 +590,12 @@ class Backend(QObject):
         path = SETTING_PATHS.get(key)
         if path is None:
             log.info("未知设置项: %s", key)
+            return
+
+        # 开机自启：**本体是注册表**，单独走一条路。通用的「改内存 + 延迟落盘」
+        # 会把「写注册表失败」这件事吞掉 —— 那正是「关了却没关掉」的来源。
+        if key == "autostart":
+            self._apply_autostart(bool(value))
             return
 
         current = self._config.get(path)
@@ -527,6 +657,32 @@ class Backend(QObject):
                 self._config.set(
                     f"presentation.corners.{corner}.enabled", corner in enabled
                 )
+
+    def _apply_autostart(self, enabled: bool) -> None:
+        """开关开机自启：写注册表 → **回读真实状态** → 同步影子配置 → 广播。
+
+        ⚠️ 回读是关键，不是多余的稳妥：``set_enabled`` 返回成功只说明注册表调用
+        没抛异常，不代表最终状态就是想要的（组策略 / 杀软可能半途拦下）。所以以
+        ``is_enabled()`` 的回读结果为准 —— 真实状态与用户点的那个不一致时，写进
+        影子配置的是**真实状态**，QML 侧的开关跟着弹回去，而不是停在用户点的那
+        一格骗人。这就是「关闭也必须有效无误」的落点。
+        """
+        ok = autostart.set_enabled(enabled)
+        actual = autostart.is_enabled()
+        self._config.set("app.autostart", actual, persist=False)
+        self._save_timer.start()
+        if not ok or actual != enabled:
+            log.warning("开机自启未能按预期设置：期望 %s，实际 %s", enabled, actual)
+        self.settingsChanged.emit()
+
+    @Slot()
+    def refreshSettings(self) -> None:
+        """让 QML 重新取一遍 ``settings``（``settings`` 里含实时状态，如注册表）。
+
+        入口是 ``windows.py::show_settings`` —— 每次打开设置窗口都刷一次，这样
+        「在任务管理器里禁用了开机自启、再打开设置」看到的就是关着的那一格。
+        """
+        self.settingsChanged.emit()
 
     @Slot()
     def closeSettings(self) -> None:

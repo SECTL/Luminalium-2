@@ -4,7 +4,7 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    通用：快捷面板开关与界面语言。
+    通用：开机自启、快捷面板开关与界面语言。
 
     2026-09-25 导航重构后本页吸收了原「行为」子页的全部内容；
     2026-10-01 又吸收了原「外观」页的三张卡（应用主题 / 强调色 / 界面语言）——
@@ -24,6 +24,14 @@ import Luminalium
     ``settings/Personalization.qml``；本页只留下「界面语言」，分组标题相应由
     「外观」改成「语言」（语言不属于外观，留着旧标题名不副实）。
     于是本页只剩 2 张卡：快捷方式锁定 + 界面语言。
+
+    2026-10-04 用户指令：「通用设置新增开机自启开关」—— 顶部新增「启动」分组与
+    「开机自启」卡（3 张卡）。**它和别的开关不是一回事**：本体是 Windows 注册表
+    的 ``Run`` 键（``app/autostart.py``），``Backend.settings.autostart`` 读的
+    也是注册表的**实时状态**，不是配置。所以：
+      * 后端 ``setSetting("autostart", …)`` 是**同步**写注册表并回读，失败会把
+        状态弹回去 —— 见下面开关的 ``onToggled`` 里为什么要重装 ``checked`` 绑定；
+      * 手改 ``config/config.json`` 的 ``app.autostart`` 不会改变实际行为。
 */
 Rin.FluentPage {
     id: page
@@ -31,8 +39,49 @@ Rin.FluentPage {
     title: qsTr("通用")
     contentSpacing: 10
 
+    // ============================================================ 启动
+    // 2026-10-04 用户指令：通用设置新增开机自启开关。
+    // 放在最上面：「随系统启动」是整页里层级最高的一项（其余都是应用内的行为）。
+
     Rin.Text {
         Layout.fillWidth: true
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("启动")
+    }
+
+    Rin.SettingCard {
+        objectName: "generalAutostart"
+
+        Layout.fillWidth: true
+        title: qsTr("开机自启")
+        description: qsTr("登录系统后自动启动 Luminalium")
+        icon.name: "ic_fluent_power_20_regular"
+
+        Rin.Switch {
+            id: autostartSwitch
+
+            primaryColor: Lumi.accent
+            checked: Backend.settings.autostart === true
+            onToggled: {
+                // 同步写注册表（失败时后端会把真实状态广播回来）。
+                Backend.setSetting("autostart", checked)
+                // ⚠️ 上面这一下点击**已经把 ``checked`` 上的绑定打断了** ——
+                // 控件内部（C++ 侧 ``setChecked``）改这个属性会摘掉 QML 绑定，
+                // 之后 ``Backend.settings`` 再怎么变它都不跟（实测：绑定在
+                // 用户点击后失效，外部改值 checked 纹丝不动）。不重装的话，
+                // 注册表写失败时开关会停在用户点的那一格，显示成「开着」而
+                // 实际没写进去 —— 正是「关了却没关掉」的来源。重装是幂等的，
+                // 写成功时也照装不误（值本来就一样，不会抖）。
+                checked = Qt.binding(function () {
+                    return Backend.settings.autostart === true
+                })
+            }
+        }
+    }
+
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: 10
         typography: Rin.Typography.BodyStrong
         text: qsTr("快捷面板")
     }

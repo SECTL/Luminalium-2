@@ -15,6 +15,11 @@
 - ``splash_light.png``     —— 同上，浅色版。用 ``LUMI_PREVIEW_THEME=light`` 跑；
   此时别的窗口一律不截图（否则会把上面那些深色预览图覆盖成浅色的）
 - ``debug_window.png``     —— 调试窗口（入口是设置标题连点 10 次，不在导航里）
+- ``error_report_crash.png`` / ``error_report_error.png`` —— 错误 / 崩溃报告窗
+  （``ui/ErrorReport/ErrorReportWindow.qml``）的两档对照：同一张窗，只有文案 /
+  表情 / Split Button 的主操作不同（崩溃 = 重新启动，错误 = 忽略）。
+  ⚠️ 抓的是**收起**态（堆栈默认藏在「查看详细信息」后面）；``LUMI_PREVIEW_DETAILS=1``
+  出展开态，文件名带 ``_details`` 后缀 —— 两档不互相覆盖
 - ``main_editor.png``      —— 主界面编辑器（入口是快捷面板的「主界面编辑器」
   快捷方式）。正文是**顶层窗口的完整预览舞台**，抓图前会关掉 ``backdropEnabled``
   以退回兜底底色 —— 离屏抓图看不到 DWM 亚克力层，真机效果得靠实机截屏确认
@@ -50,6 +55,9 @@
 - ``LUMI_PREVIEW_PAGER=side|bottom`` —— 切「翻页组件位置」（``presentation.pager.
   position``，同样只在内存里改、抓完图还原）：side = 竖版两侧中间，bottom = 横版
   两侧下部。输出文件名带 ``_pager_<值>`` 后缀。
+- ``LUMI_PREVIEW_SIZES=1`` —— 抓图前打印每个窗口的**实际**尺寸（外加 QML 里声明的
+  ``width``/``height``）。两者常常对不上（RinUI 会按内容改写窗口尺寸），量版式时
+  以实际尺寸为准；配合 ``debug_window`` 那种「内容变长会不会超出可视区」的判断很省事。
 - ``LUMI_PREVIEW_PEN=1`` —— 把工具切到「笔」并**展开笔的选单**（PenPaletteCard），
   输出 ``top_window_pen.png``；``LUMI_PREVIEW_PEN_COLOR`` 指定预点亮的颜色
   （默认 ``#EC4899``，故意跟配置默认的黄色错开，好核对「选中环 + 预览笔迹」）。
@@ -66,13 +74,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from PySide6.QtCore import QTimer, QUrl  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QTimer, QUrl  # noqa: E402
 from PySide6.QtQml import QQmlComponent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from RinUI import BackdropEffect, RinUIWindow, Theme  # noqa: E402
 
 from app.bridge import Backend  # noqa: E402
 from app.config import Config  # noqa: E402
+from app.error_handler import ErrorHandler  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
 
@@ -81,6 +90,19 @@ OFFSCREEN_Y = -6000
 OUT_DIR = ROOT / "preview"
 #: 启动画面预览要钉死的进度：设计稿那张是「60% 创建托盘图标」，照抄好对照。
 DESIGN_STAGE = (0.60, "创建托盘图标")
+#: 报告窗预览用的样例堆栈（照 ``error_report_*.png`` 里那张参考图的形态）。
+REPORT_TRACEBACK = (
+    'Traceback (most recent call last):\n'
+    '  File "G:\\Dev\\Luminalium-2\\app\\echo_cave.py", line 145, in probe\n'
+    '    with socket.create_connection((HOST, PORT), timeout=REMOTE_TIMEOUT):\n'
+    '         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n'
+    '  File "...\\Lib\\socket.py", line 868, in create_connection\n'
+    '    raise exceptions[0]\n'
+    '  File "...\\Lib\\socket.py", line 853, in create_connection\n'
+    '    sock.connect(sa)\n'
+    '    ~~~~~~~~~~~~^^\n'
+    'TimeoutError: timed out\n'
+)
 CORNERS = ("bottom_left", "bottom_center", "bottom_right", "middle_left", "middle_right")
 
 #: 浅色主题（对照设计稿的「启动画面 Light」）。见模块 docstring。
@@ -133,6 +155,8 @@ PREVIEW_PEN = os.environ.get("LUMI_PREVIEW_PEN", "") not in ("", "0")
 #: 选单预览里预点亮的颜色（``presentation.pen.default`` 之外另挑一个，
 #: 好把「选中环 + 预览笔迹跟着变」一起看掉）。
 PREVIEW_PEN_COLOR = os.environ.get("LUMI_PREVIEW_PEN_COLOR", "#EC4899")
+#: 报告窗出「查看详细信息」展开那一档（默认收起）
+PREVIEW_DETAILS = os.environ.get("LUMI_PREVIEW_DETAILS", "") not in ("", "0")
 #: 浅色主题 **+** 笔选单 = 只出那一张（``top_window_pen_light.png``）。
 #: 浅色档默认只出启动画面，看选单得单独开口子 —— 与 ``EDITOR_LIGHT`` 同一个理由：
 #: 色板底色、描边、小标题都取主题色，浅色下「白点/黑点会不会与底色糊在一起」
@@ -196,6 +220,9 @@ def main() -> int:
         PresentationState(active=True, slide_index=26, slide_total=41)
     )
     backend.setSplashStage(*DESIGN_STAGE)
+    # 报告窗的数据源。⚠️ 这里**不**调 ``install()`` —— 预览工具不该去接管
+    # ``sys.excepthook``（本进程里没有真实异常要报告，接管只会让真报错被吞）。
+    error_handler = ErrorHandler(config, qt_app)
 
     rinui = RinUIWindow()
     rinui.engine.addImportPath(str(UI_DIR))
@@ -205,6 +232,7 @@ def main() -> int:
     previous_theme = rinui.theme_manager.get_theme_name()
     rinui.setTheme(Theme.Light if IS_LIGHT else Theme.Dark)
     rinui.engine.rootContext().setContextProperty("Backend", backend)
+    rinui.engine.rootContext().setContextProperty("ErrorHandler", error_handler)
     rinui.load(UI_DIR / "QuickPanel.qml")
     # 预览图不需要 DWM 背景特效，关掉能拿到实色背景（结束后恢复，避免污染用户配置）
     previous_effect = rinui.theme_manager.get_backdrop_effect()
@@ -386,6 +414,32 @@ def main() -> int:
                 editor.raise_()
                 editor.requestActivate()
 
+    # 错误 / 崩溃报告窗：入口是 ``ErrorHandler`` 捕获到未捕获异常（同样是按需
+    # 创建）。一张窗承接两档报告，版式相同、只有文案 / 表情 / 主按钮不同 ——
+    # 所以下面抓图时切一次 ``ErrorHandler`` 的状态，出两张对照图。
+    #
+    # ⚠️ 必须以 ``visible: True`` 建实例再挪到屏幕外（与上面几个窗口一致）。
+    # 实测：``visible: False`` 建出来再 ``setPosition(-6000,-6000)`` + ``show()``
+    # 的话，窗口**从未被暴露**，``contentItem`` 一直是 0×0 —— 抓到的是一张
+    # 所有控件叠在左上角的废图。
+    error_report = None
+    error_report_component = QQmlComponent(
+        rinui.engine,
+        QUrl.fromLocalFile(str(UI_DIR / "ErrorReport" / "ErrorReportWindow.qml")),
+    )
+    if error_report_component.isError():
+        for error in error_report_component.errors():
+            print("ERROR REPORT WINDOW ERROR:", error.toString())
+    else:
+        error_report = error_report_component.createWithInitialProperties({"visible": True})
+        if error_report is None:
+            for error in error_report_component.errors():
+                print("ERROR REPORT WINDOW CREATE ERROR:", error.toString())
+        else:
+            error_report._report_component = error_report_component  # 防引擎回收
+            error_report.setPosition(OFFSCREEN_X - 500, OFFSCREEN_Y - 1800)
+            error_report.show()
+
     # 各设置页单独渲染：用临时宿主窗口 + Loader 承载，逐页跑一遍
     page_hosts = _build_page_hosts(rinui.engine)
 
@@ -434,6 +488,12 @@ def main() -> int:
                 ))
             targets += page_hosts
 
+        if os.environ.get("LUMI_PREVIEW_SIZES"):
+            for name, window in targets:
+                print(f"[SIZE] {name}: {window.width()}x{window.height()} "
+                      f"(declared {window.property('width')}x"
+                      f"{window.property('height')})")
+
         for name, window in targets:
             try:
                 # ⚠️ 抓**两帧、留第二帧**。
@@ -458,6 +518,44 @@ def main() -> int:
                 continue
             image.save(str(path))
             print(f"[OK] {name} -> {path} ({image.width()}x{image.height()})")
+
+        # 报告窗两档对照图。放在最后：它要**改** ``ErrorHandler`` 的状态（切换
+        # 崩溃 / 错误），放在别的窗口抓图之前会把中途状态漏出去。
+        # 其余档位（只出启动画面 / 只出设置页 / 浅色）不出这两张，免得覆盖常态图。
+        if error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT or PEN_LIGHT:
+            return
+        # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
+        # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，
+        # 所以文件名带 ``_details`` 后缀，不与常态那两张互相覆盖。
+        _suffix = "_details" if PREVIEW_DETAILS else ""
+        if PREVIEW_DETAILS:
+            error_report.setProperty("detailsExpanded", True)
+        for name, kind in (
+            (f"error_report_crash{_suffix}.png", "crash"),
+            (f"error_report_error{_suffix}.png", "error"),
+        ):
+            error_handler._capture(
+                kind=kind, summary="TimeoutError: timed out",
+                traceback_text=REPORT_TRACEBACK,
+            )
+            # ⚠️ 换报告会把 ``detailsExpanded`` 复位（QML 侧的 Connections），
+            # 所以「强制展开」必须在每次 ``_capture`` **之后**再设一次。
+            if PREVIEW_DETAILS:
+                error_report.setProperty("detailsExpanded", True)
+            # 属性是**绑定**在 ``ErrorHandler`` 上的，改完要让事件循环跑一拍，
+            # QML 才把新文案 / 新表情 / 新主按钮取回来。
+            QCoreApplication.processEvents()
+            try:
+                error_report.grabWindow()
+                image = error_report.grabWindow()
+            except RuntimeError as exc:
+                print(f"[FAIL] {name}: {exc}")
+                continue
+            if image.isNull():
+                print(f"[FAIL] {name}: grabWindow() 返回空图")
+                continue
+            image.save(str(OUT_DIR / name))
+            print(f"[OK] {name} -> {OUT_DIR / name} ({image.width()}x{image.height()})")
         # 主题要等所有窗口都截完才切回去（切主题会触发窗口重绘/重建）
         if rinui.theme_manager.get_theme_name() != previous_theme:
             rinui.theme_manager.toggle_theme(previous_theme)

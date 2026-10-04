@@ -25,10 +25,12 @@ Rin.FluentWindowBase {
 
     title: qsTr("调试")
     visible: false
-    // 高度贴着正文（三张卡片 + 分组标题 + 上下 24 留白 ≈ 418），不留大片空白；
-    // 以后加诊断项超出可视区时 Flickable 接管滚动
+    // 高度贴着正文（五张卡片 + 三个分组标题 + 上下 24 留白 ≈ 602），不留大片空白；
+    // 以后加诊断项超出可视区时 Flickable 接管滚动。
+    // 680 = 内容高 602 + 窗口装饰（标题栏 36 + 内容区留白 37，实测 470 高时
+    // Flickable 只有 397）；2026-10-05 加「错误处理」两张卡后从 470 提到这里。
     width: 620
-    height: 470
+    height: 680
     minimumWidth: 520
     minimumHeight: 320
 
@@ -119,6 +121,53 @@ Rin.FluentWindowBase {
                     // 缺省开启（缺键 / undefined 都算 true），只有显式 false 才关
                     checked: Backend.settings.dev_watermark !== false
                     onToggled: Backend.setSetting("dev_watermark", checked)
+                }
+            }
+
+            // ==================================================== 错误处理
+            // 2026-10-05 用户指令：「在调试菜单中添加手动报错和手动崩溃」。
+            // 两个按钮各自把 ``ErrorHandler`` 的报告窗叫出来，用来核对版式 /
+            // 表情 / Split Button 的主操作 —— 见 ``app/error_handler.py``。
+            //
+            // 「手动崩溃」走的是**真实的未捕获异常链路**（``sys.excepthook``），
+            // 所以它顺带验证了钩子有没有装好；「手动报错」是编的数据，
+            // 只出非致命那一档。
+            Rin.Text {
+                Layout.fillWidth: true
+                Layout.topMargin: 10
+                typography: Rin.Typography.BodyStrong
+                text: qsTr("错误处理")
+            }
+
+            Rin.SettingCard {
+                objectName: "debugSimulateError"
+                Layout.fillWidth: true
+                title: qsTr("手动报错")
+                description: qsTr("弹出一张错误报告（非致命），主按钮为「忽略」")
+                icon.name: "ic_fluent_error_circle_20_regular"
+
+                Rin.Button {
+                    objectName: "debugSimulateErrorButton"
+                    Layout.alignment: Qt.AlignVCenter
+                    text: qsTr("触发")
+                    icon.name: "ic_fluent_play_20_regular"
+                    onClicked: ErrorHandler.simulateError()
+                }
+            }
+
+            Rin.SettingCard {
+                objectName: "debugSimulateCrash"
+                Layout.fillWidth: true
+                title: qsTr("手动崩溃")
+                description: qsTr("弹出一张崩溃报告（致命）；走真实的未捕获异常链路，主按钮为「重新启动」")
+                icon.name: "ic_fluent_bug_20_regular"
+
+                Rin.Button {
+                    objectName: "debugSimulateCrashButton"
+                    Layout.alignment: Qt.AlignVCenter
+                    text: qsTr("触发")
+                    icon.name: "ic_fluent_play_20_regular"
+                    onClicked: ErrorHandler.simulateCrash()
                 }
             }
         }

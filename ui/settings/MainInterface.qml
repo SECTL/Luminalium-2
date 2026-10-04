@@ -16,6 +16,10 @@ import Luminalium
     3. 「将 水平/垂直边距 目标显示器 背景不透明度 移到主界面设置 …… 阴影开关
        也移到主界面设置」—— 即下面「位置 / 外观」两组。它们调的都是**主界面
        （放映时那块全屏画布上的控制条）长什么样**，归这一页；放映页只剩下行为项。
+    4. 2026-10-05「主界面设置新增缩放大小滑块 用于调整顶层窗口中组件的大小」
+       —— 即下面「缩放」组的「缩放大小」卡：整块等比放大 / 缩小控制条组件
+       （配置键 ``presentation.scale``，落在 ``PresentationDock`` / ``SidePager``
+       的 ``scaleFactor`` 上）。
 
     主界面的**可视化编辑**走独立窗口 ``ui/MainInterfaceEditor.qml``
     （入口之一就是这张卡上的按钮），单个按钮的样式（如退出键样式）在那边的
@@ -102,6 +106,41 @@ Rin.FluentPage {
                     onClicked: Backend.openMainEditor()
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ 缩放
+    //
+    // 2026-10-05 用户指令：「主界面设置新增缩放大小滑块 用于调整顶层窗口中组件的
+    // 大小」—— 顶层窗口 = 主界面（放映时那块全屏叠加层），组件 = 上面的控制条
+    // （工具栏 / 翻页 pill）。整块等比缩放：投影、渐变高光、图标、页码文字一起变。
+    //
+    // 配置里存的是 **0.5~2.0 的小数**（``presentation.scale``），滑块按整数百分比
+    // 走（写回时再除 100）—— 与「底板不透明度」同一套约定。
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: 10
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("缩放")
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfaceScale"
+
+        Layout.fillWidth: true
+        title: qsTr("缩放大小")
+        description: qsTr("整体放大或缩小控制条上的组件；位置与边距不受影响")
+        icon.name: "ic_fluent_zoom_in_20_regular"
+
+        SettingSlider {
+            primaryColor: Lumi.accent
+            from: 50
+            to: 200
+            stepSize: 5
+            suffix: " %"
+            value: Backend.settings.presentation_scale !== undefined
+                ? Math.round(Backend.settings.presentation_scale * 100) : 100
+            onMoved: Backend.setSetting("presentation_scale", value / 100)
         }
     }
 

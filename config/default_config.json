@@ -13,7 +13,9 @@
     "//channel": "发布渠道，只显示在设置页「关于」的徽章上：Dev=开发版 / Release=正式版。发给用户的正式包改成 \"Release\"",
     "channel": "Dev",
     "//dev_watermark": "**开发者开关，只在调试窗口里出现**（调试窗口没有可见入口：在设置窗口左上角标题文本上连点 10 次打开）：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
-    "dev_watermark": true
+    "dev_watermark": true,
+    "//autostart": "开机自启（设置页「通用 → 启动 → 开机自启」）。⚠️ 这个键**只是影子**：真正的开关是 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run 里的 Luminalium2 值（见 app/autostart.py）。界面每次打开都回读注册表，所以手改这里不会改变实际行为 —— 它只用于日志与排查。",
+    "autostart": false
   },
   "//tray": "托盘已于 2026-10-01（第二轮）按用户指令「托盘整组连着相关的逻辑和代码一块删掉」改为**恒定行为**，整段配置已删除：常驻（application.py::_boot_tray 恒 show）、提示文字取 app.name、左键恒唤出快捷面板、启动不再弹气泡、右键菜单项写死在 tray.py。没有可配置的路",
   "quick_panel": {
@@ -85,6 +87,8 @@
     "topmost_interval_ms": 800,
     "//verify_after_ms": "显示后多久做一次自检（对照窗口真实位置 / DWM 是否被披风化）",
     "verify_after_ms": 500,
+  "//scale": "顶层窗口里控制条组件的**整体缩放倍率**（入口：设置 → 主界面 → 「缩放大小」滑块，50%~200%）。1.0 = 设计原档。控制条（工具栏 / 翻页 pill）整块连同投影、渐变高光、文字一起按这个倍率缩放 —— 位置公式仍按 margin_x/margin_y 的**视觉距离**算，所以贴边距离不受缩放影响。实现见 ui/presentation/PresentationDock.qml 的 scaleFactor：画法是一个 scale 变换，而 width/height/shadowMargin/interactiveRect 这几个**对外**的量都换算成屏幕像素，于是 Python 摆位（windows.py::_position_dock）与区域塑形、编辑器预览的命中测试都不用改。改这一项 = 真机与编辑器预览同时变",
+  "scale": 1.0,
   "//bar_height": "条高。Luminalium 1 实测 54（按钮 38 + 上下内边距 8×2）；2026-09-25 用户指令「默认的组件比例大一些（设计语言仍是 L1）」→ 整体放大一档：条高 62 = 按钮 44 + 上下内边距 9×2",
   "bar_height": 62,
   "surface": {

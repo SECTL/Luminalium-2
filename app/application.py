@@ -21,10 +21,12 @@ from PySide6.QtWidgets import QApplication, QMenu
 from RinUI import BackdropEffect, RinUIWindow, Theme
 
 from . import __version__
+from . import echo_cave
 from . import i18n
 from . import rinui_patch
 from .bridge import Backend
 from .config import Config
+from .error_handler import ErrorHandler
 from .paths import APP_NAME, LOG_DIR, UI_DIR, ensure_runtime_dirs
 from .ppt_controller import COM_PROG_IDS, PptController
 from .tray import TrayIcon, build_app_icon
@@ -106,7 +108,18 @@ class LuminaliumApplication:
         rinui_patch.apply()
 
         # ---- 后端 ----
+        # 先把 socket 栈预热掉：Windows 上进程内第一次网络调用可能被 Winsock
+        # 惰性初始化 / 杀软挂钩 / 沙箱拦网拖住好几秒，而那笔账会记在第一个碰
+        # 网络的线程头上（回声洞取句正跑在后台线程里）。详见 echo_cave.warm_up。
+        echo_cave.warm_up()
         self.backend = Backend(self.config, self.qt_app)
+        # 错误处理：接管 sys.excepthook / threading.excepthook，把未捕获异常
+        # 变成一张「崩溃报告 / 错误报告」窗（见 app/error_handler.py）。
+        # 钩子在这里就装上（而不是等窗口都建完）—— 装上之后剩下的装配过程
+        # 里再出异常，至少还能进日志；此时 ``reportRequested`` 还没接接收者，
+        # 所以窗口那一步自然落空，不会拿一个半成品窗口去吓人。
+        self.error_handler = ErrorHandler(self.config, self.qt_app)
+        self.error_handler.install()
         self.ppt = PptController(
             interval_ms=int(self.config.get("presentation.poll_interval_ms", 400)),
             config=self.config,
@@ -123,6 +136,9 @@ class LuminaliumApplication:
         self.rinui.setTheme({"dark": Theme.Dark, "light": Theme.Light}.get(theme_name, Theme.Auto))
 
         self.rinui.engine.rootContext().setContextProperty("Backend", self.backend)
+        self.rinui.engine.rootContext().setContextProperty(
+            "ErrorHandler", self.error_handler
+        )
         self.rinui.load(UI_DIR / "QuickPanel.qml")
         # 背景材质按配置。none = 实色主题背景；Mica/Acrylic 会让窗口透明、
         # 全靠 DWM 合成，在不支持 / 合成异常的机器上就是一片怪材质。
@@ -170,6 +186,14 @@ class LuminaliumApplication:
         self.backend.quitRequested.connect(self.quit)
         self.backend.themeChangeRequested.connect(self._apply_theme)
         self.backend.accentChangeRequested.connect(self._apply_accent)
+
+        # ---- 错误 / 崩溃报告 ----
+        # 采集到报告 → 弹窗；「忽略」→ 收窗继续跑；「重新启动 / 退出程序」→
+        # 走与快捷面板底栏同一套动作（先把报告窗收掉，免得重启时它还挂在屏幕上）。
+        self.error_handler.reportRequested.connect(self.windows.show_error_report)
+        self.error_handler.dismissRequested.connect(self.windows.hide_error_report)
+        self.error_handler.restartRequested.connect(self._report_restart)
+        self.error_handler.quitRequested.connect(self._report_quit)
 
     # ================================================================ 启动
 
@@ -330,6 +354,18 @@ class LuminaliumApplication:
             return
         self.quit()
 
+    # ======================================================== 错误 / 崩溃报告
+
+    def _report_restart(self) -> None:
+        """报告窗的「重新启动」：先收掉报告窗，再走正常重启流程。"""
+        self.windows.hide_error_report()
+        self._restart()
+
+    def _report_quit(self) -> None:
+        """报告窗的「退出程序」：先收掉报告窗，再走正常退出流程。"""
+        self.windows.hide_error_report()
+        self.quit()
+
     # ============================================================ 放映控制
 
     def _on_action(self, action: str) -> None:
@@ -426,11 +462,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     arguments = list(sys.argv if argv is None else argv)
 
     def _hook(exc_type, exc_value, exc_tb):
+        """**应用起来之前**的兜底钩子。
+
+        ``LuminaliumApplication`` 构造时会用 ``ErrorHandler`` 把 ``sys.excepthook``
+        整个换掉（那时才有能力弹报告窗）；在那之前（导入期 / 建 QApplication 期）
+        挂掉的异常只能进日志 —— 这一段 Qt 还没起来，画不出任何窗口。
+        """
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_tb)
             return
         logging.getLogger("luminalium").critical(
-            "未捕获异常", exc_info=(exc_type, exc_value, exc_tb)
+            "未捕获异常（应用尚未就绪）", exc_info=(exc_type, exc_value, exc_tb)
         )
 
     sys.excepthook = _hook

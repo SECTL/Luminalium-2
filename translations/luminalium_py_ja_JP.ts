@@ -83,4 +83,93 @@
         <translation>logs/luminalium.log に書き込みました</translation>
     </message>
 </context>
+<context>
+    <name>ErrorHandler</name>
+    <message>
+        <source>崩溃报告</source>
+        <translation>クラッシュレポート</translation>
+    </message>
+    <message>
+        <source>错误报告</source>
+        <translation>エラーレポート</translation>
+    </message>
+    <message>
+        <source>程序崩溃了！</source>
+        <translation>プログラムがクラッシュしました！</translation>
+    </message>
+    <message>
+        <source>程序出现了一个错误！</source>
+        <translation>プログラムでエラーが発生しました！</translation>
+    </message>
+    <message>
+        <source>{app_name} 遇到了一个自己无法恢复的问题，不得不停下来。你可以尝试重新启动；如果它反复出现，请把下面的详细信息反馈给我们。</source>
+        <translation>{app_name} で自力では回復できない問題が発生し、停止せざるを得ませんでした。再起動してみてください。繰り返し発生する場合は、以下の詳細を報告してください。</translation>
+    </message>
+    <message>
+        <source>{app_name} 遇到了一个问题。程序还可以继续运行，但最好把下面的详细信息反馈给我们，方便我们修掉它。</source>
+        <translation>{app_name} で問題が発生しました。アプリは引き続き動作しますが、修正のため以下の詳細を報告していただけると助かります。</translation>
+    </message>
+    <message>
+        <source>主线程</source>
+        <translation>メインスレッド</translation>
+    </message>
+    <message>
+        <source>后台线程</source>
+        <translation>バックグラウンドスレッド</translation>
+    </message>
+    <message>
+        <source>线程 {name}</source>
+        <translation>スレッド {name}</translation>
+    </message>
+    <message>
+        <source>环境信息</source>
+        <translation>環境情報</translation>
+    </message>
+    <message>
+        <source>应用版本</source>
+        <translation>アプリのバージョン</translation>
+    </message>
+    <message>
+        <source>报告类型</source>
+        <translation>レポートの種類</translation>
+    </message>
+    <message>
+        <source>发生时间</source>
+        <translation>発生日時</translation>
+    </message>
+    <message>
+        <source>来源</source>
+        <translation>発生元</translation>
+    </message>
+    <message>
+        <source>操作系统</source>
+        <translation>OS</translation>
+    </message>
+    <message>
+        <source>摘要</source>
+        <translation>概要</translation>
+    </message>
+    <message>
+        <source>堆栈</source>
+        <translation>スタックトレース</translation>
+    </message>
+    <message>
+        <source>未知</source>
+        <translation>不明</translation>
+    </message>
+    <message>
+        <source>(无)</source>
+        <translation>(なし)</translation>
+    </message>
+    <message>
+        <source>RuntimeError: 这是一条手动触发的错误报告</source>
+        <translation>RuntimeError: 手動で発生させたエラーレポートです</translation>
+    </message>
+    <message>
+        <source>这条报告来自调试窗口的「手动报错」，程序本身并没有出错。
+用途：核对错误报告窗的版式、表情图与主按钮（忽略）。</source>
+        <translation>このレポートはデバッグウィンドウの「手動エラー」から出力されたもので、アプリ自体は正常です。
+用途：エラーレポートウィンドウのレイアウト・絵文字・主ボタン（無視）の確認。</translation>
+    </message>
+</context>
 </TS>

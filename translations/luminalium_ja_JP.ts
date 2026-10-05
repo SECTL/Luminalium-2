@@ -419,9 +419,9 @@
         <translation>水平マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="164"/>
-        <source>控制条距屏幕左右边缘的距离</source>
-        <translation>コントロールバーと画面の左右の端との距離</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="167"/>
+        <source>控制条距放映窗口左右边缘的距离（全屏放映时即屏幕边缘）</source>
+        <translation>コントロールバーとスライドショーウィンドウの左右の端との距離（全画面表示のときは画面の端）</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="185"/>
@@ -429,9 +429,9 @@
         <translation>垂直マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="186"/>
-        <source>控制条距屏幕上下边缘的距离，以整屏边缘为准</source>
-        <translation>コントロールバーと画面の上下の端との距離（画面全体の端が基準）</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="190"/>
+        <source>控制条距放映窗口上下边缘的距离（全屏放映时即屏幕边缘）</source>
+        <translation>コントロールバーとスライドショーウィンドウの上下の端との距離（全画面表示のときは画面の端）</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="205"/>

@@ -25,6 +25,11 @@ import Luminalium
     「外观」改成「语言」（语言不属于外观，留着旧标题名不副实）。
     于是本页只剩 2 张卡：快捷方式锁定 + 界面语言。
 
+    ⚠️ 2026-10-06 用户指令：「把应用是跟随系统还是亮色暗色移到通用，个性化设置
+    先只留强调色」—— 「应用主题」（跟随系统 / 浅色 / 深色）从「个性化」搬回来，
+    单独成一组「外观」排在「启动」之后；「强调色」留在「个性化」不动。
+    于是本页 4 张卡：开机自启 + 应用主题 + 快捷方式锁定 + 界面语言。
+
     2026-10-04 用户指令：「通用设置新增开机自启开关」—— 顶部新增「启动」分组与
     「开机自启」卡（3 张卡）。**它和别的开关不是一回事**：本体是 Windows 注册表
     的 ``Run`` 键（``app/autostart.py``），``Backend.settings.autostart`` 读的
@@ -79,6 +84,40 @@ Rin.FluentPage {
         }
     }
 
+    // ============================================================ 外观
+    // 2026-10-06 用户指令：主题模式（跟随系统 / 浅色 / 深色）从「个性化」搬回本页。
+    // 排在「启动」之后：深浅模式是**跟系统走的环境设定**（跟「开机自启」一样属
+    // 整机一级），比下面「快捷面板」那种应用内行为高一层。
+    // ⚠️ 强调色不在这里 —— 它是纯审美选择，留在「个性化」页。
+
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: 10
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("外观")
+    }
+
+    Rin.SettingCard {
+        objectName: "generalTheme"
+
+        Layout.fillWidth: true
+        title: qsTr("应用主题")
+        description: qsTr("影响所有窗口与控件的取色")
+        icon.name: "ic_fluent_dark_theme_20_regular"
+
+        Rin.ComboBox {
+            Layout.preferredWidth: 150
+            model: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
+            currentIndex: {
+                const value = Backend.settings.theme
+                if (value === "light") return 1
+                if (value === "dark") return 2
+                return 0
+            }
+            onActivated: Backend.setSetting("theme", ["auto", "light", "dark"][currentIndex])
+        }
+    }
+
     Rin.Text {
         Layout.fillWidth: true
         Layout.topMargin: 10
@@ -103,6 +142,9 @@ Rin.FluentPage {
     // 2026-10-01（第四轮）「外观」组的前两张卡（应用主题 / 强调色）整体搬去了
     // ``settings/Personalization.qml``（新导航项「个性化」），本页只剩「界面语言」。
     // 语言不属于外观，所以分组标题跟着从「外观」换成「语言」。
+    // 2026-10-06：「应用主题」又搬回来了（见上面「外观」组），「强调色」仍在
+    // 「个性化」。本页现在有**两个**分组标题各自叫「外观」以外的名字 —— 语言组
+    // 保持独立成组，别跟上面合并。
 
     Rin.Text {
         Layout.fillWidth: true

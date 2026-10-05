@@ -419,9 +419,9 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <translation>Horizontal margin</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="164"/>
-        <source>控制条距屏幕左右边缘的距离</source>
-        <translation>Distance from the control bar to the left/right screen edges</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="167"/>
+        <source>控制条距放映窗口左右边缘的距离（全屏放映时即屏幕边缘）</source>
+        <translation>Distance from the control bar to the slideshow window's left/right edges (the screen edges when presenting full screen)</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="185"/>
@@ -429,9 +429,9 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <translation>Vertical margin</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="186"/>
-        <source>控制条距屏幕上下边缘的距离，以整屏边缘为准</source>
-        <translation>Distance from the control bar to the top/bottom of the full screen</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="190"/>
+        <source>控制条距放映窗口上下边缘的距离（全屏放映时即屏幕边缘）</source>
+        <translation>Distance from the control bar to the slideshow window's top/bottom edges (the screen edges when presenting full screen)</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="205"/>

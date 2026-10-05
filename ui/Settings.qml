@@ -112,6 +112,7 @@ Rin.FluentWindow {
             // （尺寸与位置、显示内容那些开关），此项现在是叶子节点。
             // 同日第四轮：「应用主题 / 强调色」搬去了下面的「个性化」，
             // 本页只留「快捷方式锁定」+「界面语言」两张卡。
+            // 2026-10-06：「应用主题」又搬回本页（用户指令），共 4 张卡。
             title: qsTr("通用"),
             page: Qt.resolvedUrl("settings/General/Index.qml"),
             icon: "ic_fluent_settings_20_regular"
@@ -121,6 +122,8 @@ Rin.FluentWindow {
             // 个性化」—— 新建本页承接「应用主题」与「强调色」两张卡。
             // 插在「通用」之后、「主界面」之前：它调的是**整个应用**的取色，
             // 比「主界面（放映控制条画布）」的层级更高。
+            // 2026-10-06 用户指令：主题模式（跟随系统 / 浅色 / 深色）搬回「通用」，
+            // 本页只剩「强调色」一张卡。
             title: qsTr("个性化"),
             page: Qt.resolvedUrl("settings/Personalization.qml"),
             icon: "ic_fluent_paint_brush_20_regular"

@@ -317,6 +317,10 @@ def monitor_rect_for_window(hwnd: int) -> Optional[tuple[int, int, int, int]]:
 #: ``GetWindowRect`` 会大出（或小掉）几个像素，照抄会让贴边距离静默偏掉。
 FULLSCREEN_SNAP_RATIO = 0.97
 
+#: 「快速切页面板点外部收起」的判定余量（逻辑像素）。面板贴屏幕边时，光标压在
+#: 它的边缘上稍微抖一下就会被判成「出去了」→ 面板一闪一闪。四边各放这么宽。
+JUMP_DISMISS_SLACK = 6
+
 
 def _window_pid(hwnd: int) -> int:
     """窗口所属进程 id；取不到返回 0。"""
@@ -1544,12 +1548,59 @@ class WindowManager(QObject):
                 for name in self._docks:
                     self._position_dock(name)
                 self._sync_input_mode()
+        # 快速切页面板的「点外部收起」—— 见 _dismiss_jump_panels。
+        # ⚠️ 必须放在下面 ``_manual_shown`` 的提前 return **之前**：手动显示
+        #    （托盘菜单叫出控制条）时这条路径会被跳过，面板就再也收不掉了。
+        self._dismiss_jump_panels()
         # 手动显示（托盘菜单）时不隐去：那条路径本来就没有放映窗口可依，
         # 而且用户刚点完托盘菜单，前台窗口是开始菜单 / 托盘，隐去等于白点。
         if self._manual_shown:
             return
         if self._config.get("presentation.follow_foreground", True):
             self._set_overlay_suppressed(not self._slideshow_in_foreground())
+
+    def _dismiss_jump_panels(self) -> None:
+        """光标移出控制条 → 收起「快速切页面板」（= 点外部收起）。
+
+        QML 侧**收不到**「面板以外」的点击：区域塑形模式下那些地方是系统级穿透的
+        （``WS_EX_TRANSPARENT``），事件根本进不了这个进程 —— 挂多少个 MouseArea
+        都白搭。所以判据只能在 Python 侧用光标位置做，而这个看护本来
+        （``_watch_overlay``，200ms 一拍）就在跑，搭车判断不必另开定时器。
+
+        判据是控制条的 ``interactiveRect`` —— 它**已经把面板自己算进去了**
+        （见 ``PresentationDock.interactiveRect`` / ``SidePager.interactiveRect``），
+        所以光标落在面板上时仍算「里面」，不会自己把自己关掉。四边各放
+        ``_JUMP_DISMISS_SLACK`` 的余量：面板贴边时，光标压在边缘上抖一帧就收
+        会很烦。"""
+        if self._suppressed:
+            # 临时隐去期间内容本来就看不见（容器淡成 0），不必管；
+            # 恢复显示时会重新判一次
+            return
+        if self.overlay is None or not self.overlay.isVisible():
+            return
+        cursor = QCursor.pos()
+        for dock in self._docks.values():
+            try:
+                opened = bool(dock.property("jumpPanelOpened"))
+            except (RuntimeError, TypeError):  # pragma: no cover - 组件已释放 / 没这个属性
+                continue
+            if not opened:
+                continue
+            rect = self._dock_global_rect(dock).adjusted(
+                -JUMP_DISMISS_SLACK, -JUMP_DISMISS_SLACK,
+                JUMP_DISMISS_SLACK, JUMP_DISMISS_SLACK)
+            if not rect.contains(cursor):
+                self._close_jump_panel(dock)
+
+    def _close_jump_panel(self, dock: QQuickItem) -> None:
+        """调 QML 侧 ``closeJumpPanel()`` 收起面板。
+
+        包 try：QML 侧函数缺失 / 组件已释放只记日志 —— 这个调用点在看护定时器
+        里，抛出去会把事件循环带崩。"""
+        try:
+            QMetaObject.invokeMethod(dock, "closeJumpPanel")
+        except Exception:  # pragma: no cover - QML 侧没实现 / 对象已销毁
+            log.debug("控制条缺 closeJumpPanel()", exc_info=True)
 
     def _set_overlay_suppressed(self, suppressed: bool) -> None:
         """临时隐去 / 恢复遮罩（放映窗口不在前台时）。

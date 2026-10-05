@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import RinUI as Rin
 import Luminalium
 
@@ -47,6 +48,10 @@ Item {
     id: dock
 
     property string corner: "bottom_left"
+
+    /*! 挂在屏幕**右侧**（``bottom_right``）—— 快速切页面板跟着它右对齐，
+        于是「面板从条的这一侧长出去」的观感两个角落一致。 */
+    readonly property bool cornerIsRight: corner.indexOf("right") >= 0
 
     // ------------------------------------------------------------ 配置读取
     readonly property var cfg: Backend.presentationConfig
@@ -136,6 +141,17 @@ Item {
     readonly property int pagerSpacing: pagerCfg.spacing !== undefined ? pagerCfg.spacing : 14
     readonly property int pagerPillPaddingX: pagerCfg.surface_padding_x !== undefined
         ? pagerCfg.surface_padding_x : Lumi.dockPagerPaddingX
+
+    // ---- 页码快速跳转（点页码展开的面板，``presentation/PageJumpPanel.qml``）----
+    // 2026-10-06 用户指令：「将 Luminalium 1 的点按翻页组件中的页码自动展开快速
+    // 切页面板的功能搬过来，并且 Fluent 风格 RinUI 化」。形态与取舍写在
+    // ``PageJumpPanel.qml`` 的头注释里。
+    readonly property var jumpCfg: pagerCfg.jump !== undefined ? pagerCfg.jump : ({})
+    /*! 面板的总开关（``presentation.pager.jump.enabled``）。关掉后页码区不再
+        可点、也不再给 hover 提示 —— 「点不动」和「看着能点但没反应」是两回事。 */
+    readonly property bool jumpEnabled: jumpCfg.enabled !== false
+    readonly property int jumpColumns: jumpCfg.columns !== undefined
+        ? jumpCfg.columns : Lumi.dockJumpColumns
 
     // ---- 分段控件（工具组）----
     readonly property int segmentPaddingX: segmentCfg.padding_x !== undefined
@@ -284,6 +300,41 @@ Item {
     /*! 选单展开着没有（``interactiveRect`` 与真机区域塑形都看它）。 */
     readonly property bool paletteOpened: penPalette.opened
 
+    /*! 快速切页面板展开着没有 —— 与 ``paletteOpened`` 同一个用途（``interactiveRect``
+        / 区域塑形），另外 Python 侧还靠它决定「光标移出控制条了要不要收面板」
+        （见 ``windows.py::_watch_overlay``）。 */
+    readonly property bool jumpPanelOpened: jumpPanel.opened
+
+    /*! 可用宽度（**屏幕逻辑像素**）= 所在**窗口**的宽 —— 遮罩层是铺满放映窗口的
+        整屏窗口，所以窗口尺寸就是面板能横着占的地方。
+
+        ⚠️ 别改成 ``parent.width``：``TopWindow`` 的 ``containerItem`` 是
+        ``anchors.fill: parent``，而那个 ``Qt.Tool`` 透明窗口的 contentItem 尺寸
+        **实测不可靠**（0 / 陈旧值 / 建窗口那一刻的默认值，取决于读的时机）——
+        拿它算可用空间，面板会被静默压成单列。竖版同款（见 ``SidePager``）。 */
+    readonly property real availableWidth: {
+        var win = Window.window
+        if (win) {
+            return win.width
+        }
+        return parent ? parent.width : 0
+    }
+
+    /*! 点页码区：开 / 关面板。总页数为 0（没读到页码）时不动 —— 空面板没有意义，
+        而「点了一下弹出一块空白」比「点不动」更像坏了。 */
+    function toggleJumpPanel() {
+        if (!present("pager") || !jumpEnabled || Backend.slideTotal <= 0) {
+            return
+        }
+        jumpPanel.opened = !jumpPanel.opened
+    }
+
+    /*! 收起切页面板。给 Python 侧的「点外部收起」调 —— 面板外的点击在区域塑形
+        模式下是系统级穿透的，QML 里收不到（见 ``PageJumpPanel`` 头注释）。 */
+    function closeJumpPanel() {
+        jumpPanel.opened = false
+    }
+
     /*! 按下分页时选的是谁 —— ``clicked`` 落地时 TabBar 早把 ``currentIndex``
         换好了，那时再读 ``Backend.activeTool`` 分不清「切工具」和「再点一次」。 */
     property string toolBeforePress: ""
@@ -296,8 +347,10 @@ Item {
         var was = toolBeforePress
         toolBeforePress = ""
         if (toolId !== "pen" || was !== "pen") {
-            // 这一下是「切工具」（或点了别的），选单跟着收起来
+            // 这一下是「切工具」（或点了别的），两个浮出层都跟着收起来 ——
+            // 用户已经在做别的事了，面板再飘着就是挡路
             penPalette.opened = false
+            jumpPanel.opened = false
             return
         }
         penPalette.opened = !penPalette.opened
@@ -331,6 +384,15 @@ Item {
             left = Math.min(left, penPalette.x)
             right = Math.max(right, penPalette.x + penPalette.width * s)
             top = Math.min(top, penPalette.y)
+        }
+        // 快速切页面板是同一回事：它浮在条**上方**（条在屏幕下部），尺寸随页数
+        // 变，必须整块包进来 —— 否则格子点不动（穿透到 PowerPoint 就变成在幻灯片
+        // 上乱画一笔），而且那块会被 ``SetWindowRgn`` 整个裁掉、连画都画不出来。
+        if (jumpPanelOpened && jumpPanel.visible) {
+            left = Math.min(left, jumpPanel.x)
+            right = Math.max(right, jumpPanel.x + jumpPanel.width * s)
+            top = Math.min(top, jumpPanel.y)
+            bottom = Math.max(bottom, jumpPanel.y + jumpPanel.height * s)
         }
         return Qt.rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
     }
@@ -472,18 +534,53 @@ Item {
                 onClicked: Backend.previousSlide()
             }
 
-            // 页码变化走透明度脉冲（与竖版同一套节奏，见 PagePulse.qml）
-            PagePulse {
-                page: Backend.slideIndex
+            // 页码区 —— 除了显示，**还是快速切页面板的触发点**（L1 的点按翻页）。
+            // 包一层 Item 是因为 ``Flow`` 的子项不能用 anchors（见头注释），
+            // 而这个热区里要有「hover 底 + 脉冲文字 + 点击」三层。
+            Item {
+                id: pagerHit
+                objectName: "dockPagerHit"
                 width: dock.pagerWidth
                 height: dock.contentHeight
 
-                Rin.Text {
-                    anchors.centerIn: parent
-                    typography: Rin.Typography.BodyLarge
-                    text: Backend.slideTotal > 0
-                        ? Backend.slideIndex + "/" + Backend.slideTotal
-                        : "-/-"
+                // hover 底：这是「这里能点」的唯一提示 —— 页码区平时看着只是一个
+                // 数字，不给反馈没人会去点它。开了面板时也保持点亮，等于「面板是
+                // 从这里长出来的」这条视觉连线。
+                Rectangle {
+                    objectName: "dockPagerHitSurface"
+                    anchors.fill: parent
+                    radius: Lumi.dockJumpCellRadius
+                    color: pagerHitArea.containsMouse || dock.jumpPanelOpened
+                        ? Lumi.dockJumpCellHover : "transparent"
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: Lumi.dockJumpFadeDuration
+                            easing.type: Easing.OutQuint
+                        }
+                    }
+                }
+
+                // 页码变化走透明度脉冲（与竖版同一套节奏，见 PagePulse.qml）
+                PagePulse {
+                    anchors.fill: parent
+                    page: Backend.slideIndex
+
+                    Rin.Text {
+                        anchors.centerIn: parent
+                        typography: Rin.Typography.BodyLarge
+                        text: Backend.slideTotal > 0
+                            ? Backend.slideIndex + "/" + Backend.slideTotal
+                            : "-/-"
+                    }
+                }
+
+                MouseArea {
+                    id: pagerHitArea
+                    anchors.fill: parent
+                    enabled: dock.jumpEnabled
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: dock.toggleJumpPanel()
                 }
             }
 
@@ -565,6 +662,86 @@ Item {
         }
     }
 
+    // ============================================ 快速切页面板（点页码展开）
+    // 声明在 ``bar`` 之后 → 绘制、命中都在控制条之上。
+    //
+    // ⚠️ 与笔选单同一条约定：**不进** dock 的 ``implicitWidth/Height`` ——
+    //    dock 一改尺寸，``windows.py::_position_dock`` 就要重摆，条会在
+    //    「长大 / 归位」之间闪一帧。尺寸不动、纯靠绘制溢出，代价是
+    //    ``interactiveRect`` 必须自己把它包进来（上面那段就是）。
+    PageJumpPanel {
+        id: jumpPanel
+        objectName: "pageJumpPanel"
+
+        // 本角落**没有翻页组**时不铺格子：那个角落根本没有页码区（没有触发点），
+        // 面板实例只是跟着组件一起被建出来而已 —— 白建几十个格子纯属浪费。
+        // 底中那条工具栏就是这一档（它的 groups 是 tools/actions/exit）。
+        total: dock.present("pager") ? Backend.slideTotal : 0
+        current: Backend.slideIndex
+        columns: dock.jumpColumns
+        opened: false
+        // 条在屏幕下部 → 面板往**上**长，滑入也从贴近条的位置向上浮
+        enterFrom: "up"
+
+        // 与底板同倍率缩放 —— 整块面板跟着组件一起放大 / 缩小。
+        // ``transformOrigin: TopLeft``：下面算的 x/y 是**根 Item 坐标**（未缩放的
+        // 定位），缩放围绕左上角做，落点才不跟着漂。
+        scale: dock.scaleFactor
+        transformOrigin: Item.TopLeft
+
+        // 底边贴条底板上沿往上摆：面板**卡片本体**（不含投影余量）的底边距底板上沿
+        // ``Lumi.dockJumpGap``。卡片自己的坐标含 shadowMargin，所以两边各扣一次。
+        // ⚠️ 整条式子乘 ``scaleFactor``：底板的可见上沿在 ``bar.margin * scaleFactor``
+        //    处（底板被缩放变换过），落点要跟着走。
+        y: ((bar.y + bar.margin) - Lumi.dockJumpGap
+            - jumpPanel.shadowMargin - jumpPanel.cardHeight) * dock.scaleFactor
+
+        // 可用高度（**设计单位**）：条底板上沿一直往上到容器顶部，再减掉那条间距。
+        //
+        // ⚠️ 两项都不能少：
+        //    · ``dock.y / scaleFactor`` —— 面板的 x/y 是**dock 内部**坐标（它挂在
+        //      dock 上，dock 自己在容器里的位置是另一笔账），而「上面还有多少地方」
+        //      是**容器**尺度的事。漏掉它，屏幕底部的发布会说「上面只剩 24px」，
+        //      面板被压成一行高（2026-10-06 新增时当场踩到）；
+        //    · 这个式子里**没有** jumpPanel 自己的尺寸 —— 否则「高度上限依赖 y、
+        //      y 依赖高度」就成环了，QML 会直接报绑定循环。
+        maxHeight: Math.max(
+            dock.y / dock.scaleFactor + bar.y + bar.margin - Lumi.dockJumpGap,
+            Lumi.dockJumpCellSize)
+        // 可用宽度 = 遮罩整宽换算回设计单位（面板可以横跨屏幕，只需别顶出去）
+        maxWidth: Math.max(dock.availableWidth / dock.scaleFactor, 0)
+
+        // 水平：贴着条的同侧边 —— 左下角的面板左对齐、右下角的右对齐，
+        // 「面板从条的哪一头长出来」在两侧保持一致。超出屏幕就往回收。
+        x: {
+            var s = dock.scaleFactor
+            var want
+            if (dock.cornerIsRight) {
+                // 卡片本体的**右**沿对齐底板右沿
+                want = (bar.x + bar.implicitWidth - bar.margin) * s
+                    - jumpPanel.width * s + jumpPanel.shadowMargin * s
+            } else {
+                // 卡片本体的**左**沿对齐底板左沿
+                want = (bar.x + bar.margin) * s - jumpPanel.shadowMargin * s
+            }
+            // 可用宽 = **从 dock 左沿到窗口右沿**（``want`` 是 dock 内部坐标，
+            // 所以先把 ``dock.x`` 扣掉）—— 与笔选单那条算式同一个口径。
+            // ⚠️ 别在这里 ``Math.max(0, …)``：面板比条宽时它本来就该往左溢出
+            //    （右下角的条贴着屏幕右边，面板只能往左长），钳到 0 就顶死了。
+            var limit = dock.availableWidth - dock.x
+            if (limit > 0) {
+                want = Math.min(want, limit - jumpPanel.width * s)
+            }
+            return want
+        }
+
+        onPagePicked: function (page) {
+            Backend.gotoSlide(page)
+            // 跳完就收 —— 面板的使命结束了，留着反而挡住刚跳过去的那一页
+            jumpPanel.opened = false
+        }
+    }
+
     // 用户点击后 currentIndex 的绑定被打断；后端发起的工具切换
     // （快捷键 / 托盘菜单）由这里继续同步到选中页。
     Connections {
@@ -582,10 +759,12 @@ Item {
             }
         }
 
-        // 退出放映 → 收起选单：下一次放映进来时不该看到上次遗留的一块卡片。
+        // 退出放映 → 收起浮出层（笔选单 / 快速切页面板）：下一次放映进来时
+        // 不该看到上次遗留的一块卡片。
         function onPresentationActiveChanged() {
             if (!Backend.presentationActive) {
                 penPalette.opened = false
+                jumpPanel.opened = false
             }
         }
     }

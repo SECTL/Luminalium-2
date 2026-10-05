@@ -427,6 +427,16 @@ class LuminaliumApplication:
             self.ppt.next_slide(hwnd)
         elif action == "pager:previous":
             self.ppt.previous_slide(hwnd)
+        elif action.startswith("pager:goto:"):
+            # 快速切页面板点了一格（页码 1-based）。与 next/previous 一样不占
+            # 「翻页限流」—— 它是直接定位，不是连打翻页手势。
+            try:
+                page = int(action.rsplit(":", 1)[1])
+            except (ValueError, IndexError):
+                log.warning("无法解析跳转页码: %r", action)
+                return
+            self.ppt.goto_slide(page, hwnd)
+            log.info("跳转到第 %s 页", page)
         elif action == "clear_screen":
             self.ppt.clear_screen(hwnd)
         elif action == "overflow":

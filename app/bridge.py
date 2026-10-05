@@ -1045,6 +1045,27 @@ class Backend(QObject):
     def previousSlide(self) -> None:
         self.actionTriggered.emit("pager:previous")
 
+    @Slot(int)
+    def gotoSlide(self, page: int) -> None:
+        """跳到指定页（控制条上「点页码展开快速切页面板」里点了一格）。
+
+        ``page`` 是 **1-based** 的页码 —— 与 ``slideIndex`` 同一个口径，
+        PowerPoint 的 ``View.GotoSlide`` 本来就是 1-based，中间不要再换算一次。
+
+        这里只挡掉 ``< 1``：面板里的格子全是从 ``slideTotal`` 铺出来的，正常
+        不会越界，但这是 QML 能直接调到的公开槽，一个手滑的 0 会让 COM 那侧
+        抛异常（越界上限交给 COM 自己判 —— 它失败也只是这一次跳页不生效，
+        不会伤到别的状态）。"""
+        try:
+            target = int(page)
+        except (TypeError, ValueError):
+            log.warning("忽略非法的跳转页码: %r", page)
+            return
+        if target < 1:
+            log.warning("忽略越界的跳转页码: %r", page)
+            return
+        self.actionTriggered.emit(f"pager:goto:{target}")
+
     @Slot()
     def exitPresentation(self) -> None:
         self.actionTriggered.emit("exit_presentation")

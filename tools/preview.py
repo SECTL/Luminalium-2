@@ -61,6 +61,11 @@
 - ``LUMI_PREVIEW_PEN=1`` —— 把工具切到「笔」并**展开笔的选单**（PenPaletteCard），
   输出 ``top_window_pen.png``；``LUMI_PREVIEW_PEN_COLOR`` 指定预点亮的颜色
   （默认 ``#EC4899``，故意跟配置默认的黄色错开，好核对「选中环 + 预览笔迹」）。
+- ``LUMI_PREVIEW_JUMP=1`` —— 把**快速切页面板**（点页码展开的那块）摊开，输出
+  ``top_window_jump.png``。页码用 ``main()`` 里注入的那份假状态（第 26 页 / 共 41
+  页），所以什么都不用给。这一档会顺手关掉左下角的开发水印 —— 它就画在左翻页条
+  那一侧、会盖住面板底行的数字，出图看着像「面板被裁了一行」（2026-10-06 在这上面
+  白绕了很久）。配 ``LUMI_PREVIEW_PAGER=side|bottom`` 可以分别看竖版 / 横版两种落点。
 """
 
 from __future__ import annotations
@@ -165,6 +170,23 @@ PREVIEW_DETAILS = os.environ.get("LUMI_PREVIEW_DETAILS", "") not in ("", "0")
 PEN_LIGHT = IS_LIGHT and PREVIEW_PEN
 if PEN_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 见上：把「浅色只出启动画面」让开
+#: 快速切页面板（PageJumpPanel，点页码展开的那块）预览：展开面板，输出
+#: ``top_window_jump.png``。
+#:
+#: 页码数据不用管：``main()`` 开头的 ``backend.apply_state`` 已经把
+#: ``slideIndex`` / ``slideTotal`` 摆成「第 26 页 / 共 41 页」，面板读的就是它。
+#:
+#: ⚠️ 展开时会顺手把面板的 ``animate`` 关掉 —— 预览在**屏幕外**建窗口抓帧，
+#: ``Behavior`` 的时间轴在那种环境下推进不可靠（面板会停在 ``reveal`` 0、整块
+#: 不显示；同一份面板在可见窗口 / 离屏窗口 / TopWindow 宿主里都实测正常，见
+#: ``tools/jump_probe.py``）。抓图要的是稳定终态，不是动画中间态。
+PREVIEW_JUMP = os.environ.get("LUMI_PREVIEW_JUMP", "") not in ("", "0")
+#: 浅色主题 **+** 切页面板 = 只出那一张（``top_window_jump_light.png``）。
+#: 理由同 ``PEN_LIGHT``：当前页那块 accent 实底上的文字取
+#: ``textOnAccentColor``（深浅两档不一样），浅色下读不读得出来只有这张图能核验。
+JUMP_LIGHT = IS_LIGHT and PREVIEW_JUMP
+if JUMP_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 同上
 #: 翻页组件位置 → 该形态下**启用**的角落（与 bridge.py 的常量同一份口径）
 PAGER_POSITION_CORNERS = {
     "side": ("middle_left", "middle_right"),
@@ -481,6 +503,66 @@ def main() -> int:
         else:
             print("[WARN] 没找到 penPalette（底中工具栏没启用工具组？）")
 
+    # 快速切页面板预览：点页码展开的那块。横版（``pageJumpPanel``）与竖版
+    # （``sidePageJumpPanel``）各有一个实例，**两个都展开** —— 它们的落点不一样
+    # （横版往上长、竖版往屏幕内侧长），一张图看不全两种形态。
+    #
+    # ⚠️ 页码**不注入假数据**：``main()`` 开头的 ``backend.apply_state`` 已经把
+    #    ``slideIndex`` / ``slideTotal`` 摆成了「第 26 页 / 共 41 页」，面板读的
+    #    就是它。注入反而会打断 QML 侧的绑定，看到的不是真链路。
+    #
+    # ⚠️ ``animate: false`` 是必须的：预览在屏幕外建窗口抓帧，``Behavior`` 的
+    #    时间轴在这种环境下推进不可靠（面板会停在 ``reveal`` 0、整块不显示）。
+    #    组件在可见窗口 / 离屏窗口 / TopWindow 宿主里都实测正常 —— 见
+    #    ``tools/jump_probe.py``；抓图要的是稳定终态，不是动画中间态。
+    if PREVIEW_JUMP and container is not None:
+        # ⚠️ 先关掉左下角的**开发水印**：它正好画在左翻页条那一侧的下面，会盖住
+        #    面板最底下一行的数字 —— 出图时看起来活像「面板被裁了一行」，而
+        #    右侧那块（没被遮）又是完整的，对比之下非常像一个真 bug（2026-10-06
+        #    在这上面绕了很久）。这一档要的是干净的面板版式，水印另开一档看。
+        watermark = top_window.property("watermarkItem") if top_window is not None else None
+        if watermark is not None:
+            watermark.setVisible(False)
+
+        expanded = []
+        # ⚠️ 逐个 dock 展开，**不能**在 container 上找名字：``_find_by_name`` 只返回
+        #    第一个匹配 —— 两个竖条各有一块面板，那样只会展开左边那条。
+        for dock_item in container.childItems():
+            corner = str(dock_item.property("corner") or "")
+            # 底中那条是**工具栏**（groups 里没有 pager）：那个角落没有页码区，
+            # 面板实例只是跟着组件建出来的，`total` 是 0 —— 展开只会多出一块空卡片
+            if corner.startswith("bottom_center"):
+                continue
+            for panel_name in ("pageJumpPanel", "sidePageJumpPanel"):
+                panel_item = _find_by_name(dock_item, panel_name)
+                if panel_item is None:
+                    continue
+                panel_item.setProperty("animate", False)
+                panel_item.setProperty("opened", True)
+                expanded.append(f"{corner}:{panel_name}")
+
+                # 抓图前打一行几何：这块面板的坑**全在这一行数字里** ——
+                # 列数被压成 1（可用宽度算错）、卡片高被钳到一行（可用高度算错）、
+                # 明明放得下却有滚动条（``viewport`` < ``grid``）。
+                # 出图之后先看这一行，能省掉「盯着 PNG 猜哪里错了」那一步。
+                def _report(it=panel_item, tag=f"{corner}:{panel_name}") -> None:
+                    flick_item = _find_by_name(it, "pageJumpFlickable")
+                    print(f"[JUMP] {tag} card={it.property('cardWidth'):.0f}x"
+                          f"{it.property('cardHeight'):.0f} "
+                          f"grid={it.property('gridWidth'):.0f}x"
+                          f"{it.property('gridHeight'):.0f} "
+                          f"viewport={it.property('viewportHeight'):.0f} "
+                          f"maxW={it.property('maxWidth'):.0f} "
+                          f"maxH={it.property('maxHeight'):.0f} "
+                          f"cols={it.property('effColumns')} "
+                          f"rows={it.property('rows')} "
+                          f"scroll={it.property('scrollable')} "
+                          f"contentY="
+                          f"{flick_item.property('contentY') if flick_item else '?'}")
+
+                QTimer.singleShot(300, _report)
+        print(f"[JUMP] 已展开: {expanded or '（一个都没找到）'}")
+
     # 设置窗口：默认页由 NavigationView 在 Component.onCompleted 里推入
     settings = None
     settings_component = QQmlComponent(
@@ -621,16 +703,19 @@ def main() -> int:
             # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
             targets = ([] if editor is None
                        else [("main_editor_edit_light.png", editor)])
-        elif PEN_LIGHT:
-            # 浅色主题 + 笔选单：只出顶层窗口那一张（见 ``PEN_LIGHT``）
-            targets = ([] if top_window is None
-                       else [("top_window_pen_light.png", top_window)])
+        elif PEN_LIGHT or JUMP_LIGHT:
+            # 浅色主题 + 某一个浮出层（笔选单 / 快速切页面板）：只出顶层窗口那一张
+            #（见 ``PEN_LIGHT`` / ``JUMP_LIGHT``）
+            targets = ([] if top_window is None else [(
+                "top_window_jump_light.png" if JUMP_LIGHT
+                else "top_window_pen_light.png", top_window)])
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
                 # 笔选单那一档单独一个文件名：常态那张（选单收起）要留着对照
                 targets.append((
-                    preview_name("top_window_pen.png" if PREVIEW_PEN
+                    preview_name("top_window_jump.png" if PREVIEW_JUMP
+                                 else "top_window_pen.png" if PREVIEW_PEN
                                  else "top_window.png"),
                     top_window,
                 ))
@@ -660,7 +745,8 @@ def main() -> int:
         # 报告窗两档对照图。放在最后：它要**改** ``ErrorHandler`` 的状态（切换
         # 崩溃 / 错误），放在别的窗口抓图之前会把中途状态漏出去。
         # 其余档位（只出启动画面 / 只出设置页 / 浅色）不出这两张，免得覆盖常态图。
-        if error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT or PEN_LIGHT:
+        if (error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT
+                or PEN_LIGHT or JUMP_LIGHT):
             return
         # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
         # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，

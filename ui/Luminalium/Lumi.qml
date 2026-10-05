@@ -310,6 +310,63 @@ QtObject {
     /*! 还没选中任何一格时，预览笔迹用的颜色（= 卡片底色上一道中性线）。 */
     readonly property color dockPaletteIdleStroke: fade(textPrimary, 0.35)
 
+    // ---- 页码快速跳转面板（``presentation/PageJumpPanel.qml``）----
+    // 出处是 **Luminalium 1** 的点按翻页组件：L1 里点页码那一块，会从屏幕侧边
+    // 滑出一列页面（``#page-selector``），点哪一页就跳哪一页。本档保留它的三件
+    // 事 —— **点页码展开 / 当前页高亮 / 点外部收起**，但内容**换成 Fluent 的
+    // 页码网格**，理由见组件头注释（L2 后端没有导出幻灯片缩略图这条通道）。
+    //
+    // L1 的手感也照搬了两条：面板是**滑入**（不用 scale —— 缩放会让数字发虚），
+    // 曲线走 Fluent 2 的 decelerate（``OutQuint``），收起比展开干脆。
+    /*! 面板与控制条底板之间的间距（同 ``dockPaletteGap`` 一档）。 */
+    readonly property int dockJumpGap: 10
+    /*! 面板内边距。 */
+    readonly property int dockJumpPadding: 12
+    /*! 面板圆角。8 = Fluent 2 的 Overlay / Flyout corner radius（同
+        ``dockPaletteRadius``）—— 独立浮出的大表面用 8，胶囊圆语言只留给控制条本体。 */
+    readonly property int dockJumpRadius: 8
+    /*! 面板投影余量（同 ``dockPaletteShadowMargin`` 的用途：留出画阴影的地方）。 */
+    readonly property int dockJumpShadowMargin: 20
+    /*! 格子边长。**与 ``dockHitSize`` 同档（44）** —— 这是 Fluent 的最小可点
+        尺寸，触屏上点页码本来就比点按钮更容易点偏，不该比工具按钮还小。 */
+    readonly property int dockJumpCellSize: 44
+    /*! 格子间距。6 = 8px 网格上的「紧凑一档」：格子自己已经 44，再拉开会让
+        面板显得散，而跳跃列表应当是一块密实的砖。 */
+    readonly property int dockJumpCellSpacing: 6
+    /*! 格子圆角 —— 比面板（8）小一档，嵌套圆角同心（RinUI 的 smallRadius 同款）。 */
+    readonly property int dockJumpCellRadius: 5
+    /*! 每行几格的缺省值（真实值在 ``presentation.pager.jump.columns``）——
+        5 列 × 44 的格子 ≈ 244 宽，与 L1 那块面板的 260 是同一个体量。 */
+    readonly property int dockJumpColumns: 5
+    /*! 格子 hover 底色（Fluent 2 的 Subtle fill 一档）。 */
+    readonly property color dockJumpCellFill: fade(textPrimary, 0.04)
+    readonly property color dockJumpCellHover: fade(textPrimary, 0.09)
+    /*! 按下时轻微收缩的量感（不做位移动画：跳页类控件要「稳」）。 */
+    readonly property real dockJumpCellPressedScale: 0.94
+    /*! **当前页**格子的底色与文字色。L1 是「accent 描边」，这里改成 Fluent 的
+        实底强调（WinUI 的 SelectedBackground 同款）—— 描边在触屏上一晃而过，
+        实底才是一眼能找到「我现在在哪」。反色文字取主题的 ``textOnAccentColor``
+        （深色档白 / 浅色档黑），别写死白色：浅色主题的 accent 是亮蓝，白字压上
+        去几乎读不出来。 */
+    readonly property color dockJumpCurrentFill: accent
+    readonly property color dockJumpCurrentText: themeColors && themeColors.textOnAccentColor !== undefined
+        ? themeColors.textOnAccentColor : (isDark ? "#FFFFFF" : "#000000")
+    /*! 面板底色 —— 与笔选单同一档实底（92%）：页码要能看清，透出放映画面会糊。 */
+    readonly property color dockJumpBg: fade(surfaceBg, 0.92)
+    /*! 面板描边：``hairline`` 同源（深色下 ``cardBorderColor`` 是黑 10%，等于没有）。 */
+    readonly property color dockJumpBorder: hairline
+    /*! 面板滚动区里那一条细滚动条的颜色（Flickable 自绘，见组件）。 */
+    readonly property color dockJumpScrollThumb: fade(textPrimary, 0.28)
+    /*! 进出场动画：滑入位移 12（同笔选单）+ 时长沿用 RinUI 的分工。 */
+    readonly property int dockJumpEnterOffset: 12
+    readonly property int dockJumpEnterDuration: Rin.Utils.animationSpeed
+    readonly property int dockJumpFadeDuration: durationFast
+    /*! 面板高度上限占可用空间的比例 —— 行数很多的演示（几百页）不该让面板顶到
+        屏幕另一头，超过就滚动。 */
+    readonly property real dockJumpMaxHeightRatio: 0.72
+    /*! 面板宽度上限占屏幕宽的比例（列数配得很大时兜底，别横着顶出屏幕）。 */
+    readonly property real dockJumpMaxWidthRatio: 0.32
+
     // ================================================================== 快捷面板
     //
     // 版式对齐 **Class Widgets 2** 的托盘面板（`Windows/TrayPanel.qml` +

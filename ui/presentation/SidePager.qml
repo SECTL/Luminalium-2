@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import RinUI as Rin
 import Luminalium
 
@@ -49,6 +50,10 @@ Item {
 
     property string corner: "middle_left"
 
+    /*! 挂在屏幕**右侧**（``middle_right``）—— 快速切页面板往条的另一侧长，
+        于是「面板总在屏幕内侧」这条在两个角落都成立。 */
+    readonly property bool cornerIsRight: corner.indexOf("right") >= 0
+
     // ------------------------------------------------------------ 配置读取
     readonly property var cfg: Backend.presentationConfig
 
@@ -74,6 +79,55 @@ Item {
 
     /*! ``pager.enabled`` 与横版同一开关（设置页「页码切换」）。 */
     readonly property bool pagerEnabled: pagerCfg.enabled !== false
+
+    // ---- 页码快速跳转（点页码展开的面板，``presentation/PageJumpPanel.qml``）----
+    // 与横版**共用同一个组件、同一份配置**（``presentation.pager.jump``）——
+    // 两个形态只是面板往外长的那一侧不同（见 ``enterFrom``）。横版接线的来龙
+    // 去脉写在 ``PresentationDock.qml`` 与 ``PageJumpPanel.qml`` 的注释里。
+    readonly property var jumpCfg: pagerCfg.jump !== undefined ? pagerCfg.jump : ({})
+    readonly property bool jumpEnabled: jumpCfg.enabled !== false
+    readonly property int jumpColumns: jumpCfg.columns !== undefined
+        ? jumpCfg.columns : Lumi.dockJumpColumns
+
+    /*! 快速切页面板展开着没有（``interactiveRect`` / 区域塑形 / Python 侧
+        「光标移出就收」都看它，与横版同名同义）。 */
+    readonly property bool jumpPanelOpened: jumpPanel.opened
+
+    /*! 可用空间（**屏幕逻辑像素**）= 所在**窗口**的尺寸 —— 遮罩层是铺满放映
+        窗口的整屏窗口，所以窗口尺寸就是面板能用的地方。
+
+        ⚠️ 别改成 ``parent.width/height``：``TopWindow`` 的 ``containerItem`` 是
+        ``anchors.fill: parent``，而那个 ``Qt.Tool`` 透明窗口的 contentItem 尺寸
+        **实测不可靠**（0 / 陈旧值 / 建窗口那一刻的默认 160×160，取决于读的时机）
+        —— 拿它算可用空间，面板会被静默压扁或压成单列（2026-10-06 预览实锤：
+        屏幕底部那条横版控制条算出来的面板只有一行高）。 */
+    readonly property real availableWidth: {
+        var win = Window.window
+        if (win) {
+            return win.width
+        }
+        return parent ? parent.width : 0
+    }
+    readonly property real availableHeight: {
+        var win = Window.window
+        if (win) {
+            return win.height
+        }
+        return parent ? parent.height : 0
+    }
+
+    /*! 点页码区：开 / 关面板（总页数为 0 时不动，理由同横版）。 */
+    function toggleJumpPanel() {
+        if (!jumpEnabled || Backend.slideTotal <= 0) {
+            return
+        }
+        jumpPanel.opened = !jumpPanel.opened
+    }
+
+    /*! 收起切页面板（给 Python 侧的「点外部收起」调）。 */
+    function closeJumpPanel() {
+        jumpPanel.opened = false
+    }
 
     // ---- 尺寸（横版 pill 的转置；默认值 = Lumi 里同档令牌）----
     readonly property int pillWidth: sideCfg.width !== undefined
@@ -127,14 +181,32 @@ Item {
     readonly property bool highlightRingVisible: bar.highlightRingVisible
 
     /*! 本条表面（不含投影余量）的交互矩形，坐标相对本 Item（= 屏幕像素，
-        已按 ``scaleFactor`` 换算）。 */
+        已按 ``scaleFactor`` 换算）。
+
+        快速切页面板展开时把面板那一块也**并进来** —— 它浮在条的包围盒之外
+        （条贴屏幕边，面板往屏幕内侧长），不并的话面板既画不出来（``SetWindowRgn``
+        裁掉）也点不动（点击穿透到 PowerPoint，在幻灯片上乱画一笔）。 */
     readonly property rect interactiveRect: {
         var s = scaleFactor
         var m = bar.margin * s
-        return Qt.rect(m, m,
-            Math.max(bar.implicitWidth * s - m * 2, 0),
-            Math.max(bar.implicitHeight * s - m * 2, 0))
+        var left = m
+        var top = m
+        var right = bar.implicitWidth * s - m
+        var bottom = bar.implicitHeight * s - m
+        if (jumpPanelOpened && jumpPanel.visible) {
+            left = Math.min(left, jumpPanel.x)
+            right = Math.max(right, jumpPanel.x + jumpPanel.width * s)
+            top = Math.min(top, jumpPanel.y)
+            bottom = Math.max(bottom, jumpPanel.y + jumpPanel.height * s)
+        }
+        return Qt.rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
     }
+
+    /*! 命中矩形变了（快速切页面板开合）。Python 侧连这个信号去重算窗口区域 ——
+        平时的区域同步是 800ms 一拍，跟不上「点一下就长出一块面板」这种瞬时变化。 */
+    signal hitRectChanged()
+
+    onInteractiveRectChanged: hitRectChanged()
 
     /*! 根 Item 的尺寸 = **缩放后**的屏幕像素（Python 摆位 / 区域塑形 / 编辑器
         预览都读它，见 ``scaleFactor`` 的说明）。 */
@@ -176,34 +248,67 @@ Item {
         }
 
         // ==================================== 页码（三行：26 / 小斜杠 / 41）
-        // 变化时走透明度脉冲（与横版同一套节奏，见 PagePulse.qml）
-        PagePulse {
-            page: Backend.slideIndex
+        // 除了显示，**还是快速切页面板的触发点**（与横版同一个落点，只是这里
+        // 的条是竖的）。包一层 Item 是因为 ``Flow`` 的子项不能用 anchors
+        // （见竖版说明），而这个热区里要有「hover 底 + 脉冲文字 + 点击」三层。
+        Item {
+            id: pagerHit
+            objectName: "sidePagerHit"
             visible: pager.pagerEnabled
             width: pager.contentHeight
             height: pager.infoHeight
 
-            Column {
-                anchors.centerIn: parent
-                spacing: 0
-
-                Rin.Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    typography: Rin.Typography.BodyLarge
-                    text: Backend.slideTotal > 0 ? Backend.slideIndex : "-"
+            // hover 底 / 面板开着时保持点亮（与横版同一套反馈，见 PresentationDock）
+            Rectangle {
+                objectName: "sidePagerHitSurface"
+                anchors.fill: parent
+                radius: Lumi.dockJumpCellRadius
+                color: pagerHitArea.containsMouse || pager.jumpPanelOpened
+                    ? Lumi.dockJumpCellHover : "transparent"
+                Behavior on color {
+                    ColorAnimation {
+                        duration: Lumi.dockJumpFadeDuration
+                        easing.type: Easing.OutQuint
+                    }
                 }
+            }
 
-                Rin.Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    typography: Rin.Typography.Caption
-                    text: "/"
-                }
+            // 变化时走透明度脉冲（与横版同一套节奏，见 PagePulse.qml）
+            PagePulse {
+                anchors.fill: parent
+                page: Backend.slideIndex
 
-                Rin.Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    typography: Rin.Typography.BodyLarge
-                    text: Backend.slideTotal > 0 ? Backend.slideTotal : "-"
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 0
+
+                    Rin.Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        typography: Rin.Typography.BodyLarge
+                        text: Backend.slideTotal > 0 ? Backend.slideIndex : "-"
+                    }
+
+                    Rin.Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        typography: Rin.Typography.Caption
+                        text: "/"
+                    }
+
+                    Rin.Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        typography: Rin.Typography.BodyLarge
+                        text: Backend.slideTotal > 0 ? Backend.slideTotal : "-"
+                    }
                 }
+            }
+
+            MouseArea {
+                id: pagerHitArea
+                anchors.fill: parent
+                enabled: pager.jumpEnabled
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: pager.toggleJumpPanel()
             }
         }
 
@@ -215,6 +320,96 @@ Item {
             hitSize: pager.hitSize
             glyphSize: pager.iconSize
             onClicked: Backend.nextSlide()
+        }
+    }
+
+    // ============================================ 快速切页面板（点页码展开）
+    // 声明在 ``bar`` 之后 → 绘制、命中都在控制条之上。
+    //
+    // ⚠️ 与横版同一条约定：**不进**根 Item 的 ``implicitWidth/Height``（否则
+    //    Python 摆位要重算，条会闪一帧），代价是 ``interactiveRect`` 必须自己
+    //    把面板包进来（上面那段就是）。
+    PageJumpPanel {
+        id: jumpPanel
+        objectName: "sidePageJumpPanel"
+
+        // 翻页组被关掉（``pager.enabled``）时不铺格子 —— 那个角落没有页码区、
+        // 没有触发点，白建几十个格子纯属浪费（与横版同一条）。
+        total: pager.pagerEnabled ? Backend.slideTotal : 0
+        current: Backend.slideIndex
+        columns: pager.jumpColumns
+        opened: false
+        // 条贴屏幕左右边 → 面板一律往**屏幕内侧**长：
+        // 左条（middle_left）往右、右条（middle_right）往左
+        enterFrom: pager.cornerIsRight ? "left" : "right"
+
+        scale: pager.scaleFactor
+        transformOrigin: Item.TopLeft
+
+        // 横向：贴着条**内侧**那条边，再让开 ``Lumi.dockJumpGap``
+        // （卡片本体对齐，所以要各扣 / 加一次 shadowMargin）
+        x: {
+            var s = pager.scaleFactor
+            var gap = Lumi.dockJumpGap * s
+            var want
+            if (pager.cornerIsRight) {
+                // 卡片本体的**右**沿 = 底板左沿 - 间距
+                want = (bar.x + bar.margin) * s - gap
+                    - jumpPanel.width * s + jumpPanel.shadowMargin * s
+            } else {
+                // 卡片本体的**左**沿 = 底板右沿 + 间距
+                want = (bar.x + bar.implicitWidth - bar.margin) * s + gap
+                    - jumpPanel.shadowMargin * s
+            }
+            // 可用宽 = **从 dock 左沿到容器右沿**（``want`` 是 dock 内部坐标，
+            // 先扣 ``pager.x``）—— 与横版同一个口径。允许为负（面板比条宽时
+            // 本来就该往外溢出）。
+            var limit = pager.availableWidth - pager.x
+            if (limit > 0) {
+                want = Math.min(want, limit - jumpPanel.width * s)
+            }
+            return want
+        }
+
+        // 纵向：与条**居中对齐**（条在屏幕里本来就是垂直居中的，面板跟着它走
+        // 视觉上最稳），再钳进窗口 —— 面板比条高时两头都不会顶出去。
+        y: {
+            var s = pager.scaleFactor
+            var want = (bar.y + bar.implicitHeight / 2) * s - jumpPanel.height * s / 2
+            var limit = pager.availableHeight
+            if (limit > 0) {
+                // ⚠️ 钳制在**窗口**坐标里做（``want`` 是 dock 内部坐标，先平移
+                //    ``pager.y``），否则竖条自己那点偏移会被算漏 —— 横版同位置
+                //    的算式也一样，见 PresentationDock 的 ``maxHeight`` 注释。
+                want = Math.max(-pager.y,
+                                Math.min(want, limit - jumpPanel.height * s - pager.y))
+            }
+            return want
+        }
+
+        // 可用高度 = 整个遮罩的高（竖条本来就是满高居中的）
+        maxHeight: pager.availableHeight / pager.scaleFactor
+        // 可用宽度 = 屏宽扣掉条本身与那条间距（面板往屏幕内侧长）
+        // ⚠️ 式子里**没有** jumpPanel 自己的尺寸，不会成环
+        maxWidth: Math.max(pager.availableWidth / pager.scaleFactor
+                           - bar.implicitWidth - Lumi.dockJumpGap, 0)
+
+        onPagePicked: function (page) {
+            Backend.gotoSlide(page)
+            // 跳完就收 —— 面板的使命结束了
+            jumpPanel.opened = false
+        }
+    }
+
+    // 退出放映 → 收起面板：下一次放映进来时不该看到上次遗留的一块卡片
+    //（横版同一处逻辑在 Connection 里，见 PresentationDock.qml）。
+    Connections {
+        target: Backend
+
+        function onPresentationActiveChanged() {
+            if (!Backend.presentationActive) {
+                jumpPanel.opened = false
+            }
         }
     }
 }

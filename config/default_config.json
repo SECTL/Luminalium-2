@@ -212,6 +212,13 @@
       "padding": 4,
       "icon_prev": "ic_fluent_chevron_up_20_filled",
       "icon_next": "ic_fluent_chevron_down_20_filled"
+    },
+    "//jump": "**点页码展开的快速切页面板**（2026-10-06 用户指令：把 Luminalium 1 的「点按翻页 + 页码展开切页」搬过来并 Fluent 化）。点翻页 pill 中间的页码 → 从条的内侧长出一块页码网格，点哪一格跳哪一页；点面板外 / 切工具 / 退出发放映自动收起。️横版（bottom_left / bottom_right，组件 PresentationDock.qml）与竖版（middle_left / middle_right，组件 SidePager.qml）**共用这一份配置**，只是面板往外长的那一侧不同。形态、取舍与坑写在 ui/presentation/PageJumpPanel.qml 的头注释里",
+    "//jump.enabled": "面板总开关。关掉后页码区不再可点、也不再给 hover 提示（「点不动」和「看着能点但没反应」是两回事）",
+    "//jump.columns": "面板每行几格。5 列 × 44 的格子 ≈ 244 宽，与 L1 那块面板的 260 是同一个体量。网格的格子尺寸 / 间距 / 圆角是设计令牌（见 ui/Luminalium/Lumi.qml 的 dockJump*），不在这里配 —— 它们要跟控制条整体缩放一起走。⚠️ 列数超过屏宽装得下时会自动压列（面板不像文字那样能省略，格子必须完整可见）",
+    "jump": {
+      "enabled": true,
+      "columns": 5
     }
   },
   "exit": {

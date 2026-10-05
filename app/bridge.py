@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
@@ -15,6 +16,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 
 from . import autostart
+from . import update_checker
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
 from .ppt_controller import PresentationState
@@ -64,6 +66,11 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_exit_style": "presentation.exit.style",
     # 只在调试窗口出现（隐藏入口：设置标题连点 10 次），普通用户看不到水印开关
     "dev_watermark": "app.dev_watermark",
+    # 更新模式 / 更新通道（设置 → 更新 → 更新设置）。⚠️ ``update.`` 段里其余的键
+    # （last_status / last_check_time）**没有**登记在这里：它们是程序自己写的
+    # 检查记录，不给设置页当输入 —— 登记了反而会多出一组没人写的代理属性。
+    "update_mode": "update.mode",
+    "update_channel": "update.channel",
 }
 
 #: 值一变就需要 QML 重新取整块配置的键。
@@ -101,6 +108,9 @@ class Backend(QObject):
     statusChanged = Signal()
     #: 启动画面的进度 / 阶段文字变了
     splashChanged = Signal()
+    #: 检查更新的状态机动了（详见下方「检查更新」一节）。
+    updateStatusChanged = Signal()
+    updateWorkingChanged = Signal()
 
     # ---- 请求类信号（由窗口管理器 / 应用层响应）----
     panelHideRequested = Signal()
@@ -175,6 +185,29 @@ class Backend(QObject):
         #: 只为「同一件事不并发第二次」而持有；线程本身是 daemon，退出即回收。
         self._echo_thread: Optional[threading.Thread] = None
         self._diagnostics_thread: Optional[threading.Thread] = None
+        #: 检查更新的后台线程（同上，见 :meth:`requestCheckUpdate`）。
+        self._update_thread: Optional[threading.Thread] = None
+
+        # ------------------------------------------------ 检查更新的状态机
+        #:
+        #: 对齐 ClassIsland ``UpdateService`` 的两组状态：
+        #:
+        #: * ``_update_status`` —— 上次检查的结论，对应它的 ``UpdateStatus``：
+        #:   ``uptodate`` / ``available``（+ 部署环节的 ``updatedownloaded`` /
+        #:   ``updatedeployed``，部署未实现、预留）＋ 本项目自己的 ``unknown``
+        #:   （本次运行还没查过）。ClassIsland 把它持久化在 Settings 里，
+        #:   这里同样落 ``update.last_status``。
+        #: * ``_update_working`` —— 正在干什么，对应 ``UpdateWorkingStatus``：
+        #:   目前只有 ``idle`` / ``checking``（下载 ``downloading`` /
+        #:   部署 ``extracting`` 随部署一起接入）。
+        self._update_status = str(self._config.get("update.last_status", "")
+                                  or update_checker.STATUS_UNKNOWN)
+        self._update_working = "idle"
+        self._update_latest_version = ""
+        self._update_changelog = ""
+        self._update_current_changelog = ""
+        self._update_release_url = ""
+        self._update_error = ""
 
 
     # ==================================================================== 常量
@@ -366,6 +399,136 @@ class Backend(QObject):
             log.exception("诊断信息采集失败")
             fields = []
         self.diagnosticsReady.emit(fields)
+
+    # ================================================================ 检查更新
+    #:
+    #: 界面是 ClassIsland 更新页的一比一复刻（``ui/settings/Update.qml``），
+    #: 这组属性 / 槽就是那边 ViewModel + UpdateService 公开面拆出来的最小集。
+    #: 与回声洞 / 诊断同一条异步约定：**网络在后台线程、结果走信号**，
+    #: 界面期间能正常画出「正在检查更新…」。
+    #:
+    #: ⚠️ **下载 / 安装 / 部署刻意未实现**（2026-10-05 用户指令）：界面上
+    #: 「下载并安装」等按钮先以占位方式出现，点了由 QML 侧亮提示条；
+    #: 状态机里 ``updatedownloaded`` / ``updatedeployed`` 两档留给部署接入时。
+
+    def _get_update_status(self) -> str:
+        return self._update_status
+
+    updateStatus = Property(str, _get_update_status, notify=updateStatusChanged)
+
+    def _get_update_working(self) -> str:
+        return self._update_working
+
+    updateWorkingStatus = Property(str, _get_update_working, notify=updateWorkingChanged)
+
+    def _get_update_latest_version(self) -> str:
+        return self._update_latest_version
+
+    updateLatestVersion = Property(
+        str, _get_update_latest_version, notify=updateStatusChanged
+    )
+
+    def _get_update_changelog(self) -> str:
+        return self._update_changelog
+
+    updateChangelog = Property(str, _get_update_changelog, notify=updateStatusChanged)
+
+    def _get_update_current_changelog(self) -> str:
+        return self._update_current_changelog
+
+    updateCurrentChangelog = Property(
+        str, _get_update_current_changelog, notify=updateStatusChanged
+    )
+
+    def _get_update_release_url(self) -> str:
+        return self._update_release_url
+
+    updateReleaseUrl = Property(
+        str, _get_update_release_url, notify=updateStatusChanged
+    )
+
+    def _get_update_error(self) -> str:
+        return self._update_error
+
+    updateError = Property(str, _get_update_error, notify=updateStatusChanged)
+
+    def _get_update_last_check_time(self) -> str:
+        """上次检查更新的本地时间（人读格式；从未查过返回空串）。"""
+        text = str(self._config.get("update.last_check_time", "") or "")
+        if not text:
+            return ""
+        try:
+            return datetime.fromisoformat(text).strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            return text
+
+    updateLastCheckTime = Property(
+        str, _get_update_last_check_time, notify=updateStatusChanged
+    )
+
+    @Slot(bool)
+    def requestCheckUpdate(self, force: bool = False) -> None:
+        """检查更新（异步）。``force`` = 强制检查（见 ``update_checker.check``）。
+
+        ⚠️ **检查期间再点直接忽略**：并发检查的两次结果互相覆盖没有意义，
+        与回声洞 / 诊断「不并发」同一个理由。界面侧在检查中会把按钮藏起来，
+        这里是兜底。
+        """
+        if self._update_thread is not None and self._update_thread.is_alive():
+            return
+        self._update_working = "checking"
+        self.updateWorkingChanged.emit()
+        self._update_thread = threading.Thread(
+            target=self._run_update_check, args=(bool(force),), name="update-check",
+            daemon=True,
+        )
+        self._update_thread.start()
+
+    @Slot()
+    def autoCheckUpdates(self) -> None:
+        """按配置的更新模式自动检查一次（应用启动后由应用层调用）。
+
+        对应 ClassIsland ``AppStartupBackground`` 的第一段：
+        ``UpdateMode >= 1`` 就 ``CheckUpdateAsync()``。模式 2（自动下载）与
+        3（自动安装）在部署接入之前与 1 等效 —— 只检查、只通知。
+        """
+        mode = int(self._config.get("update.mode", 1))
+        if mode < 1:
+            return
+        if mode >= 2:
+            log.info("更新模式为 %d：自动下载/安装尚未实现，本次仅检查并通知", mode)
+        self.requestCheckUpdate(False)
+
+    def _run_update_check(self, force: bool) -> None:
+        """后台线程体：查 → 记录 → 发信号（排队回主线程）。"""
+        result = update_checker.check(
+            channel=str(self._config.get("update.channel", "stable")),
+            current_version=self.appVersion,
+            force=force,
+        )
+        self._update_status = result["status"]
+        self._update_latest_version = result["latest_version"]
+        self._update_changelog = result["changelog"]
+        self._update_current_changelog = result["current_changelog"]
+        self._update_release_url = result["release_url"]
+        self._update_error = result["error"]
+        # 检查记录持久化（ClassIsland 同样记 LastUpdateStatus /
+        # LastCheckUpdateTime）：重启后设置页还能看到上一次的结论。
+        # 这里一次检查只写一次盘，不值得套延迟落盘。
+        self._config.set("update.last_status", self._update_status)
+        self._config.set(
+            "update.last_check_time", datetime.now().isoformat(timespec="minutes")
+        )
+        self._update_working = "idle"
+        self.updateStatusChanged.emit()
+        self.updateWorkingChanged.emit()
+
+    @Slot()
+    def clearUpdateError(self) -> None:
+        """关掉错误 InfoBar（对应 ClassIsland 把 ``NetworkErrorException`` 置空）。"""
+        if self._update_error:
+            self._update_error = ""
+            self.updateStatusChanged.emit()
 
     # ================================================================ 放映状态
 

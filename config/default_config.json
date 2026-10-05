@@ -17,6 +17,17 @@
     "//autostart": "开机自启（设置页「通用 → 启动 → 开机自启」）。⚠️ 这个键**只是影子**：真正的开关是 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run 里的 Luminalium2 值（见 app/autostart.py）。界面每次打开都回读注册表，所以手改这里不会改变实际行为 —— 它只用于日志与排查。",
     "autostart": false
   },
+  "update": {
+    "//": "检查更新（设置页「更新」，界面一比一复刻 ClassIsland 的 UpdateSettingsPage）。检查源 = GitHub Releases（app/update_checker.py）。⚠️ 2026-10-05 用户指令「目前先不要实现更新部署」：下载 / 安装 / 部署环节尚未实现，mode 2 / 3 与 mode 1 等效（只检查并通知）",
+    "//mode": "更新模式（ClassIsland 同名设置）：0=从不自动更新 / 1=自动检查更新并通知 / 2=自动检查更新并下载 / 3=自动检查更新并安装。≥1 时应用启动后自动检查一次（application.py::_boot_ready → Backend.autoCheckUpdates）",
+    "mode": 1,
+    "//channel": "更新通道：stable=稳定版（只看正式发布）/ preview=预览版（连 prerelease 一起看）。描述文案在 update_checker.CHANNELS",
+    "channel": "stable",
+    "//last_status": "上次检查的结论（uptodate / available / error），程序写入。QML 的 updateStatus 初值读它 —— 重启后设置页还能看到上一次的结果（ClassIsland 的 LastUpdateStatus 同款做法）",
+    "last_status": "",
+    "//last_check_time": "上次检查更新的本地时间（ISO 格式，程序写入），设置页「上次检查更新时间」读它",
+    "last_check_time": ""
+  },
   "//tray": "托盘已于 2026-10-01（第二轮）按用户指令「托盘整组连着相关的逻辑和代码一块删掉」改为**恒定行为**，整段配置已删除：常驻（application.py::_boot_tray 恒 show）、提示文字取 app.name、左键恒唤出快捷面板、启动不再弹气泡、右键菜单项写死在 tray.py。没有可配置的路",
   "quick_panel": {
     "title": "快捷面板",

@@ -3081,11 +3081,22 @@ def main() -> int:
                 painted_w = _wait_property(banner, "paintedWidth",
                                            lambda value: value > 0, timeout_ms=6000)
                 banner_src = banner.property("source").toString()
+                # ⚠️ 图画出来 ≠ 转场走完：NavigationView 的 push 转场会把整页
+                # 从下方滑进来，实测（2026-10-05）图画好的那一刻 y 还停在 ~320，
+                # 再过一拍才落回内容区顶部（裸宿主里稳定后 y=0，真窗口里 ~90）。
+                # 所以这里轮询等 y 落进阈值，而不是画出来就量。
+                def _banner_settled(_value=None) -> bool:
+                    y = banner.mapToItem(settings.contentItem(), 0, 0).y()
+                    return 0 <= y < 280
+                _wait_property(banner, "paintedWidth", _banner_settled,
+                               timeout_ms=6000)
                 banner_y = banner.mapToItem(settings.contentItem(), 0, 0).y()
             banner_ok = (
                 banner is not None
                 and banner.isVisible()
-                and banner_src.endswith("banner.png")
+                # 2026-10-05：横幅资源换成了宽幅 banner-wide.png（用户备好，
+                # Home.qml 同步改了 source），断言跟着认新名字。
+                and banner_src.endswith("banner-wide.png")
                 and painted_w > 100
                 # 「横幅在内容区顶部」——具体像素不写死（会跟页面在窗口里的偏移
                 # 耦合；实测本机 y≈90），只拦「图没挂上」和「掉到卡片区去了」。

@@ -4,133 +4,133 @@
 <context>
     <name>About</name>
     <message>
-        <location filename="../ui/settings/About.qml" line="189"/>
+        <location filename="../ui/settings/About.qml" line="193"/>
         <source>关于</source>
         <translation>バージョン情報</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="209"/>
+        <location filename="../ui/settings/About.qml" line="213"/>
         <source>© 2025-2026 Seirai Haraguchi / @SECTL Studio</source>
         <translation>© 2025-2026 Seirai Haraguchi / @SECTL Studio</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="210"/>
+        <location filename="../ui/settings/About.qml" line="214"/>
         <source>本程序基于 MIT License 获得许可</source>
         <translation>本ソフトウェアは MIT License の下で提供されています</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="227"/>
+        <location filename="../ui/settings/About.qml" line="231"/>
         <source>（Codename %1）</source>
         <translation>（コードネーム %1）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="236"/>
+        <location filename="../ui/settings/About.qml" line="240"/>
         <source>查看本仓库</source>
         <translation>リポジトリを表示</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="254"/>
+        <location filename="../ui/settings/About.qml" line="258"/>
         <source>反馈问题或功能建议</source>
         <translation>問題の報告・機能の提案</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="255"/>
+        <location filename="../ui/settings/About.qml" line="259"/>
         <source>在 GitHub 上提交 Issue</source>
         <translation>GitHub で Issue を作成</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="280"/>
+        <location filename="../ui/settings/About.qml" line="284"/>
         <source>依赖与参考</source>
         <translation>依存ライブラリと参考</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="289"/>
+        <location filename="../ui/settings/About.qml" line="293"/>
         <source>Qt &amp; Qt Quick</source>
         <translation>Qt &amp; Qt Quick</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="294"/>
+        <location filename="../ui/settings/About.qml" line="298"/>
         <source>Qt for Python（PySide6）</source>
         <translation>Qt for Python（PySide6）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="299"/>
+        <location filename="../ui/settings/About.qml" line="303"/>
         <source>Fluent Design System</source>
         <translation>Fluent Design System</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="304"/>
+        <location filename="../ui/settings/About.qml" line="308"/>
         <source>RinUI</source>
         <translation>RinUI</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="309"/>
+        <location filename="../ui/settings/About.qml" line="313"/>
         <source>pywin32</source>
         <translation>pywin32</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="549"/>
+        <location filename="../ui/settings/About.qml" line="553"/>
         <source>诊断信息</source>
         <translation>診断情報</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="339"/>
+        <location filename="../ui/settings/About.qml" line="343"/>
         <source>查看诊断信息</source>
         <translation>診断情報を表示</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="340"/>
+        <location filename="../ui/settings/About.qml" line="344"/>
         <source>用于排查问题；分享前请检查其中包含的路径等信息</source>
         <translation>問題の調査用です。共有する前に、含まれているパスなどの情報を確認してください</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="399"/>
+        <location filename="../ui/settings/About.qml" line="403"/>
         <source>点击卡片获取回声洞句子</source>
         <translation>カードをクリックしてエコーケイブの一文を取得</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="401"/>
+        <location filename="../ui/settings/About.qml" line="405"/>
         <source>获取中...</source>
         <translation>取得中...</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="403"/>
+        <location filename="../ui/settings/About.qml" line="407"/>
         <source>暂无回声洞</source>
         <translation>エコーケイブはありません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="405"/>
+        <location filename="../ui/settings/About.qml" line="409"/>
         <source>获取失败，请稍后重试</source>
         <translation>取得に失敗しました。しばらくしてから再試行してください</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="454"/>
+        <location filename="../ui/settings/About.qml" line="458"/>
         <source>回声洞</source>
         <translation>エコーケイブ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="483"/>
-        <location filename="../ui/settings/About.qml" line="668"/>
+        <location filename="../ui/settings/About.qml" line="487"/>
+        <location filename="../ui/settings/About.qml" line="719"/>
         <source>已复制</source>
         <translation>コピーしました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="483"/>
+        <location filename="../ui/settings/About.qml" line="487"/>
         <source>复制</source>
         <translation>コピー</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="618"/>
+        <location filename="../ui/settings/About.qml" line="666"/>
         <source>加载中...</source>
         <translation>読み込み中...</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="659"/>
+        <location filename="../ui/settings/About.qml" line="710"/>
         <source>关闭</source>
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="668"/>
+        <location filename="../ui/settings/About.qml" line="719"/>
         <source>复制全部</source>
         <translation>すべてコピー</translation>
     </message>
@@ -238,46 +238,52 @@
 <context>
     <name>ErrorReportWindow</name>
     <message>
-        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="146"/>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="336"/>
         <source>提交 Issue</source>
         <translation>Issue を送信</translation>
     </message>
     <message>
-        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="153"/>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="343"/>
         <source>复制</source>
         <translation>コピー</translation>
     </message>
     <message>
-        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="162"/>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="352"/>
         <source>重新启动</source>
         <translation>再起動</translation>
     </message>
     <message>
-        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="162"/>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="352"/>
         <source>忽略</source>
         <translation>無視</translation>
     </message>
     <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="263"/>
         <source>查看详细信息</source>
         <translation>詳細を表示</translation>
     </message>
     <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="263"/>
         <source>收起详细信息</source>
         <translation>詳細を隠す</translation>
     </message>
     <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="235"/>
         <source>操作系统</source>
         <translation>オペレーティング システム</translation>
     </message>
     <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="240"/>
         <source>应用版本</source>
         <translation>アプリ バージョン</translation>
     </message>
     <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="245"/>
         <source>发生时间</source>
         <translation>発生日時</translation>
     </message>
     <message>
+        <location filename="../ui/ErrorReport/ErrorReportWindow.qml" line="250"/>
         <source>来源</source>
         <translation>発生源</translation>
     </message>
@@ -285,9 +291,29 @@
 <context>
     <name>Home</name>
     <message>
-        <location filename="../ui/settings/Home.qml" line="26"/>
+        <location filename="../ui/settings/Home.qml" line="113"/>
         <source>主页</source>
         <translation>ホーム</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Home.qml" line="127"/>
+        <source>警告</source>
+        <translation>警告</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Home.qml" line="128"/>
+        <source>当前版本仍在测试中，可能包含错误或未完成的功能。欢迎到 &lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; 上提交 Issue。</source>
+        <translation>現在のバージョンはまだテスト中のため、不具合や未実装の機能が含まれる可能性があります。&lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; への Issue 報告を歓迎します。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Home.qml" line="142"/>
+        <source>GitHub</source>
+        <translation>GitHub</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Home.qml" line="147"/>
+        <source>反馈问题或功能建议</source>
+        <translation>問題の報告・機能の提案</translation>
     </message>
 </context>
 <context>
@@ -627,22 +653,22 @@
 <context>
     <name>PresentationDock</name>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="146"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="174"/>
         <source>更多操作</source>
         <translation>その他の操作</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="154"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="182"/>
         <source>退出放映</source>
         <translation>スライドショーの終了</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="427"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="469"/>
         <source>上一页</source>
         <translation>前のスライド</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="450"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="492"/>
         <source>下一页</source>
         <translation>次のスライド</translation>
     </message>
@@ -696,37 +722,37 @@
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../ui/Settings.qml" line="48"/>
+        <location filename="../ui/Settings.qml" line="52"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="101"/>
+        <location filename="../ui/Settings.qml" line="105"/>
         <source>主页</source>
         <translation>ホーム</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="110"/>
+        <location filename="../ui/Settings.qml" line="114"/>
         <source>通用</source>
         <translation>全般</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="119"/>
+        <location filename="../ui/Settings.qml" line="123"/>
         <source>个性化</source>
         <translation>パーソナライズ</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="128"/>
+        <location filename="../ui/Settings.qml" line="132"/>
         <source>主界面</source>
         <translation>メイン画面</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="133"/>
+        <location filename="../ui/Settings.qml" line="137"/>
         <source>关于</source>
         <translation>バージョン情報</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="139"/>
+        <location filename="../ui/Settings.qml" line="143"/>
         <source>更新</source>
         <translation>更新</translation>
     </message>
@@ -734,12 +760,12 @@
 <context>
     <name>SidePager</name>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="145"/>
+        <location filename="../ui/presentation/SidePager.qml" line="172"/>
         <source>上一页</source>
         <translation>前のスライド</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="187"/>
+        <location filename="../ui/presentation/SidePager.qml" line="214"/>
         <source>下一页</source>
         <translation>次のスライド</translation>
     </message>
@@ -809,9 +835,178 @@
 <context>
     <name>Update</name>
     <message>
-        <location filename="../ui/settings/Update.qml" line="14"/>
+        <location filename="../ui/settings/Update.qml" line="70"/>
+        <location filename="../ui/settings/Update.qml" line="273"/>
+        <location filename="../ui/settings/Update.qml" line="291"/>
         <source>检查更新</source>
         <translation>更新プログラムの確認</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="95"/>
+        <source>检测到更新。</source>
+        <translation>更新があります。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="96"/>
+        <source>您已更新到最新版本。</source>
+        <translation>最新バージョンです。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="97"/>
+        <source>检查更新失败。</source>
+        <translation>更新の確認に失敗しました。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="98"/>
+        <source>尚未检查更新。</source>
+        <translation>まだ更新を確認していません。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="102"/>
+        <source>稳定版</source>
+        <translation>安定版</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="103"/>
+        <source>正式发布的版本，经过完整测试。</source>
+        <translation>十分にテストされた、正式リリースのバージョンです。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="104"/>
+        <source>预览版</source>
+        <translation>プレビュー版</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="105"/>
+        <source>包含最新的功能与修复，但可能不稳定。</source>
+        <translation>最新の機能と修正を含みますが、不安定な場合があります。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="122"/>
+        <source>未找到当前版本的更新日志。</source>
+        <translation>現在のバージョンの更新履歴が見つかりません。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="163"/>
+        <location filename="../ui/settings/Update.qml" line="516"/>
+        <source>关闭</source>
+        <translation>閉じる</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="223"/>
+        <source>发现新版本：%1</source>
+        <translation>新しいバージョン：%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="224"/>
+        <source>上次检查更新时间：%1</source>
+        <translation>前回の更新確認：%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="226"/>
+        <source>从未</source>
+        <translation>なし</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="238"/>
+        <source>更新时发生错误，请检查您的网络连接并重试。</source>
+        <translation>更新中にエラーが発生しました。ネットワーク接続を確認して、もう一度お試しください。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="248"/>
+        <source>更新部署尚未实现</source>
+        <translation>更新の適用は未実装です</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="249"/>
+        <source>下载与安装更新的环节还没有接入，目前只能检查更新。可以前往 &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; 手动下载新版本。</source>
+        <translation>更新のダウンロードとインストールはまだ実装されていないため、現在は更新の確認のみ可能です。新しいバージョンは &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; から手動でダウンロードできます。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="285"/>
+        <source>下载并安装</source>
+        <translation>ダウンロードしてインストール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="314"/>
+        <source>正在检查更新…</source>
+        <translation>更新を確認しています…</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="336"/>
+        <location filename="../ui/settings/Update.qml" line="489"/>
+        <source>更新日志</source>
+        <translation>更新履歴</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="337"/>
+        <source>更新设置</source>
+        <translation>更新設定</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="378"/>
+        <source>检查没能完成，稍后再试一次吧。</source>
+        <translation>確認を完了できませんでした。しばらくしてからもう一度お試しください。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="379"/>
+        <source>真棒，您已更新到最新版本！</source>
+        <translation>すばらしい！最新バージョンです！</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="387"/>
+        <source>查看更新日志</source>
+        <translation>更新履歴を見る</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="408"/>
+        <source>更新模式</source>
+        <translation>更新モード</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="409"/>
+        <source>设置应用的更新模式。</source>
+        <translation>アプリの更新方法を設定します。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="414"/>
+        <source>从不自动更新</source>
+        <translation>自動更新しない</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="415"/>
+        <source>自动检查更新并通知</source>
+        <translation>自動で確認して通知</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="416"/>
+        <source>自动检查更新并下载</source>
+        <translation>自動で確認してダウンロード</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="417"/>
+        <source>自动检查更新并安装</source>
+        <translation>自動で確認してインストール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="433"/>
+        <source>更新通道</source>
+        <translation>更新チャネル</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="434"/>
+        <source>控制应用的更新目标版本。版本的发行节奏和稳定程度因更新通道而异，部分通道可能包含不稳定的功能，请谨慎使用。</source>
+        <translation>アプリが更新先とするバージョンを選択します。チャネルによってリリースの頻度や安定性が異なり、不安定な機能が含まれる場合があります。注意してご使用ください。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="468"/>
+        <source>强制检查更新</source>
+        <translation>更新の強制確認</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="469"/>
+        <source>强制将应用更新到当前通道上的最新版本，即使此版本比应用当前版本更旧。</source>
+        <translation>現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
     </message>
 </context>
 </TS>

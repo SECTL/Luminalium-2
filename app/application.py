@@ -269,6 +269,11 @@ class LuminaliumApplication:
         self._splash(1.0, i18n.tr("Splash", "正在进行启动后操作"))
         log.info("启动完成")
         QTimer.singleShot(SPLASH_HOLD_MS, self.windows.hide_splash)
+        # 自动检查更新（ClassIsland ``AppStartupBackground`` 的开机检查同款）：
+        # update.mode >= 1 就在启动收尾后查一次。放在启动画面淡出**之后**再错开
+        # 一拍 —— 检查在后台线程跑，不抢装配的场；等 1.5s 是让刚开屏的应用
+        # 别立刻就往外发请求（回声洞预热线程同理，错峰）。
+        QTimer.singleShot(1500, self.backend.autoCheckUpdates)
 
     # ================================================================ 动作
 

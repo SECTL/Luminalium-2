@@ -3226,6 +3226,59 @@ def main() -> int:
             not missing_st,
             f"缺 {missing_st}",
         )
+        # 英雄区**右下角**的 YUNOFACTORY 署名字标（2026-10-05 用户指令）。
+        # 与 Logo 同一套「混色」（``GlassLogo`` 的两层白渐变按剪影蒙形），钉四件事：
+        #   ① 混色那两层在（``::before`` / ``::after``）；
+        #   ② 光晕与整体投影**刻意关掉** —— 模糊半径按 248 的 Logo 配的，压在
+        #      150×23 的字标上糊成一团，且容器外撑的 3σ 会越过英雄区的圆角；
+        #   ③ ``layerPrefix`` 分开了。两个实例内部的 ``objectName`` 本来一模一样，
+        #      重名之后上面那条「Logo 四层」按名字找会翻到字标那几层上 ——
+        #      **找得到**，只是量错了东西，所以这条得钉住前缀本身；
+        #   ④ 真的贴右下角（量坐标，不能只看 ``visible``）。
+        credit_st = _find_named(page_st, "aboutCredits")
+        check(
+            "关于页英雄区右下角有署名字标（YUNOFACTORY）",
+            credit_st is not None,
+            "" if credit_st is not None else "未找到 aboutCredits",
+        )
+        if credit_st is not None:
+            c_layers = [n for n in ("aboutCreditsMask", "aboutCreditsBefore",
+                                    "aboutCreditsSheen")
+                        if _find_named(page_st, n) is None]
+            c_plain = (credit_st.property("glowEnabled") is False
+                       and credit_st.property("shadowEnabled") is False)
+            c_prefix = (credit_st.property("layerPrefix") == "aboutCredits"
+                        and logo_st is not None
+                        and logo_st.property("layerPrefix") == "aboutLogo")
+            check(
+                "字标：混色两层在 / 光晕与投影关掉 / objectName 前缀与 Logo 分开",
+                not c_layers and c_plain and c_prefix,
+                "" if (not c_layers and c_plain and c_prefix) else (
+                    f"缺层={c_layers} 光晕开启={not c_plain} 前缀={c_prefix}"
+                ),
+            )
+            # 贴角：右下各留 ``Lumi.aboutCreditsMargin``。两处都从**页面**坐标系
+            # 量（hero 与字标各自 mapToItem 到 page），免得被各自的父级偏置换算；
+            # 转场期间整页平移，两个点同进同出，差值不受影响。
+            c_br = credit_st.mapToItem(page_st, QPointF(float(credit_st.width()),
+                                                        float(credit_st.height())))
+            h_br = hero_st.mapToItem(page_st, QPointF(float(hero_st.width()),
+                                                      float(hero_st.height())))
+            gap_r, gap_b = h_br.x() - c_br.x(), h_br.y() - c_br.y()
+            want_gap = 20  # Lumi.aboutCreditsMargin
+            # 顺带钉住宽高比（素材 4687:734）—— 拉变形在预览图上看着也「对」。
+            want_ratio = 4687 / 734
+            got_ratio = credit_st.width() / max(1e-6, credit_st.height())
+            ok_gap = abs(gap_r - want_gap) <= 1.5 and abs(gap_b - want_gap) <= 1.5
+            ok_ratio = abs(got_ratio - want_ratio) <= 0.02
+            check(
+                "字标贴在英雄区右下角（右边距 = 下边距 = 20，且不拉变形）",
+                ok_gap and ok_ratio,
+                "" if (ok_gap and ok_ratio) else (
+                    f"右边距={gap_r:.1f} 下边距={gap_b:.1f}（期望 {want_gap}）"
+                    f" 宽高比={got_ratio:.3f}（期望 {want_ratio:.3f}）"
+                ),
+            )
         # 等页面滑入转场收尾：转场期间 ``mapToItem`` 的坐标还在动，
         # 后面按星心坐标取像素会取到隔壁。
         QTest.qWait(300)

@@ -3,7 +3,14 @@ import Qt5Compat.GraphicalEffects
 import Luminalium
 
 /*!
-    混色 Logo —— Luminalium 1 ``.about-main-logo`` 的 QML 版。
+    混色剪影（玻璃质感）—— Luminalium 1 ``.about-main-logo`` 的 QML 版。
+
+    一句话：**两层半透明白渐变，按一份单色剪影蒙出形状，叠在背后的东西上**。
+    所以它跟「Logo」其实无关，任何单色剪影都能用 —— 目前两个调用点：
+    ``ui/settings/About.qml`` 英雄区正中的星形 Logo（L1 原档）与**右下角的
+    YUNOFACTORY 字标**。⚠️ 几何全部按自身 ``width`` / ``height`` 现算，**不是
+    为正方形写死的**：字标那份就是把宽高设成素材的 4687:734，``PreserveAspectFit``
+    自己会把剪影填满盒子。
 
     L1 原文（``plugins/builtins/settings/settings.html``）::
 
@@ -93,6 +100,9 @@ import Luminalium
     | ``::before`` 160deg 白渐变   | 同名伪元素                              |
     | ``::after`` 180deg 白渐变    | 同名伪元素（含 ``opacity``）            |
 
+    前两层（投影 / 光晕）是 L1 给那块 248 的 Logo 配的**附加装饰**，可以单独关掉
+    （``shadowEnabled`` / ``glowEnabled``）；后两层才是「混色」本身。
+
     自检基准（846x320 英雄区，深色档，流光 angle≈0，出处 ``J:/tmp/l1probe/``）::
 
         星心 (423,160) ≈ (124,131,163)     星上 (423,95) ≈ (145,151,179)
@@ -104,6 +114,19 @@ Item {
 
     /*! Logo 剪影（要求带 alpha 的灰度版，``resources/logo_grayscale.svg``）。 */
     property url maskUrl: ""
+
+    /*! 内部各层的 ``objectName`` 前缀。两份实例共存时**必须**给不同的值 —— 同一个
+        ``objectName`` 在树里出现两次，按名字找东西（自检、探针）只会拿到先声明
+        的那一份，看着「找到了」其实量的是别人。 */
+    property string layerPrefix: "aboutLogo"
+
+    /*! 那圈 accent 光晕（``::after`` 的 ``drop-shadow``）与整体投影
+        （``.about-main-logo`` 的 ``filter``）—— L1 的 Logo 原档两层都要。
+        角上的字标用 ``false``：模糊半径（22 / 28）是按 248 的 Logo 配的，压在
+        150×23 的字标上既糊成一团，容器四周外撑的 3σ ≈ 42px 还会**越过英雄区的
+        圆角**把辉光洒到卡片外面去。剩下的那两层白渐变才是「混色」本身。 */
+    property bool glowEnabled: true
+    property bool shadowEnabled: true
 
     /*! 深浅两档外观。缺省跟主题走。 */
     property bool isDark: Lumi.isDark
@@ -163,6 +186,7 @@ Item {
         y: -root.glowPad
         width: root.width + root.glowPad * 2
         height: root.height + root.glowPad * 2
+        visible: root.glowEnabled
 
         layer.enabled: true
         layer.effect: GaussianBlur {
@@ -214,7 +238,7 @@ Item {
         }
 
         OpacityMask {
-            objectName: "aboutLogoGlowShape"
+            objectName: root.layerPrefix + "GlowShape"
             x: root.glowPad
             y: root.glowPad
             width: root.width
@@ -236,7 +260,7 @@ Item {
         width: root.width + root.dropPad * 2
         height: root.height + root.dropPad * 2
 
-        layer.enabled: true
+        layer.enabled: root.shadowEnabled
         layer.effect: DropShadow {
             radius: root.dropSigma
             samples: Math.ceil(root.dropSigma * 2) + 1
@@ -249,7 +273,7 @@ Item {
 
         Image {
             id: logoMask
-            objectName: "aboutLogoMask"
+            objectName: root.layerPrefix + "Mask"
             x: root.dropPad
             y: root.dropPad
             width: root.width
@@ -292,7 +316,7 @@ Item {
         }
 
         OpacityMask {
-            objectName: "aboutLogoBefore"
+            objectName: root.layerPrefix + "Before"
             x: root.dropPad
             y: root.dropPad
             width: root.width
@@ -331,7 +355,7 @@ Item {
 
             OpacityMask {
                 id: sheenShape
-                objectName: "aboutLogoSheen"
+                objectName: root.layerPrefix + "Sheen"
                 anchors.fill: parent
                 source: sheenFill
                 maskSource: logoMask

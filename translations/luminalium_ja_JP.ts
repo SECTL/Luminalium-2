@@ -722,6 +722,12 @@
 <context>
     <name>Settings</name>
     <message>
+        <location filename="../ui/Settings.qml" line="287"/>
+        <location filename="../ui/Settings.qml" line="332"/>
+        <source>需要重启</source>
+        <translation>再起動が必要</translation>
+    </message>
+    <message>
         <location filename="../ui/Settings.qml" line="52"/>
         <source>设置</source>
         <translation>設定</translation>
@@ -756,6 +762,26 @@
         <source>更新</source>
         <translation>更新</translation>
     </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="292"/>
+            <source>部分设置需要重启才能生效，点击以重启应用。</source>
+            <translation>一部の設定は反映に再起動が必要です。クリックしてアプリを再起動します。</translation>
+        </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="339"/>
+            <source>部分设置需要重启以应用</source>
+            <translation>一部の設定は適用に再起動が必要です。</translation>
+        </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="349"/>
+            <source>取消</source>
+            <translation>キャンセル</translation>
+        </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="358"/>
+            <source>重启</source>
+            <translation>再起動</translation>
+        </message>
 </context>
 <context>
     <name>SidePager</name>
@@ -882,11 +908,6 @@
         <translation>最新の機能と修正を含みますが、不安定な場合があります。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="122"/>
-        <source>未找到当前版本的更新日志。</source>
-        <translation>現在のバージョンの更新履歴が見つかりません。</translation>
-    </message>
-    <message>
         <location filename="../ui/settings/Update.qml" line="163"/>
         <location filename="../ui/settings/Update.qml" line="516"/>
         <source>关闭</source>
@@ -908,11 +929,6 @@
         <translation>なし</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="238"/>
-        <source>更新时发生错误，请检查您的网络连接并重试。</source>
-        <translation>更新中にエラーが発生しました。ネットワーク接続を確認して、もう一度お試しください。</translation>
-    </message>
-    <message>
         <location filename="../ui/settings/Update.qml" line="248"/>
         <source>更新部署尚未实现</source>
         <translation>更新の適用は未実装です</translation>
@@ -921,11 +937,6 @@
         <location filename="../ui/settings/Update.qml" line="249"/>
         <source>下载与安装更新的环节还没有接入，目前只能检查更新。可以前往 &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; 手动下载新版本。</source>
         <translation>更新のダウンロードとインストールはまだ実装されていないため、現在は更新の確認のみ可能です。新しいバージョンは &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; から手動でダウンロードできます。</translation>
-    </message>
-    <message>
-        <location filename="../ui/settings/Update.qml" line="285"/>
-        <source>下载并安装</source>
-        <translation>ダウンロードしてインストール</translation>
     </message>
     <message>
         <location filename="../ui/settings/Update.qml" line="314"/>
@@ -947,16 +958,6 @@
         <location filename="../ui/settings/Update.qml" line="378"/>
         <source>检查没能完成，稍后再试一次吧。</source>
         <translation>確認を完了できませんでした。しばらくしてからもう一度お試しください。</translation>
-    </message>
-    <message>
-        <location filename="../ui/settings/Update.qml" line="379"/>
-        <source>真棒，您已更新到最新版本！</source>
-        <translation>すばらしい！最新バージョンです！</translation>
-    </message>
-    <message>
-        <location filename="../ui/settings/Update.qml" line="387"/>
-        <source>查看更新日志</source>
-        <translation>更新履歴を見る</translation>
     </message>
     <message>
         <location filename="../ui/settings/Update.qml" line="408"/>
@@ -1007,6 +1008,30 @@
         <location filename="../ui/settings/Update.qml" line="469"/>
         <source>强制将应用更新到当前通道上的最新版本，即使此版本比应用当前版本更旧。</source>
         <translation>現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
+    </message>
+    <message>
+        <source>出错了</source>
+        <translation>エラーが発生しました</translation>
+    </message>
+    <message>
+        <source>更新时发生网络错误，请检查您的网络连接。</source>
+        <translation>更新中にネットワークエラーが発生しました。ネットワーク接続を確認してください。</translation>
+    </message>
+    <message>
+        <source>下载更新</source>
+        <translation>更新をダウンロード</translation>
+    </message>
+    <message>
+        <source>已经是最新版啦，真棒，夸夸你哦♪</source>
+        <translation>すでに最新バージョンです。すごい！</translation>
+    </message>
+    <message>
+        <source>还没有检查过更新。</source>
+        <translation>まだ更新を確認していません。</translation>
+    </message>
+    <message>
+        <source>检查没能完成，请检查网络后重试。</source>
+        <translation>確認を完了できませんでした。ネットワークを確認して、もう一度お試しください。</translation>
     </message>
 </context>
 </TS>

@@ -722,6 +722,12 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
 <context>
     <name>Settings</name>
     <message>
+        <location filename="../ui/Settings.qml" line="287"/>
+        <location filename="../ui/Settings.qml" line="332"/>
+        <source>需要重启</source>
+        <translation>Restart required</translation>
+    </message>
+    <message>
         <location filename="../ui/Settings.qml" line="52"/>
         <source>设置</source>
         <translation>Settings</translation>
@@ -756,6 +762,26 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <source>更新</source>
         <translation>Update</translation>
     </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="292"/>
+            <source>部分设置需要重启才能生效，点击以重启应用。</source>
+            <translation>Some settings require a restart to take effect. Click to restart the application.</translation>
+        </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="339"/>
+            <source>部分设置需要重启以应用</source>
+            <translation>Some settings require a restart to apply.</translation>
+        </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="349"/>
+            <source>取消</source>
+            <translation>Cancel</translation>
+        </message>
+    <message>
+            <location filename="../ui/Settings.qml" line="358"/>
+            <source>重启</source>
+            <translation>Restart</translation>
+        </message>
 </context>
 <context>
     <name>SidePager</name>
@@ -882,11 +908,6 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <translation>Newest features and fixes, but may be unstable.</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="122"/>
-        <source>未找到当前版本的更新日志。</source>
-        <translation>No changelog found for the current version.</translation>
-    </message>
-    <message>
         <location filename="../ui/settings/Update.qml" line="163"/>
         <location filename="../ui/settings/Update.qml" line="516"/>
         <source>关闭</source>
@@ -908,11 +929,6 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <translation>never</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="238"/>
-        <source>更新时发生错误，请检查您的网络连接并重试。</source>
-        <translation>Something went wrong while checking for updates. Please check your network connection and try again.</translation>
-    </message>
-    <message>
         <location filename="../ui/settings/Update.qml" line="248"/>
         <source>更新部署尚未实现</source>
         <translation>Update deployment not yet available</translation>
@@ -921,11 +937,6 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <location filename="../ui/settings/Update.qml" line="249"/>
         <source>下载与安装更新的环节还没有接入，目前只能检查更新。可以前往 &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; 手动下载新版本。</source>
         <translation>Downloading and installing updates is not wired up yet; for now the app can only check for updates. You can grab new versions manually from &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt;.</translation>
-    </message>
-    <message>
-        <location filename="../ui/settings/Update.qml" line="285"/>
-        <source>下载并安装</source>
-        <translation>Download and install</translation>
     </message>
     <message>
         <location filename="../ui/settings/Update.qml" line="314"/>
@@ -947,16 +958,6 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <location filename="../ui/settings/Update.qml" line="378"/>
         <source>检查没能完成，稍后再试一次吧。</source>
         <translation>The check didn't finish — please try again later.</translation>
-    </message>
-    <message>
-        <location filename="../ui/settings/Update.qml" line="379"/>
-        <source>真棒，您已更新到最新版本！</source>
-        <translation>Nice — you're on the latest version!</translation>
-    </message>
-    <message>
-        <location filename="../ui/settings/Update.qml" line="387"/>
-        <source>查看更新日志</source>
-        <translation>View changelog</translation>
     </message>
     <message>
         <location filename="../ui/settings/Update.qml" line="408"/>
@@ -1007,6 +1008,30 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <location filename="../ui/settings/Update.qml" line="469"/>
         <source>强制将应用更新到当前通道上的最新版本，即使此版本比应用当前版本更旧。</source>
         <translation>Update to the latest build on the current channel even if it is older than the running version.</translation>
+    </message>
+    <message>
+        <source>出错了</source>
+        <translation>Something went wrong</translation>
+    </message>
+    <message>
+        <source>更新时发生网络错误，请检查您的网络连接。</source>
+        <translation>A network error occurred while updating. Please check your network connection.</translation>
+    </message>
+    <message>
+        <source>下载更新</source>
+        <translation>Download update</translation>
+    </message>
+    <message>
+        <source>已经是最新版啦，真棒，夸夸你哦♪</source>
+        <translation>You're on the latest version. Great job!</translation>
+    </message>
+    <message>
+        <source>还没有检查过更新。</source>
+        <translation>No update check yet.</translation>
+    </message>
+    <message>
+        <source>检查没能完成，请检查网络后重试。</source>
+        <translation>The check couldn't complete. Please check your network and try again.</translation>
     </message>
 </context>
 </TS>

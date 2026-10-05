@@ -42,9 +42,20 @@ REQUEST_TIMEOUT = 12.0
 
 #: 更新通道 -> 该通道下可接受的发布。键会出现在配置 ``update.channel`` 与
 #: 设置页「更新通道」下拉里，别乱改。
+#:
+#: ⚠️ 值是**给用户看的一句话**（不是内部标识），QML 侧下拉的显示名另有一份
+#: 短名（``CHANNEL_NAMES``）—— 「稳定版 / 预览版」比整句描述更适合当选项文本。
+#: 两张表都在这里，界面通过 ``Backend.updateChannels`` 一次取齐，
+#: 不在 QML 里另抄（否则两边文案迟早漂）。
 CHANNELS: dict[str, str] = {
     "stable": "正式发布的版本，经过完整测试。",
     "preview": "包含最新的功能与修复，但可能不稳定。",
+}
+
+#: 通道 -> 下拉里的显示名。
+CHANNEL_NAMES: dict[str, str] = {
+    "stable": "稳定版",
+    "preview": "预览版",
 }
 
 #: 检查结果状态。前两档与 ClassIsland 的 ``UpdateStatus`` 同名段对齐；

@@ -76,6 +76,43 @@ SETTING_PATHS: Dict[str, str] = {
 #: 值一变就需要 QML 重新取整块配置的键。
 _BROADCAST_KEYS = {"panel_section_shortcuts", "panel_section_footer"}
 
+#: 改完**必须重启才生效**的设置项（扁平键）。
+#:
+#: 改动这些项时走 :meth:`Backend._notify_restart_required`：① ``restartPending``
+#: 翻 true → 设置窗口标题栏右侧亮出强调色「需要重启」按钮；② 发 ``restartSuggested``
+#: → 设置窗口弹对话框问「现在重启吗」。
+#:
+#: 参考 ClassIsland（``ClassIsland/Views/SettingsWindowNew.axaml{,.cs}``）。那边是::
+#:
+#:     private void CommandBindingRestartApp_OnExecuted(...)
+#:     {
+#:         ViewModel.IsRequestedRestart = true;   // → 标题栏亮出「需要重启」按钮
+#:         ShowRestartDialog();                   // → 弹框问「现在重启吗」
+#:     }
+#:
+#: ⚠️ ClassIsland **自己并不会在设置变更时自动弹框** —— 它订阅了
+#: ``SettingsService.Settings.PropertyChanged``，而 ``SettingsOnPropertyChanged``
+#: 是**空方法**；也没有任何「哪些设置要重启」的清单或 ``[RequiresRestart]`` 标记。
+#: 它只是把「需要重启」当成通用提示，靠用户自己去点标题栏那枚按钮。
+#:
+#: 所以这里做了两点适配：
+#: ① 触发点从「用户点按钮」挪到 ``setSetting`` —— 用户的原话是「对需要重新启动
+#:   才能应用的设置项**更改时**做出行动」，条件本来就是「某项设置变了」，
+#:   由 QML 逐项去想起来发命令，迟早会有页面忘了发；
+#: ② 清单由 Python 侧集中维护（就是下面这个 frozenset），而不是散在各页面里。
+#:
+#: **入选理由（``language``）**：翻译（``app/i18n.py::install_translators`` 装载
+#: ``luminalium_*.qm``）与 UI 字体（``apply_ui_font``，``ja_JP`` 切 Yu Gothic UI）
+#: 都在 ``application.py`` 里装配**一次**，之后没有任何重新装配的路径。
+#:
+#: ⚠️ **刻意没收 ``dev_watermark``**：它经 ``Backend.devWatermark``（``constant=True``）
+#: 出给 QML，窗口构造时求值一次 → 改完确实是「老窗口不变、新窗口跟着变」的半吊子
+#: 状态。但它只在隐藏的调试窗口里出现，每拨一次就弹一次框太吵（且重启与否都存在
+#: 半生效的部分），所以留着不动，等真要给这个开关做热更新时再一起解决。
+RESTART_REQUIRED_KEYS: frozenset = frozenset({
+    "language",
+})
+
 #: 「翻页组件位置」的两种形态 -> 该形态下**启用**的角落。
 #:
 #: 改这一项会连带开关 ``corners`` 里对应的四个角：真实生效的仍是 ``corners``
@@ -120,6 +157,12 @@ class Backend(QObject):
     #: 原 ``reloadRequested``（仅重读配置）已按 2026-10-02 用户指令改成重启 ——
     #: 用户语义里这个按钮就该是「重启程序」，只重读配置反而「点了没反应」。
     restartRequested = Signal()
+    #: 改了一项「要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）→ 设置窗口
+    #: 弹对话框问「现在重启吗」（ClassIsland 的 ``ShowRestartDialog()`` 同款）。
+    #: ⚠️ 与 ``restartRequested`` 是两回事：那个是**真的去重启**，这个是**提示**。
+    restartSuggested = Signal()
+    #: ``restartPending`` 变了。
+    restartPendingChanged = Signal()
     quitRequested = Signal()
     settingsRequested = Signal()
     settingsCloseRequested = Signal()
@@ -154,6 +197,12 @@ class Backend(QObject):
         #: 哪一格点亮（见 :meth:`setPenColor`）。
         self._pen_color = ""
         self._status_text = ""
+
+        #: 有没有「改了但要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）。
+        #: 一旦翻 true 就**不再复位**（ClassIsland 的 ``IsRequestedRestart`` 同样只
+        #: 置位）：用户把值改回原样也当作改过 —— 判断「有没有绕过」的成本远高于
+        #: 多显示一个按钮，而重启一次本来也没有副作用。
+        self._restart_pending = False
 
         #: 启动画面进度（0..1）与阶段文字。由应用层按真实里程碑推进
         #: （见 ``application.py::LuminaliumApplication._boot_*``）。
@@ -221,6 +270,15 @@ class Backend(QObject):
         from . import __version__
 
         return __version__
+
+    @Property(bool, notify=restartPendingChanged)
+    def restartPending(self) -> bool:
+        """有没有「改了但要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）。
+
+        设置窗口靠它决定标题栏右侧那枚「需要重启」按钮显不显示
+        （ClassIsland 的 ``ViewModel.IsRequestedRestart`` 同款）。
+        """
+        return self._restart_pending
 
     @Property(str, constant=True)
     def accent(self) -> str:
@@ -415,7 +473,6 @@ class Backend(QObject):
         return self._update_status
 
     updateStatus = Property(str, _get_update_status, notify=updateStatusChanged)
-
     def _get_update_working(self) -> str:
         return self._update_working
 
@@ -529,6 +586,30 @@ class Backend(QObject):
         if self._update_error:
             self._update_error = ""
             self.updateStatusChanged.emit()
+
+    def _get_update_channels(self) -> list:
+        """更新通道候选（``[{"id", "name", "description"}, ...]``）。
+
+        ⚠️ 通道表**只有这一份**，就是 ``update_checker.CHANNELS`` —— 界面上的
+        名称与说明直接由它派生，不在 QML 里另抄一份（否则两边文案迟早漂）。
+
+        2026-10-05：这也顺手绕掉了一个跨语言坑。原先通道表是 QML 里的
+        ``property var updateChannels: [...]``，经 ``Loader.setProperty``
+        推给「更新设置」Tab；QML 的 ``var`` 属性期望 ``QJSValue``，直接塞
+        JS ``Array`` 过去会被包成**空 QJSValue**，子项遍历 ``.length`` 得 0 →
+        通道下拉空、说明行标题与描述双空（自检实测）。改成由 Python 侧发
+        ``QVariantList``，QML 拿到的就是原生数组。
+        """
+        return [
+            {
+                "id": key,
+                "name": update_checker.CHANNEL_NAMES.get(key, key),
+                "description": desc,
+            }
+            for key, desc in update_checker.CHANNELS.items()
+        ]
+
+    updateChannels = Property("QVariantList", _get_update_channels, constant=True)
 
     # ================================================================ 放映状态
 
@@ -794,12 +875,39 @@ class Backend(QObject):
             self.accentChangeRequested.emit(str(value))
         if key in _BROADCAST_KEYS:
             self.quickPanelConfigChanged.emit()
+
+        # 「改了要重启才生效」的项：亮出设置窗口那枚「需要重启」按钮，并弹一次
+        # 询问框（见 ``RESTART_REQUIRED_KEYS`` 处的说明）。
+        if key in RESTART_REQUIRED_KEYS:
+            self._notify_restart_required(key)
         if key.startswith("presentation_"):
             self.presentationConfigChanged.emit()
             # 改 ``presentation_screen_index`` 会换一块显示器；还没放映过时
             # ``presentationScreen`` 是按配置现算的，得给它一个重取的理由。
             self.presentationScreenChanged.emit()
         self.settingsChanged.emit()
+
+    def _notify_restart_required(self, key: str) -> None:
+        """某项「改了要重启才生效」的设置刚被改动 → 亮按钮 + 弹询问框。
+
+        参考 ClassIsland ``SettingsWindowNew.axaml.cs``：::
+
+            private void CommandBindingRestartApp_OnExecuted(...)
+            {
+                ViewModel.IsRequestedRestart = true;
+                ShowRestartDialog();
+            }
+
+        也就是「置位 + 立刻弹框」两件事。用户选「取消」后框关掉，但那枚
+        「需要重启」按钮留着（``restartPending`` 不复位），随时可以再点。
+        """
+        log.info("设置 %s 需要重启才生效", key)
+        if not self._restart_pending:
+            self._restart_pending = True
+            self.restartPendingChanged.emit()
+        # ⚠️ 询问框**每次都弹**（哪怕 ``restartPending`` 早就是 true）：
+        # 与 ClassIsland 一致 —— 用户刚改完就该被问一次，而不是只有第一次改才问。
+        self.restartSuggested.emit()
 
     def _apply_pager_position(self, position: str) -> None:
         """把「翻页组件位置」落到 ``corners`` 那四个角的开关上。

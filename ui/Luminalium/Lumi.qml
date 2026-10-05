@@ -576,6 +576,24 @@ QtObject {
     readonly property int aboutHeroFade: 100
     readonly property int aboutLogoSize: 248
 
+    /*! 英雄区**右下角**的署名字标（``design_by_yunofactory.svg`` 那份
+        「DESIGN BY + YUNOFACTORY」锁定版式）—— 与 Logo 同一套「混色」剪影，
+        只是没有光晕与投影（见 ``GlassLogo.qml`` 的 ``glowEnabled``）。
+
+        ⚠️ 尺寸是**字标本体**的量级，不是一块主视觉：150 宽时下面那行
+        YUNOFACTORY 字高 ≈ 17，顶上那行 DESIGN BY 只剩 ~3px —— 它是落款里的
+        小字，读作一道细纹而不是一行可读文本。2026-10-05 第一版给到 220
+        （字高 24），用户反馈「太大了」，同时明确**不要**为了让它可读而把
+        DESIGN BY 裁掉。想要那行小字真能读，字标得放到 270 以上 —— 那时它已经
+        压到中间那个 248 的 Logo 了，摆不下。
+
+        高度不写死，由 ``aboutCreditsAspect`` 现算，免得把字标拉变形。 */
+    readonly property int aboutCreditsWidth: 150
+    readonly property int aboutCreditsMargin: 20
+    /*! 字标素材 ``resources/design_by_yunofactory.svg`` 的宽高比（4687 : 734）。
+        ⚠️ 换素材这个数要跟着改 —— 写错的症状是字标被拉扁/拉长，预览图上不显眼。 */
+    readonly property real aboutCreditsAspect: 4687 / 734
+
     /*! 窗口/页面基色 —— RinUI ``FluentWindowBase`` 在没有 backdrop 时就是用
         ``colors.backgroundColor`` 铺底（``app.backdrop`` 默认 "none"）。 */
     readonly property color pageBg: themeColors

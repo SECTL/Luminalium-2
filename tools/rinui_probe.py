@@ -27,6 +27,7 @@ from PySide6.QtCore import QByteArray, QTimer, QUrl, qInstallMessageHandler  # n
 from PySide6.QtQml import QQmlComponent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from RinUI import RinUIWindow, Theme  # noqa: E402
+from RinUI.core.config import RinConfig  # noqa: E402
 
 HEADER = "import QtQuick\nimport RinUI as Rin\n"
 
@@ -79,6 +80,10 @@ def main() -> int:
     qInstallMessageHandler(handler)
 
     rinui = RinUIWindow()
+    # ⚠️ ``setTheme`` / ``set_theme_color`` 都会**持久化到 RinUI/config/rin_ui.json**
+    # （真机下次启动读那份）→ 记下原值，脚本收尾时切回去并落盘（见文件末尾）。
+    previous_theme = rinui.theme_manager.get_theme_name()
+    previous_color = rinui.theme_manager.get_theme_color()
     rinui.theme_manager.set_theme_color("#4CC2FF")
     rinui.setTheme(Theme.Dark)
 
@@ -121,6 +126,14 @@ def main() -> int:
 
     Path("probe_result.txt").write_text("\n".join(lines), encoding="utf-8")
     print("\n".join(lines))
+
+    # 还原主题与主题色（``toggle_theme`` 只改内存，写文件的是 ``clean_up()``，
+    # 所以必须显式落盘）。
+    rinui.theme_manager.set_theme_color(previous_color)
+    if rinui.theme_manager.get_theme_name() != previous_theme:
+        rinui.theme_manager.toggle_theme(previous_theme)
+    RinConfig.save_config()
+    print(f"[OK] 主题/主题色已还原并落盘（{previous_theme} / {previous_color}）")
 
     QTimer.singleShot(0, qt_app.quit)
     qt_app.exec()

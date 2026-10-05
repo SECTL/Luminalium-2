@@ -4,7 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "luminalium"
-version = "1.6.642.1"
+# 版本号不在这里维护：dynamic + 下面的 [tool.hatch.version] 让 hatchling 直接
+# 读 app/__init__.py 的 __version__（格式 = AGENTS.md 里的「年份.中版本.小版本.
+# 状态」，最后一位 1=开发版）。发版只改那一个地方，这份文件不会再脱节。
+dynamic = ["version"]
 description = ""
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,6 +20,11 @@ dependencies = [
 
 [project.scripts]
 luminalium2 = "app.application:main"
+
+[tool.hatch.version]
+# hatchling 不 import 这个文件，只按正则抠 __version__，所以 app/__init__.py
+# 顶部的那些注释不影响解析。
+path = "app/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]

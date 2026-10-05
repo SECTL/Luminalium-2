@@ -19,6 +19,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QMenu
 from RinUI import BackdropEffect, RinUIWindow, Theme
+from RinUI.core.config import is_win10, is_win11
 
 from . import __version__
 from . import echo_cave
@@ -140,15 +141,34 @@ class LuminaliumApplication:
             "ErrorHandler", self.error_handler
         )
         self.rinui.load(UI_DIR / "QuickPanel.qml")
-        # 背景材质按配置。none = 实色主题背景；Mica/Acrylic 会让窗口透明、
-        # 全靠 DWM 合成，在不支持 / 合成异常的机器上就是一片怪材质。
-        backdrop = str(self.config.get("app.backdrop", "none")).lower()
-        effect = {
-            "mica": BackdropEffect.Mica,
-            "acrylic": BackdropEffect.Acrylic,
-            "tabbed": BackdropEffect.Tabbed,
-        }.get(backdrop, BackdropEffect.None_)
+        # 背景材质按配置。默认 "auto" = **按平台选**，与 RinUI 自带策略一致：
+        # Win11 → Mica / Win10 → Acrylic / 其余 → none。
+        #
+        # ⚠️ 这里以前默认 "none"，并且**无条件**调用 setBackdropEffect() ——
+        # 等于把 RinUI 自己的平台判断整个覆盖掉。后果是 Win11 上永远铺实色
+        # 主题背景（colors.backgroundColor = #202020），窗口一次都不会透明，
+        # 看起来就像「RinUI 的 Mica 没生效」。实测（build 26300）只要把值放成
+        # mica，DWMWA_SYSTEMBACKDROP_TYPE 立刻变 2、客户区 alpha 从 255 掉到 77，
+        # DWM 确实在合成 —— 所以问题从来不在 RinUI 那侧，而在这行覆盖。
+        #
+        # 显式写 none 仍然完全可用（窗口退回实色主题背景）。
+        backdrop = str(self.config.get("app.backdrop", "auto")).lower()
+        if backdrop == "auto":
+            effect = (
+                BackdropEffect.Mica
+                if is_win11()
+                else BackdropEffect.Acrylic
+                if is_win10()
+                else BackdropEffect.None_
+            )
+        else:
+            effect = {
+                "mica": BackdropEffect.Mica,
+                "acrylic": BackdropEffect.Acrylic,
+                "tabbed": BackdropEffect.Tabbed,
+            }.get(backdrop, BackdropEffect.None_)
         self.rinui.setBackdropEffect(effect)
+        log.info("背景材质: %s（配置 app.backdrop=%s）", effect.value, backdrop)
 
         # ---- 窗口 ----
         # 托盘提示文字 = 应用名（2026-10-01 第二轮用户指令：原来的「托盘提示文字」

@@ -3065,34 +3065,91 @@ def main() -> int:
                 corner.value == 2,
                 f"corner={corner.value}（0=Default / 2=Round）",
             )
-            # 设置首页的警示横幅（2026-10-02 用户指令「给设置的主页先挂上
-            # resources 里面的警告黄色横幅 位置稍微靠下」）：初始页就是 Home，
-            # 趁窗口还开着查树。断言三件事：图在、源是 WARNING.png、映射到
-            # 窗口内容区后落在头部之下 —— 「稍微靠下」的具体像素不写死（那
-            # 会跟 FluentPage 头部高度耦合），只拦「图没挂上」和「顶到最上面」
-            # 两种明显回退。
-            banner = _wait_named(settings.contentItem(), "homeWarningBanner")
+            # 设置首页（2026-10-05 用户指令「设置的主页参考一下 Class Widgets 2
+            # …… 一比一复刻」）：通栏横幅 + 大标题 + 警告 InfoBar + 两张 220×128
+            # 的链接卡（CW2 的 ``Component card``）。初始页就是 Home，趁窗口还
+            # 开着查树。
+            #
+            # ⚠️ 横幅是**异步**加载的（4.2MB / 4628×2512 的 PNG）：``Image`` 有
+            # ``asynchronous: true``，这里等它真的画出来（``paintedWidth > 0``）再断言，
+            # 否则会拿到「图在、但还没画」的假失败。
+            banner = _wait_named(settings.contentItem(), "homeBannerImage")
             banner_src = ""
             banner_y = -1
+            painted_w = 0
             if banner is not None:
+                painted_w = _wait_property(banner, "paintedWidth",
+                                           lambda value: value > 0, timeout_ms=6000)
                 banner_src = banner.property("source").toString()
                 banner_y = banner.mapToItem(settings.contentItem(), 0, 0).y()
             banner_ok = (
                 banner is not None
                 and banner.isVisible()
-                and banner_src.endswith("WARNING.png")
-                and banner.width() > 100
-                and banner_y > 60
+                and banner_src.endswith("banner.png")
+                and painted_w > 100
+                # 「横幅在内容区顶部」——具体像素不写死（会跟页面在窗口里的偏移
+                # 耦合；实测本机 y≈90），只拦「图没挂上」和「掉到卡片区去了」。
+                and 0 <= banner_y < 280
             )
             check(
-                "设置首页挂了 WARNING.png 横幅且位于头部之下",
+                "设置首页挂了 banner.png 通栏横幅（且真的画出来了）",
                 banner_ok,
                 "" if banner_ok else (
                     f"banner={'无' if banner is None else '有'} "
                     f"visible={banner is not None and banner.isVisible()} "
-                    f"src={banner_src!r} y={banner_y:.0f}"
+                    f"src={banner_src!r} paintedWidth={painted_w:.0f} y={banner_y:.0f}"
                 ),
             )
+
+            # 大标题在横幅上（CW2：Typography.Title 的「Home」，leftMargin 56 /
+            # topMargin 38）；页面本体不带 title，头部塌成 0。
+            page_root = _find_named(settings.contentItem(), "Home")
+            page_title = page_root.property("title") if page_root is not None else None
+            banner_title = _find_named(settings.contentItem(), "homeBannerTitle")
+            title_ok = (
+                page_title == ""
+                and banner_title is not None
+                and banner_title.isVisible()
+                and str(banner_title.property("text")) == "主页"
+            )
+            check(
+                "设置首页大标题压在横幅上（页面本体不带标题）",
+                title_ok,
+                "" if title_ok else (
+                    f"page title={page_title!r} "
+                    f"banner title={'无' if banner_title is None else banner_title.property('text')!r}"
+                ),
+            )
+
+            # 警告 InfoBar（CW2 主页同款 Severity.Warning；``closable`` 用默认
+            # 的 true —— CW2 也没写这一项，右上角关闭按钮是它交互的一部分）。
+            info_bar = _find_named(settings.contentItem(), "homeWarningBanner")
+            check(
+                "设置首页挂了警告信息条",
+                info_bar is not None and info_bar.isVisible()
+                and info_bar.property("closable") is True,
+                "未找到" if info_bar is None else
+                f"visible={info_bar.isVisible()} closable={info_bar.property('closable')}",
+            )
+
+            # 两张 220×128 链接卡（GitHub / 反馈），点击整卡开外链 —— 链接与
+            # 「关于」页同一份口径。⚠️ 自检**不真点**：那会真的拉起浏览器。
+            card_urls = []
+            for index in range(2):
+                card = _find_named(settings.contentItem(), f"homeLinkCard{index}")
+                if card is not None:
+                    card_urls.append(str(card.property("linkUrl")))
+            cards_ok = (
+                len(card_urls) == 2
+                and card_urls[0].endswith("/SECTL/Luminalium-2")
+                and card_urls[1].endswith("/SECTL/Luminalium-2/issues/new/choose")
+            )
+            check(
+                "设置首页有两张链接卡（仓库 / 反馈）",
+                cards_ok,
+                f"urls={card_urls}",
+            )
+
             app.backend.settingsCloseRequested.emit()
             check("设置窗口可关闭", not settings.isVisible())
 

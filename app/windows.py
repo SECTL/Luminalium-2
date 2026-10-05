@@ -642,9 +642,18 @@ class WindowManager(QObject):
         manager.syncWindowFrame(window)
         theme.apply_window_effects()
         theme._update_window_theme()  # RinUI 没有公开的「重新应用」入口
-        backdrop = str(self._config.get("app.backdrop", "none")).lower()
-        if backdrop in ("mica", "acrylic", "tabbed"):
-            theme.apply_backdrop_effect(backdrop)
+
+        # 背景材质：这里**不能**去读 ``app.backdrop`` 再判断三选一。
+        #
+        # RinUI 只在 ``launcher.load()`` 那一刻广播过一次材质，而设置 / 调试 /
+        # 编辑器 / 错误报告这四个窗口都是**之后**才用 ``QQmlComponent`` 建的 ——
+        # 它们生来就不在那一轮广播的名单里。原来的写法是「配置里显式写了
+        # mica / acrylic / tabbed 才补一次」，于是 ``app.backdrop = "auto"``
+        # （按平台选）时新窗口**一个都补不上**，面板有材质、设置窗口却是实色底。
+        #
+        # 正确做法是重放 RinUI **当前实际生效**的值 —— 它已经在启动时解析完
+        # auto / 平台能力 / 21H2 回退，这里照抄即可，新旧窗口自然一致。
+        theme.apply_backdrop_effect(theme.get_backdrop_effect())
 
         ok = (
             window in event_filter.windows

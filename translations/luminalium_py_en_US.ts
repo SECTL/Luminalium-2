@@ -172,4 +172,13 @@
 Purpose: check the layout, emoji, and primary button (&quot;Ignore&quot;) of the error report window.</translation>
     </message>
 </context>
+<context>
+    <name>Plugins</name>
+    <!-- 任务 15（2026-10-05）探针条目：验证 Python 侧手工维护的 ts 经
+         lrelease 合并后 app.i18n.tr 能命中。保留作回归样例。 -->
+    <message>
+        <source>演示插件</source>
+        <translation>Demo plugin</translation>
+    </message>
+</context>
 </TS>

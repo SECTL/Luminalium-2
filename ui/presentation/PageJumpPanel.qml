@@ -20,23 +20,39 @@ import Luminalium
     卡间距 16、当前页 2px accent 描边、页码压在卡片右下角、从屏幕外滑入。
     现在这一版就是照那份规格重做的。**别再往「密实的方格」方向收。**
 
-    L1 原值（CSS → 本组件的落点）：
+    ## 形态照 L1，设计语言走 Fluent
 
-    | L1 (``#page-selector`` / ``.page-grid`` / ``.page-item``) | 本组件 |
-    | --- | --- |
-    | ``width: 260px`` | ``Lumi.dockJumpWidth`` |
-    | ``top/bottom: 24px; left\|right: 16px`` | ``Lumi.dockJumpInset`` / ``dockJumpEdge`` |
-    | ``padding: 12px; border-radius: 16px`` | ``dockJumpPadding`` / ``dockJumpRadius`` |
-    | ``border: 1px solid var(--overlay-popup-border)`` | ``dockJumpBorder`` |
-    | ``box-shadow: none`` | 面板**不挂投影**（``Rin.Shadow`` 已删） |
-    | ``background: var(--overlay-popup-bg)``（实底） | ``dockJumpBg`` |
-    | ``.page-grid { gap: 16px }`` 单列 | ``dockJumpItemSpacing`` |
-    | ``.page-item { aspect-ratio: 16/9; border-radius: 8px }`` | 卡片按 16:9 算高 |
-    | ``.page-item.active { border: 2px accent }`` | ``dockJumpCurrentBorder`` |
-    | ``.page-num { 右下 4/8, 2em, 700, #FFF .9, text-shadow }`` | 右下角大号页码 |
-    | ``transition: .4s cubic-bezier(.19,1,.22,1)`` | ``dockJumpEnterDuration`` + ``OutExpo`` |
+    上面那张表是**形态**的逐条对照（宽度 / 贴边 / 铺满整高 / 单列 16:9 / 卡间距 /
+    进场）。**外观**那一层是 Fluent 化的 —— 用户在认可形态之后明确要求
+    「Fluent 化改造」，所以下面这些刻意偏离 L1，每条都有依据（都写在
+    ``Lumi.qml`` 对应令牌的注释里）：
 
-    ## 与 L1 有两处**故意**不同
+    * **圆角**：面板用项目的 ``flyoutRadius``（12，笔选单同款）而不是 L1 的 16 ——
+      Fluent 没有 16 这一档，贴边浮出层在项目里一律 12；卡片留 8，与笔选单色板
+      卡片同档。
+    * **底色**：Fluent ``SolidBackgroundFillColorBase``（深 #202020 / 浅 #F3F3F3），
+      而 L1 那个 ``--overlay-popup-bg`` 恰好也是 #202020 —— 对齐了，只是这回取的是
+      主题里有名有姓的那一档。
+    * **描边**：RinUI 的**表面**描边（``windowBorderColor``）。``hairline`` 是
+      ``dividerBorderColor``，Fluent 里那是分隔线；面板是独立表面，绕着一整块面
+      走的那圈线对应 ControlStroke。
+    * **卡片三态**：常态 ``controlFillColor`` / hover 8% / 按下 15%（后两档直接
+      复用控制条按钮的 ``dockButtonHoverFill`` / ``dockButtonActiveFill``）。
+      L1 只有 hover，且是「放大 + 投影」。
+    * **hover 不再缩放**：L1 的 ``scale(1.02)`` 是 Web CSS 的做法，Fluent 走状态层。
+      缩放挪到**按下**（0.96），与 ``PenPaletteCard`` 的色板格子同款。
+    * **当前页**：2px accent 描边留着（L1 的做法，也是项目里笔选单选中的做法），
+      Fluent 化补的是一层**淡底**（AccentFill Subtle）—— 描边管「定位到哪一页」，
+      淡底管「它在这儿」。
+    * **页码字重**：SemiBold（600）而不是 Bold（700）—— Fluent 字阶里
+      Display / Title 都是 SemiBold，32px 的粗体压在图上已经够重。
+    * **滚动条**：Fluent 细滚动条（常态 2px、悬停加粗到 6px、中性色），宽度取
+      主题的 ``scrollBarMinWidth`` / ``scrollBarWidth``；L1 是 3px 固定 accent。
+    * **仍然不挂投影**。贴边的大表面在 Fluent 里靠描边分层，不靠投影（L1 也是
+      ``box-shadow: none``）。真要加的话走 ``Rin.Shadow { style: "flyout" }``，
+      但那要先恢复投影余量（卡片内缩 + 摆位各扣一次），别顺手就加。
+
+    ## 与 L1 有两处**故意**不同（形态层面）
 
     1. **高度不再无脑铺满**。L1 是 ``top: 24; bottom: 24``，只有 3 页的演示也是
        一整条空侧栏。这里取 ``min(内容高 + 内边距, 满高)`` —— 页数够多时**与 L1
@@ -131,6 +147,8 @@ Item {
     readonly property int prefetchSpan: 5
     /*! 滚动时补要的半径 —— L1 ``onPageGridScroll`` 的「可见范围 ±3」。 */
     readonly property int scrollPrefetchSpan: 3
+    /*! 鼠标在不在列表范围内 —— Fluent 细滚动条据此加粗（常态 2px → 6px）。 */
+    property bool scrollHovered: false
 
     // ------------------------------------------------------------ 尺寸令牌
     readonly property int padding: Lumi.dockJumpPadding
@@ -351,6 +369,13 @@ Item {
         // 滚到哪就要到哪（L1 ``onPageGridScroll``）
         onContentYChanged: scrollPrefetch.restart()
 
+        // ⚠️ 用 ``HoverHandler`` 而不是「盖一个 MouseArea」：后者为了不抢拖拽
+        // 得把 ``acceptedButtons`` 设成 NoButton，很别扭；``HoverHandler`` 与
+        // 鼠标 grabbing 无关，纯粹跟着光标走，正是这里要的东西。
+        HoverHandler {
+            onHoveredChanged: root.scrollHovered = hovered
+        }
+
         Column {
             id: list
             objectName: "pageJumpList"
@@ -380,7 +405,14 @@ Item {
                     radius: root.itemRadius
                     // 卡片自己给出底色与描边（``Rin.Clip`` 的 background 别换，
                     // 那是基类引用；走 color / border 这两个别名）
-                    color: cell.hovered ? Lumi.dockJumpItemHover : Lumi.dockJumpItemFill
+                    //
+                    // Fluent 的可点表面是**三态状态层**：常态 Subtle → hover 一档
+                    // → 按下再一档。当前页优先（鼠标划过的正是当前页时，不该把它
+                    // 变成 hover 色 —— 那样「我在第几页」这条唯一的锚点就丢了）。
+                    color: cell.pageCurrent ? Lumi.dockJumpCurrentFill
+                        : cell.down ? Lumi.dockJumpItemPressed
+                        : cell.hovered ? Lumi.dockJumpItemHover
+                        : Lumi.dockJumpItemFill
                     // L1: ``.page-item { border: 2px solid transparent }`` +
                     //    ``.active { border-color: accent }`` —— 非当前页也留出这
                     //    2px，缩略图的位置才不会因为翻页而抖
@@ -391,8 +423,11 @@ Item {
                     hoverEnabled: true
                     onClicked: root.pagePicked(pageNumber)
 
-                    // L1: ``.page-item:hover { transform: scale(1.02) }``
-                    scale: cell.hovered ? Lumi.dockJumpItemHoverScale : 1.0
+                    // ⚠️ 按下缩一点（**不是** hover 放大）。L1 的
+                    // ``.page-item:hover { transform: scale(1.02) }`` 是 Web CSS
+                    // 的做法，Fluent 控件的 hover 走状态层；项目里已有的同款是
+                    // ``PenPaletteCard`` 的色板格子（``down ? 0.88 : 1``）。
+                    scale: cell.down ? Lumi.dockJumpItemPressedScale : 1.0
                     Behavior on scale {
                         NumberAnimation {
                             duration: Lumi.dockJumpFadeDuration
@@ -434,7 +469,7 @@ Item {
                         y: numberLabel.y + 1
                         text: numberLabel.text
                         font.pixelSize: Lumi.dockJumpNumberSize
-                        font.weight: Font.Bold
+                        font.weight: Lumi.dockJumpNumberWeight
                         color: "#000000"
                         opacity: Lumi.dockJumpNumberShadowOpacity
                     }
@@ -447,7 +482,7 @@ Item {
                         y: cell.height - height - 4
                         text: cell.pageNumber
                         font.pixelSize: Lumi.dockJumpNumberSize
-                        font.weight: Font.Bold
+                        font.weight: Lumi.dockJumpNumberWeight
                         color: Lumi.dockJumpNumberColor
                     }
                 }
@@ -457,20 +492,40 @@ Item {
 
     // ================================================================ 滚动条
     /*! 自绘（不用 ScrollViewer，项目明确不用它）：内容超出视口才出现，
-        拖动手势只给列表留 —— 这条纯指示、不接鼠标。L1 的 ``scrollbar-color``
-        是 accent。 */
+        拖动手势只给列表留 —— 这条纯指示、不接鼠标。
+
+        Fluent 的**细滚动条**行为：常态 2px、鼠标进到面板里加粗到 6px、颜色中性。
+        L1 是「3px 固定 + accent 色」，那是它自己 CSS 变量的选择 —— WinUI 的
+        ScrollBar 常态本来就不是强调色。宽度取主题的 ``scrollBarMinWidth`` /
+        ``scrollBarWidth``（见 ``Lumi.dockJumpScrollWidth*``）。 */
     Rectangle {
         objectName: "pageJumpScrollThumb"
         visible: root.scrollable && root.reveal > 0.5
+        // 加粗时整条往右挪半个差值，**中心线不动** —— 否则「加粗」看起来像「歪了」
         x: card.x + card.width - root.padding / 2 - width / 2
-        width: 3
+        width: root.scrollHovered ? Lumi.dockJumpScrollWidthHover
+                                  : Lumi.dockJumpScrollWidth
         radius: width / 2
-        color: Lumi.dockJumpScrollThumb
+        color: root.scrollHovered ? Lumi.dockJumpScrollThumbHover
+                                  : Lumi.dockJumpScrollThumb
         height: Math.max(24, root.viewportHeight * root.viewportHeight
                              / Math.max(root.contentHeight, 1))
         y: card.y + root.padding
             + (root.viewportHeight - height)
               * (flick.contentY / Math.max(root.contentHeight - root.viewportHeight, 1))
+
+        Behavior on width {
+            NumberAnimation {
+                duration: Lumi.dockJumpFadeDuration
+                easing.type: Easing.OutQuint
+            }
+        }
+        Behavior on color {
+            ColorAnimation {
+                duration: Lumi.dockJumpFadeDuration
+                easing.type: Easing.OutQuint
+            }
+        }
     }
 
     /*! 当前页那一张卡的引用（调用方 / 自检用；找不到时为 null）。 */

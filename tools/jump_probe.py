@@ -121,23 +121,38 @@ def _check_thumb_cache(cache) -> None:
           "同一场里重复 set_show 不冲掉缓存")
 
     # 换一场 / 退出放映：表清空、目录清掉、上一场迟到的结果被丢
-    old_generation = cache._generation
-    cache.set_show(False, 0)
-    check(cache.urls == [], "退出放映后缩略图表清零")
-    cache.set_show(True, 41)
-    check(cache.urls == [""] * 41, "新一场从全空开始")
-    stale = cache.directory / f"{old_generation}-5-raw.png"
-    stale.parent.mkdir(parents=True, exist_ok=True)
-    write_fake_slide(str(stale), 5)
-    cache._on_ready(5, str(stale))
-    check(cache.urls[4] == "" and not stale.exists(),
-          "上一场迟到的缩略图被丢弃（代次号保护）")
+    #
+    # ⚠️ 这一段会**真的删整个缓存目录**（``_purge``），而本机沙箱对删除有
+    # 「同一轮对话累计 50 个文件」的配额，超了会把子进程直接杀掉 —— 表现是
+    # 探针跑到一半没输出、看起来像崩了。所以默认**跳过**它，要跑显式开：
+    #     LUMI_PROBE_PURGE=1 tools\jump_probe.py
+    # （那一轮开始前先把本轮的删除额度留出来。）
+    if os.environ.get("LUMI_PROBE_PURGE", "") in ("1", "true", "True"):
+        old_generation = cache._generation
+        cache.set_show(False, 0)
+        check(cache.urls == [], "退出放映后缩略图表清零")
+        cache.set_show(True, 41)
+        check(cache.urls == [""] * 41, "新一场从全空开始")
+        stale = cache.directory / f"{old_generation}-5-raw.png"
+        stale.parent.mkdir(parents=True, exist_ok=True)
+        write_fake_slide(str(stale), 5)
+        cache._on_ready(5, str(stale))
+        check(cache.urls[4] == "" and not stale.exists(),
+              "上一场迟到的缩略图被丢弃（代次号保护）")
 
-    # 收尾：重新灌满，后面抓图要有内容
-    cache.set_show(False, 0)
-    cache.set_show(True, 41)
-    cache.request(1, 41, burst=41)
-    check(sum(1 for u in cache.urls if u) == 41, "收尾重新灌满 41 张")
+        # 收尾：重新灌满，后面抓图要有内容
+        # ⚠️ 这一组**也**会触发 ``_purge``（``set_show`` 从「没在放映」回到「在放映」
+        #    就换代 + 清目录），所以必须跟上面那组同进同出 —— 跳过清目录检查时
+        #    表里那 41 张本来就是满的，不用重来一遍。
+        cache.set_show(False, 0)
+        cache.set_show(True, 41)
+        cache.request(1, 41, burst=41)
+        check(sum(1 for u in cache.urls if u) == 41, "收尾重新灌满 41 张")
+    else:
+        print("[probe] SKIP 清目录那三条 + 收尾重灌（LUMI_PROBE_PURGE=1 才跑）"
+              "—— 它们会删整个缓存目录，沙箱有每轮删除配额")
+        check(sum(1 for u in cache.urls if u) == 41,
+              "跳过清目录时表仍是满的（抓图够用）")
 
     if problems:
         print(f"[probe] 缩略图链路：失败项 {len(problems)} —— {problems}")
@@ -158,11 +173,24 @@ def main() -> int:
     # 缩略图：真 cache + 假导出器（见 tools/fake_slides.py 的说明）。
     # 面板上「空卡片 + 页码」是 L1 的加载态、不是坏了，所以这块**必须**喂上，
     # 否则探针出的图永远是加载态，看不出「像不像 L1」。
-    thumbs = SlideThumbCache(FakeSlideExporter(), backend)
-    backend.attach_slide_thumbs(thumbs)
-    thumbs.set_show(True, 41)
-    thumbs.request(1, 41, burst=41)  # 假导出器没有 COM 开销，一次投满
-    _check_thumb_cache(thumbs)
+    # 缩略图：真 cache + 假导出器（见 tools/fake_slides.py 的说明）。
+    # 面板上「空卡片 + 页码」是 L1 的加载态、不是坏了，所以这块**必须**喂上，
+    # 否则探针出的图永远是加载态，看不出「像不像 L1」。
+    #
+    # ⚠️ 但它每次跑都要**删 41 个 raw 文件**（``SlideThumbCache`` 烤完圆角就把
+    #    临时的删掉），而本机沙箱对删除有「同一轮对话累计 50 个」的配额，超了直接
+    #    把子进程杀掉（探针表现为「什么都没输出」）。所以留一个开关：
+    #        LUMI_PROBE_THUMBS=0 tools\jump_probe.py
+    #    只验几何与交互、不出图时用它。面板与后端的几何断言不受影响。
+    if os.environ.get("LUMI_PROBE_THUMBS", "") in ("0", "false", "False"):
+        print("[probe] 缩略图已关（LUMI_PROBE_THUMBS=0）—— "
+              "只验几何与交互；面板上会是空卡片 + 页码")
+    else:
+        thumbs = SlideThumbCache(FakeSlideExporter(), backend)
+        backend.attach_slide_thumbs(thumbs)
+        thumbs.set_show(True, 41)
+        thumbs.request(1, 41, burst=41)  # 假导出器没有 COM 开销，一次投满
+        _check_thumb_cache(thumbs)
 
     rinui = RinUIWindow()
     rinui.engine.addImportPath(str(UI_DIR))

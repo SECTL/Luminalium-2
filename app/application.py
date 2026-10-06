@@ -145,11 +145,16 @@ class LuminaliumApplication:
     """把各模块拼装成一个可运行的应用。"""
 
     def __init__(self, argv: list[str]) -> None:
-        # 插件默认值注入：插件加载器第一阶段在任务 11 才完整接线，
-        # 这里先做防御式回退——registry 模块不存在或导入失败时退化为纯 Config()。
+        # 插件加载阶段一（Wave 3 任务 11）：collect_defaults 必须在 Config()
+        # 构造**之前**跑 —— 插件默认值只能随 extra_defaults 在构造时注入默认
+        # 层，错过这个窗口就永远进不去（两阶段时机的为什么见 loader 头注释）。
+        # 保留防御式回退：loader 模块导入失败时退化为纯 Config()，插件全缺席
+        # 也比应用起不来强。
+        self._plugin_loader = None
         try:
-            from app.plugins import registry
-            self.config = Config(extra_defaults=registry.plugin_defaults())
+            from app.plugins import loader
+            self._plugin_loader = loader
+            self.config = Config(extra_defaults=loader.collect_defaults())
         except ImportError:
             self.config = Config()
         setup_logging(str(self.config.get("app.log_level", "INFO")))
@@ -256,6 +261,21 @@ class LuminaliumApplication:
         # 之前完成，且处理器闭包要用 windows，所以卡在这个位置。
         # 详见 _register_builtin_verbs 与文件头注释。
         self._register_builtin_verbs()
+
+        # 插件加载阶段二（Wave 3 任务 11）。顺序约束：
+        # * 必须在 _register_builtin_verbs **之后** —— loader 末尾会
+        #   registry.freeze()，内建动词得赶在冻结前进注册表；
+        # * 必须在 _wire() **之前** —— 信号接线后消费端（导航 / 磁贴 /
+        #   控制条 / 动词分发）假设注册表已完备冻结，不能再有写入。
+        # include_debug 门控用 app.debug 配置键：不注入默认值（缺失即
+        # False），开调试插件得手改 config.json 写 "app": {"debug": true}
+        # 或由 smoke 临时写入。
+        if self._plugin_loader is not None:
+            self._plugin_loader.load_plugins(
+                self.backend,
+                self.windows,
+                include_debug=bool(self.config.get("app.debug")),
+            )
 
         self._wire()
 

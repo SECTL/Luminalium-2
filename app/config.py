@@ -6,6 +6,17 @@
 * 用户改动写入 ``config/config.json``，仅在键值与默认值不同时落盘；
 * 采用「点号路径」访问：``config.get("presentation.corners.bottom_left.enabled")``；
 * 支持 ``changed`` 回调，便于 QML 侧实时刷新。
+
+插件默认值注入（``extra_defaults``）：
+
+* 注入的是「默认层」，时机必须在用户数据合并之前——``save()`` 走 ``_diff``
+  只落盘「``_data`` 有而 ``_defaults`` 没有（或不同）」的键，把插件默认值注入
+  ``_defaults`` 才能做到既不会落盘污染用户文件，又不会掩盖用户显式改动的语义
+  （用户改过的键在 ``_data`` 里与 ``_defaults`` 不同，仍会正常落盘）；
+* **列表值一律拒绝注入**：``_deep_merge`` 对列表是整体替换而非递归合并，
+  列表型贡献注入默认层后，只要用户配置里出现同路径列表就会被静默吞掉
+  且无从察觉；列表型贡献必须改走读取层（``get`` 时合并）处理，因此这里
+  遇到列表直接跳过并 ``log.warning``。
 """
 
 from __future__ import annotations
@@ -34,7 +45,11 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any
 class Config:
     """轻量配置容器。"""
 
-    def __init__(self, user_file: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        user_file: Optional[str] = None,
+        extra_defaults: Optional[Dict[str, Any]] = None,
+    ) -> None:
         self._listeners: List[Callable[[str, Any], None]] = []
         # USER_CONFIG_FILE 既是读取来源也是落盘目标；
         # 传入自定义路径时两者一起改（此前两个字段写反了：
@@ -43,8 +58,36 @@ class Config:
         self._path_override = self._user_file
 
         self._defaults: Dict[str, Any] = self._read_json(DEFAULT_CONFIG_FILE, required=True)
+        # 插件默认值注入：必须在用户数据合并之前完成（原因见模块头注释）。
+        # 列表值拒绝注入：_deep_merge 对列表是整体替换，注入默认层后会被
+        # 用户配置静默吞掉，列表型贡献必须走读取层合并，故跳过并告警。
+        if extra_defaults:
+            filtered = self._strip_list_values(extra_defaults, prefix="")
+            if filtered:
+                self._defaults = _deep_merge(self._defaults, filtered)
         user_data = self._read_json(self._user_file) or {}
         self._data: Dict[str, Any] = _deep_merge(self._defaults, user_data)
+
+    @staticmethod
+    def _strip_list_values(values: Dict[str, Any], prefix: str) -> Dict[str, Any]:
+        """递归剔除 ``extra_defaults`` 中的列表值（含嵌套 dict 内的列表）。
+
+        跳过原因见模块头注释：``_deep_merge`` 对列表整体替换，注入默认层
+        会被用户配置静默吞掉。被剔除的路径逐条 ``log.warning``。
+        """
+        out: Dict[str, Any] = {}
+        for key, value in values.items():
+            path = f"{prefix}.{key}" if prefix else key
+            if isinstance(value, list):
+                log.warning("extra_defaults 中的列表值不允许注入默认层，已跳过: %s", path)
+                continue
+            if isinstance(value, dict):
+                sub = Config._strip_list_values(value, path)
+                if sub:
+                    out[key] = sub
+                continue
+            out[key] = value
+        return out
 
     # ------------------------------------------------------------------ io
 

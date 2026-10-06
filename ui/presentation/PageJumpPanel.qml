@@ -333,6 +333,11 @@ Item {
         readonly property real effectiveRadius: radius
     }
 
+    /*! 描边就是那一圈 1px 均匀线，**不加别的东西**。⚠️ 2026-10-06 曾照
+        ``FlyoutSurface`` / ``PenPaletteCard`` 补了一道 CW2 渐变高光环，用户明确
+        否掉：「不应该加高光的」—— 那两块有那道光，不代表所有浮出表面都得有；
+        这面板贴边、面积大，加高光反而显脏。 */
+
     /*! 吞掉落在卡片范围内的点击 —— 不吞的话会穿到底下的舞台（放映画面）上，
         用户点在自己的面板上却给幻灯片画了一笔。 */
     MouseArea {
@@ -396,15 +401,16 @@ Item {
                     /*! 缩略图就绪了没有 —— 「空卡片 + 页码」是 L1 的加载态本身。 */
                     readonly property string thumbUrl: root.thumbFor(pageNumber)
                     readonly property bool thumbReady: thumbUrl !== ""
-                    /*! 自检读的镜像：``Rin.Clip`` 的底色 / 描边经分组属性拿不到。 */
+                    /*! 自检读的镜像：``Rin.Clip`` 的底色经分组属性拿不到；描边在
+                        ``ring`` 那层自绘的上面，镜像跟着它走。 */
                     readonly property color surfaceFill: cell.color
-                    readonly property color frameBorder: cell.border.color
+                    readonly property color frameBorder: ring.border.color
 
                     width: root.itemWidth
                     height: root.itemHeight
                     radius: root.itemRadius
-                    // 卡片自己给出底色与描边（``Rin.Clip`` 的 background 别换，
-                    // 那是基类引用；走 color / border 这两个别名）
+                    // 卡片自己给出底色（``Rin.Clip`` 的 background 别换，那是基类
+                    // 引用；走 color 这个别名）
                     //
                     // Fluent 的可点表面是**三态状态层**：常态 Subtle → hover 一档
                     // → 按下再一档。当前页优先（鼠标划过的正是当前页时，不该把它
@@ -413,12 +419,17 @@ Item {
                         : cell.down ? Lumi.dockJumpItemPressed
                         : cell.hovered ? Lumi.dockJumpItemHover
                         : Lumi.dockJumpItemFill
-                    // L1: ``.page-item { border: 2px solid transparent }`` +
-                    //    ``.active { border-color: accent }`` —— 非当前页也留出这
-                    //    2px，缩略图的位置才不会因为翻页而抖
-                    border.width: Lumi.dockJumpCurrentBorderWidth
-                    border.color: cell.pageCurrent
-                        ? Lumi.dockJumpCurrentBorder : "transparent"
+                    // ⚠️ **描边不在这里画**。L1 是 border-box 做法（2px
+                    // transparent 占位 + 图往里让 2px），本项目改成下面那层自绘的
+                    // ``ring`` 压在**图片之上**，图因此可以铺满整张卡。
+                    //
+                    //    为什么必须改：内缩 2px 之后，图自己的圆角得等于
+                    //    「卡片圆角 − 内缩量」（8 − 2 = 6）才和卡片轮廓同心，而图是
+                    //    按 8 烤的 —— 转角处于是出现一圈「双层边」，圆角看着对不上
+                    //    （2026-10-06 用户报「圆角不太匹配」查出来的就是这个）。
+                    //    铺满之后图的圆角就是卡片圆角本身：Python 侧烤的值不用动，
+                    //    也就没有可错的地方。选中环压在内容上也是 WinUI 的做法。
+                    border.width: 0
                     padding: 0
                     hoverEnabled: true
                     onClicked: root.pagePicked(pageNumber)
@@ -441,9 +452,9 @@ Item {
                     Image {
                         id: thumb
                         objectName: "pageJumpCellThumb"
-                        // 2px 描边是 border-box：图往里让一格，与 L1 一致
+                        // 铺满整张卡：圆角由 PNG 的 alpha 自己带（Python 侧烤的），
+                        // 所以这里不需要内缩，也就不存在「内外圆角不同心」
                         anchors.fill: parent
-                        anchors.margins: Lumi.dockJumpCurrentBorderWidth
                         source: cell.thumbUrl
                         // 裁切式填满：缩略图本身就是 16:9，与卡片同比例
                         fillMode: Image.PreserveAspectCrop
@@ -455,8 +466,29 @@ Item {
                         enabled: false
                     }
 
+                    /*! 当前页的 2px accent 环 —— **画在图片之上**。
+
+                        为什么不走 ``Rin.Clip`` 的 ``border``：Button 的 background
+                        画在子项**之下**，环会被图片盖住；而 L1 为了让环可见采取
+                        「2px transparent 占位 + 图内缩 2px」，那个内缩正是圆角对不
+                        上的根源（见上面那段）。压在内容上是 WinUI 的做法
+                        （``SelectionIndicator`` 同样压在 item 内容上）。
+
+                        声明位置有讲究：夹在「图」与「页码」之间 —— 页码仍是最上层，
+                        环压不到那两个字。 */
+                    Rectangle {
+                        id: ring
+                        objectName: "pageJumpCellRing"
+                        anchors.fill: parent
+                        radius: root.itemRadius
+                        color: "transparent"
+                        border.width: Lumi.dockJumpCurrentBorderWidth
+                        border.color: cell.pageCurrent
+                            ? Lumi.dockJumpCurrentBorder : "transparent"
+                    }
+
                     /*! 右下角的页码（L1 ``.page-num``：``bottom: 4px; right: 8px;
-                        font-size: 2em; font-weight: 700; color: rgba(255,255,255,.9)``）。
+                        font-size: 2em; color: rgba(255,255,255,.9)``）。
 
                         ⚠️ L1 用的是 ``text-shadow``。QML 没有文字阴影，这里用
                         **同一串字错位 1px 再画一遍**代替（一层纯 Text，比给 41 张
@@ -501,14 +533,16 @@ Item {
     Rectangle {
         objectName: "pageJumpScrollThumb"
         visible: root.scrollable && root.reveal > 0.5
-        // 加粗时整条往右挪半个差值，**中心线不动** —— 否则「加粗」看起来像「歪了」
-        x: card.x + card.width - root.padding / 2 - width / 2
+        // 加粗时整条往右挪半个差值，**中心线不动** —— 否则「加粗」看起来像「歪了」。
+        // 中心线贴在**内容**右缘外 ``dockJumpScrollInset``（不是面板内边距的一半：
+        // 那会让它悬在面板与卡片之间两边不靠）。
+        x: card.x + card.width - Lumi.dockJumpScrollInset - width / 2
         width: root.scrollHovered ? Lumi.dockJumpScrollWidthHover
                                   : Lumi.dockJumpScrollWidth
         radius: width / 2
         color: root.scrollHovered ? Lumi.dockJumpScrollThumbHover
                                   : Lumi.dockJumpScrollThumb
-        height: Math.max(24, root.viewportHeight * root.viewportHeight
+        height: Math.max(28, root.viewportHeight * root.viewportHeight
                              / Math.max(root.contentHeight, 1))
         y: card.y + root.padding
             + (root.viewportHeight - height)

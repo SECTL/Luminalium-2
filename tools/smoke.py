@@ -90,12 +90,27 @@
     的版本号」）：挂在 ``titleBarHost``（RinUI ``TitleBar`` 里那块 ``fillWidth``
     的中间区，夹在导航标题与三个窗口按钮之间），文案 = ``Backend.appVersion``，
     几何上必须落在三个 ``CtrlBtn`` 的**左边**（按钮本身没有 objectName，按类名
-    找），且**不得越过 ``titleBarHost`` 的右缘** —— 那块带 ``clip: true``，
+    找），    且**不得越过 ``titleBarHost`` 的右缘** —— 那块带 ``clip: true``，
     负的 ``rightMargin`` 会把版本号裁成 ``26.0`` 半截
+16. 插件断言组（2026-10-06 插件系统计划 Wave 4 任务 13，9 项）：铁律直测 /
+    夹具磁贴 / 夹具 dock 动作 / 夹具设置页 / 夹具编辑器组 / 故障隔离 /
+    孤儿容忍 / 禁用过滤 / 依赖断言。**全部跑在子进程**（本脚本
+    ``--plugin-scenario`` 模式 + 临时用户配置），主进程保持 ``app.debug``
+    关，既有 15 项断言零改动也零回归。**清理责任**：每个场景的临时配置
+    目录用完 ``rmtree``；故障隔离注入的坏插件 ``app/plugins/_smoke_bad/``
+    用完必须整目录删除（含 ``__pycache__``，留在盘上会被调试插件发现
+    机制当成常驻插件）；铁律的白名单键 ``plugins._demo.note`` 只落在
+    临时配置里，真 ``config/config.json`` 全程不被碰。详见下方
+    「插件断言组」一节的注释。
 
 用法::
 
     .venv\\Scripts\\python.exe tools\\smoke.py
+
+内部入口（插件断言组用，正常人别直接调）::
+
+    .venv\\Scripts\\python.exe -X utf8 tools\\smoke.py --plugin-scenario <场景名>
+    .venv\\Scripts\\python.exe tools\\smoke.py --self-test   # 离线自检（不开窗口）
 """
 
 from __future__ import annotations
@@ -103,9 +118,13 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import json
+import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import traceback
 import winreg
 from pathlib import Path
@@ -115,10 +134,21 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
-from PySide6.QtCore import Q_ARG, QMetaObject, QObject, QPoint, QPointF, Qt, QTimer  # noqa: E402
+from PySide6.QtCore import (  # noqa: E402
+    Q_ARG,
+    QMetaObject,
+    QObject,
+    QPoint,
+    QPointF,
+    Qt,
+    QTimer,
+    qInstallMessageHandler,
+)
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtGui import QColor, QCursor, QGuiApplication  # noqa: E402
 
+import app.config as app_config  # noqa: E402
+import app.paths as app_paths  # noqa: E402
 from app import ppt_controller  # noqa: E402
 from app import autostart  # noqa: E402
 from app.application import LuminaliumApplication  # noqa: E402
@@ -1977,7 +2007,797 @@ def _check_editor(app) -> None:
     )
 
 
+# ============================================================ 插件断言组
+#
+# 2026-10-06 插件系统计划 Wave 4 任务 13：9 项插件断言，追加在既有 15 项
+# 之后，既有断言零改动。
+#
+# 为什么全部跑在**子进程**（本脚本 ``--plugin-scenario`` 模式）：
+#
+# * registry 是模块级单例、``load_plugins`` 末尾冻结 —— 同进程第二次装配
+#   直接抛（任务 12 的 QA 头注释实锤）；禁用 / 孤儿 / 坏插件场景的启动
+#   配置互斥，只能各开一个进程；
+# * 主进程保持 ``app.debug`` 关：``_demo`` 的全部贡献（磁贴 / 设置导航 /
+#   dock 工具与动作 / 编辑器组 / 设置键）一项都不进主进程，既有断言
+#   不可能被插件贡献「顶」出假失败；
+# * 子进程用**临时用户配置**（环境变量 ``LUMI_SMOKE_USER_CONFIG`` 重定向
+#   ``paths.USER_CONFIG_FILE`` 与 ``config.USER_CONFIG_FILE`` 两处 ——
+#   前者是 loader 阶段一/二的动态查找点，后者是 Config 构造读写的
+#   导入时绑定，漏一个就会读写真 ``config/config.json``），真用户配置
+#   全程不被碰。
+#
+# 铁律白名单方案（任务简给定二选一，这里选「白名单 + 结构对比」）：
+# ``_demo_dep`` 注册时经总线让 ``_demo`` 写 ``plugins._demo.note="ping"``
+# （任务 12 的总线验收载体），退出时 ``quit() → config.save()`` 会把它
+# 落盘 —— 这是夹具的**预期写入**而非违规。所以：
+#
+# * debug 开（iron）：断言「除 ``plugins._demo.note`` 外结构一致」+
+#   「该键确为 'ping'」（把预期写入本身也钉死）；
+# * debug 关（iron-off）：连这笔写入都没有，断言**字节完全一致**
+#   （临时配置按 ``Config.save()`` 同款序列化写入，字节对比才成立）。
+#
+# 清理责任（谁动这组断言谁负责）：
+#
+# * 临时配置目录：每个场景一个 ``tempfile.mkdtemp``，``finally`` 里
+#   ``rmtree``；
+# * 坏插件 ``app/plugins/_smoke_bad/``：故障隔离场景前由父进程注入、
+#   ``finally`` 里整目录删除（含 ``__pycache__``）—— 留在盘上会被
+#   loader 的调试目录发现机制当成常驻调试插件；
+# * 白名单键 ``plugins._demo.note`` 只写进临时配置，随临时目录删除，
+#   真 ``config/config.json`` 不需要任何「测后还原」。
+#
+# 子进程协议：场景函数经 :func:`_pcheck` 把断言写成
+# ``SMOKE-PLUGIN|PASS/FAIL|标签|详情`` 标记行进 stdout，父进程
+# （:func:`_check_plugin_suite`）逐行解析、镜像进 ``RESULTS``；
+# 子进程退出码非零 / 零标记一律算该场景失败。
+
+#: 故障隔离场景注入的坏插件 id（目录名 = 插件 id，``_`` 前缀才会被
+#: 调试发现机制捡到）。
+BAD_PLUGIN_ID = "_smoke_bad"
+BAD_PLUGIN_DIR = ROOT / "app" / "plugins" / BAD_PLUGIN_ID
+BAD_PLUGIN_SOURCE = (
+    '"""smoke 任务 13 故障隔离夹具：register 必抛。'
+    '由 tools/smoke.py 临时注入，用完即删，勿提交。"""\n'
+    "\n"
+    f'META = {{"id": "{BAD_PLUGIN_ID}"}}\n'
+    "\n"
+    "\n"
+    "def register(ctx):\n"
+    '    raise RuntimeError("smoke 注入的故意故障（任务 13 故障隔离断言）")\n'
+)
+
+#: 场景子进程断言标记行的格式（详情里的 ``|`` 与换行在 :func:`_pcheck`
+#: 侧已转义，这里按三段切）。
+_SCENARIO_MARKER = re.compile(r"^SMOKE-PLUGIN\|(PASS|FAIL)\|([^|]*)\|(.*)$")
+
+#: 铁律白名单：夹具总线的预期写入键（见本节头注释的「铁律白名单方案」）。
+IRON_WHITELIST = frozenset({"plugins._demo.note"})
+
+_MISSING = object()
+
+_PSCENARIO_FAILURES = 0
+
+
+def _pcheck(label: str, ok: bool, detail: str = "") -> None:
+    """场景子进程的断言出口：打一行标记进 stdout（父进程按行解析）。"""
+    global _PSCENARIO_FAILURES
+    safe = str(detail).replace("\n", " ").replace("|", "/") if detail else ""
+    print(f"SMOKE-PLUGIN|{'PASS' if ok else 'FAIL'}|{label}|{safe}", flush=True)
+    if not ok:
+        _PSCENARIO_FAILURES += 1
+
+
+def _flatten_config(obj, prefix: str = "") -> dict:
+    """把嵌套 dict 拍平成 ``点号路径 -> 叶子值``（空 dict / 非 dict 都算叶子）。"""
+    if isinstance(obj, dict) and obj:
+        out = {}
+        for key, value in obj.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            out.update(_flatten_config(value, path))
+        return out
+    return {prefix: obj}
+
+
+def _config_diff_except(before_bytes: bytes, after_bytes: bytes, whitelist=()):
+    """结构对比两份 config：除 ``whitelist`` 里的点号路径外必须完全一致。
+
+    :return: ``(ok, detail, whitelisted)`` —— ok = 无白名单外差异；detail
+        是白名单外差异的简述；whitelisted 是白名单键在 after 里的实际值
+        （调用方据此断言预期写入，如 ``note == "ping"``）。
+
+    为什么不比字节：``Config.save()`` 会整文件重写，键序随默认层合并
+    顺序走 —— 临时配置的初始字节是我们写的、落盘字节是 Config 写的，
+    即使内容等价字节也未必相同；拍平后比结构才是「落没落成」的语义。
+    debug 关的场景没有这笔重写问题，直接比字节（见 ``iron-off``）。
+    """
+    try:
+        before = json.loads(before_bytes.decode("utf-8"))
+        after = json.loads(after_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        return False, f"配置不是合法 JSON: {exc}", {}
+    flat_before = _flatten_config(before)
+    flat_after = _flatten_config(after)
+    diffs = []
+    whitelisted = {}
+    for path in sorted(set(flat_before) | set(flat_after)):
+        if path in whitelist:
+            whitelisted[path] = flat_after.get(path)
+            continue
+        old = flat_before.get(path, _MISSING)
+        new = flat_after.get(path, _MISSING)
+        if old != new:
+            diffs.append(f"{path}: {old!r} -> {new!r}")
+    return (not diffs), "; ".join(diffs[:6]), whitelisted
+
+
+def _write_temp_config(path, initial: dict) -> bytes:
+    """写临时用户配置并返回写入的字节。
+
+    序列化与 ``Config.save()`` 同款（``json.dumps(..., indent=2)``、无尾
+    换行）—— debug 关的铁律断言要做**字节级**对比，格式不同必然假失败。
+    """
+    data = json.dumps(initial, ensure_ascii=False, indent=2).encode("utf-8")
+    Path(path).write_bytes(data)
+    return data
+
+
+def _inject_bad_plugin() -> None:
+    """注入「register 必抛」的坏插件（故障隔离场景用）。用完必须
+    :func:`_remove_bad_plugin` —— 见本节头注释的清理责任。"""
+    BAD_PLUGIN_DIR.mkdir(parents=True, exist_ok=True)
+    (BAD_PLUGIN_DIR / "__init__.py").write_text("", encoding="utf-8")
+    (BAD_PLUGIN_DIR / "plugin.py").write_text(BAD_PLUGIN_SOURCE, encoding="utf-8")
+
+
+def _remove_bad_plugin() -> None:
+    """把注入的坏插件整个删掉（``__pycache__`` 在目录内，一并带走）。"""
+    shutil.rmtree(BAD_PLUGIN_DIR, ignore_errors=True)
+
+
+def _run_plugin_scenario(name: str, config_path, timeout_s: int = 300):
+    """开一个子进程跑插件场景，返回 ``(CompletedProcess | None, 错误简述)``。
+
+    子进程 = 本脚本的 ``--plugin-scenario`` 模式：场景函数与父进程共享
+    ``_wait_named`` / ``_wait_property`` 等全部辅助。``-X utf8`` 必须带
+    （GBK 控制台下 RinUI 的中文资源名会炸，见
+    ``.memory/topics/rinui-gbk-crash.md``）。stderr 并进 stdout，场景
+    失败时父进程能从输出尾部看到 traceback。
+    """
+    env = dict(os.environ)
+    env["LUMI_SMOKE_USER_CONFIG"] = str(config_path)
+    cmd = [
+        sys.executable, "-X", "utf8",
+        str(Path(__file__).resolve()), "--plugin-scenario", name,
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(ROOT),
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        return None, f"子进程超过 {timeout_s}s 未退出"
+    except OSError as exc:
+        return None, f"子进程拉起失败: {exc}"
+    return proc, ""
+
+
+def _parse_scenario_output(data) -> list:
+    """从子进程输出里提取 ``SMOKE-PLUGIN|...`` 标记行，返回
+    ``[(标签, 是否通过, 详情), ...]``（非标记行全部忽略）。"""
+    if isinstance(data, bytes):
+        data = data.decode("utf-8", errors="replace")
+    out = []
+    for line in str(data).splitlines():
+        match = _SCENARIO_MARKER.match(line.strip())
+        if match:
+            out.append((match.group(2), match.group(1) == "PASS", match.group(3)))
+    return out
+
+
+def _plugin_scenario_configs() -> dict:
+    """各场景的临时用户配置初始内容（只写非默认值键，与真实用户文件同构）。"""
+    return {
+        # 铁律直测（debug 开）：无交互启动即退，白名单外结构必须一致。
+        "iron": {"app": {"debug": True}},
+        # 铁律直测（debug 关）：无任何插件加载，退出后字节必须完全一致。
+        "iron-off": {"probe": {"marker": "keep-me"}},
+        # 夹具全链路（磁贴 / dock / 设置页 / 编辑器组 / 依赖断言）。
+        # 把 _demo_group 挂进下中部的 groups：编辑器检查器渲染的是「选中角
+        # 各组 inspector_items 的并集」，夹具开关由此可见可点（只写临时
+        # 配置，真配置不受影响）。
+        "full": {
+            "app": {"debug": True},
+            "presentation": {
+                "corners": {
+                    "bottom_center": {
+                        "enabled": True,
+                        "groups": ["tools", "actions", "exit", "_demo_group"],
+                    }
+                }
+            },
+        },
+        # 故障隔离：坏插件由父进程在启动前注入到 app/plugins/_smoke_bad/。
+        "fault": {"app": {"debug": True}},
+        # 孤儿容忍：手写的「不存在」残留 —— 组名（组件）与磁贴 id 各一，
+        # 模拟用户手改 config / 插件卸载后的配置残留。
+        "orphan": {
+            "app": {"debug": True},
+            "presentation": {
+                "corners": {
+                    "bottom_center": {"enabled": True, "groups": ["_ghost_group"]}
+                }
+            },
+            "quick_panel": {"shortcuts": ["settings", "_ghost_tile"]},
+        },
+        # 禁用过滤：_demo 禁用后，_demo_dep 应因依赖缺失被连带跳过。
+        "disabled": {
+            "app": {"debug": True},
+            "plugins": {"_demo": {"enabled": False}},
+        },
+    }
+
+
+def _check_plugin_suite() -> None:
+    """插件断言组（9 项）：逐场景开子进程跑，把子进程断言镜像进 RESULTS。"""
+    for name, initial in _plugin_scenario_configs().items():
+        tmp = Path(tempfile.mkdtemp(prefix=f"lumi-smoke-plugin-{name}-"))
+        try:
+            cfg = tmp / "config.json"
+            _write_temp_config(cfg, initial)
+            if name == "fault":
+                _inject_bad_plugin()
+            proc, error = _run_plugin_scenario(name, cfg)
+            if proc is None:
+                check(f"插件场景 {name} 子进程在时限内完成", False, error)
+                continue
+            markers = _parse_scenario_output(proc.stdout)
+            meta_ok = proc.returncode == 0 and bool(markers)
+            detail = ""
+            if not meta_ok:
+                tail = (proc.stdout or b"").decode(
+                    "utf-8", errors="replace")[-300:].replace("\n", " ")
+                detail = (f"exit={proc.returncode} 标记数={len(markers)} "
+                          f"输出尾部={tail!r}")
+            check(f"插件场景 {name} 子进程正常跑完", meta_ok, detail)
+            for label, ok, marker_detail in markers:
+                check(f"插件/{label}", ok, marker_detail)
+        finally:
+            # 清理责任（本节头注释）：坏插件与临时目录都必须还原 / 删除，
+            # 与单个场景的成败无关。
+            if name == "fault":
+                _remove_bad_plugin()
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------- 场景子进程（内部入口）
+
+
+class _LogTap(logging.Handler):
+    """把 ``app.*`` 日志收进内存列表（场景断言「错误入日志 / 注册顺序」用）。"""
+
+    def __init__(self, sink: list) -> None:
+        super().__init__()
+        self._sink = sink
+
+    def emit(self, record) -> None:
+        try:
+            self._sink.append((record.levelno, record.getMessage()))
+        except Exception:  # noqa: BLE001 - 日志探针绝不能影响被测进程
+            pass
+
+
+class _ScenarioCtx:
+    """场景子进程上下文：临时配置重定向、启动前字节、日志 / Qt 消息探针。"""
+
+    def __init__(self) -> None:
+        self.config_path = os.environ.get("LUMI_SMOKE_USER_CONFIG", "")
+        self.before_bytes = b""
+        if self.config_path:
+            # 两处重定向缺一不可：loader 阶段一/二动态读
+            # ``paths.USER_CONFIG_FILE``，而 ``Config`` 读的是自己模块里
+            # import 时绑定的 ``USER_CONFIG_FILE``。
+            app_paths.USER_CONFIG_FILE = self.config_path
+            app_config.USER_CONFIG_FILE = self.config_path
+            self.before_bytes = Path(self.config_path).read_bytes()
+        self.logs: list = []
+        self.qt_messages: list = []
+        logging.getLogger("app").addHandler(_LogTap(self.logs))
+        # 默认级别 INFO 已够用（注册顺序 / 跳过原因 / register 异常分别是
+        # INFO / WARNING / ERROR）；不去动 root 级别 —— ``setup_logging``
+        # 随后会按配置重设，设了也会被盖掉。
+        qInstallMessageHandler(
+            lambda _mode, _context, message: self.qt_messages.append(str(message))
+        )
+
+
+def _scenario_iron(app, ctx: _ScenarioCtx) -> None:
+    """铁律直测（debug 开）：**无交互**启动即退；字节对比在进程尾部做
+    （``quit() → config.save()`` 把防抖落盘的账结掉之后）。"""
+    QTest.qWait(500)  # 让装配 / 总线写入全部落定再退
+
+
+def _scenario_iron_off(app, ctx: _ScenarioCtx) -> None:
+    """铁律直测（debug 关）：零插件加载、零写入，退出后字节必须一致。"""
+    QTest.qWait(500)
+
+
+def _scenario_full(app, ctx: _ScenarioCtx) -> None:
+    """夹具全链路：依赖断言 + 磁贴 + dock 动作 + 设置页 + 编辑器组。"""
+    backend = app.backend
+
+    # ---- ⑨ 依赖断言（拓扑序 + 总线端到端）----
+    messages = [message for _level, message in ctx.logs]
+
+    def _log_index(target: str) -> int:
+        for index, message in enumerate(messages):
+            if message == target:
+                return index
+        return -1
+
+    demo_at = _log_index("插件已加载: _demo（调试）")
+    dep_at = _log_index("插件已加载: _demo_dep（调试）")
+    _pcheck(
+        "依赖断言：_demo_dep 在 _demo 之后注册（日志序）",
+        0 <= demo_at < dep_at,
+        f"_demo 在第 {demo_at} 条、_demo_dep 在第 {dep_at} 条",
+    )
+    note = backend.settings.get("plugins__demo_note")
+    _pcheck(
+        "依赖断言：总线把 plugins._demo.note 置为 ping",
+        note == "ping",
+        f"note={note!r}",
+    )
+
+    # ---- ② 夹具磁贴 ----
+    tile = next(
+        (item for item in backend.availableShortcutItems
+         if str(item.get("id")) == "_demo_panel"),
+        None,
+    )
+    _pcheck(
+        "夹具磁贴：目录含 _demo_panel（标题 / 动作形状对齐注册）",
+        tile is not None
+        and tile.get("title") == "演示"
+        and tile.get("action") == "plugin:_demo:open",
+        str(tile),
+    )
+    accepted = backend.activateShortcut("_demo_panel")
+    handle = app.windows._registered_windows.get("demo")
+    QTest.qWait(400)
+    arrived = handle is not None and handle.is_visible()
+    _pcheck(
+        "夹具磁贴：activateShortcut 受理并到达夹具处理器（夹具窗口已 show）",
+        accepted and arrived,
+        f"accepted={accepted} 窗口可见={arrived}",
+    )
+    # 恢复现场：夹具窗口关回（只藏不销毁），免得压住后面的设置页 / 编辑器。
+    backend.triggerAction("plugin:_demo:close")
+    QTest.qWait(200)
+
+    # ---- ③ 夹具 dock 动作 ----
+    # 放映态强制激活：沿用主自检的 ``inject_state`` 手法（不依赖真 PowerPoint）。
+    app.ppt.inject_state(
+        PresentationState(active=True, slide_index=1, slide_total=2)
+    )
+    QTest.qWait(300)
+    pres = backend.presentationConfig  # dock 工具 / 动作模型的数据源
+    action_ids = {str(a.get("id")) for a in pres.get("actions", [])}
+    tool_ids = {str(t.get("id")) for t in pres.get("tools", [])}
+    overlay = app.windows.overlay
+    _pcheck(
+        "夹具 dock：放映态下模型含 plugin:_demo:ping / plugin:_demo:tool",
+        "plugin:_demo:ping" in action_ids
+        and "plugin:_demo:tool" in tool_ids
+        and overlay is not None and overlay.isVisible(),
+        f"actions={sorted(action_ids)} tools={sorted(tool_ids)} "
+        f"overlay可见={overlay.isVisible() if overlay is not None else None}",
+    )
+    # 非放映态触发仍分发（``plugin:`` 特权前缀在 state.active 门控之前）。
+    app.ppt.inject_state(PresentationState(active=False))
+    QTest.qWait(200)
+    backend.setSetting("plugins__demo_note", "reset")  # 排除总线同值干扰
+    backend.triggerAction("plugin:_demo:ping")
+    QTest.qWait(200)
+    note = backend.settings.get("plugins__demo_note")
+    _pcheck(
+        "夹具 dock 动作：非放映态 plugin: 门控旁路仍分发到夹具处理器",
+        note == "ping",
+        f"note={note!r}（triggerAction 前已 reset）",
+    )
+
+    # ---- ④ 夹具设置页 ----
+    nav = backend.settingsNavItems
+    demo_nav = [
+        item for item in nav
+        if str(item.get("page", "")).endswith("ui/plugins/_demo/DemoSettings.qml")
+    ]
+    _pcheck(
+        "夹具设置页：settingsNavItems 含 _demo 项（标题透传）",
+        len(demo_nav) == 1 and demo_nav[0].get("title") == "演示插件",
+        str(nav),
+    )
+    app.windows.show_settings("plugins/_demo/DemoSettings.qml")
+    settings = app.windows.settings
+    page = (
+        _wait_named(settings.contentItem(), "DemoSettings", 8000)
+        if settings is not None else None
+    )
+    card = (
+        _find_named(settings.contentItem(), "demoFlagCard")
+        if settings is not None else None
+    )
+    qml_errors = [
+        message for message in ctx.qt_messages
+        if "DemoSettings" in message
+        and ("Error" in message or "error" in message or "Cannot" in message)
+    ]
+    _pcheck(
+        "夹具设置页：show_settings 跳页成功且无 QML 错误",
+        page is not None and card is not None and not qml_errors,
+        f"page={page is not None} card={card is not None} QML错误={qml_errors[:3]}",
+    )
+    backend.settingsCloseRequested.emit()
+    QTest.qWait(200)
+
+    # ---- ⑤ 夹具编辑器组 ----
+    group_names = {str(g.get("name")) for g in backend.presentationGroups}
+    _pcheck(
+        "夹具编辑器组：presentationGroups 含 _demo_group",
+        "_demo_group" in group_names,
+        f"groups={sorted(group_names)}",
+    )
+    accepted = backend.activateShortcut("main_editor")
+    editor = app.windows.editor
+    QTest.qWait(800)
+    _pcheck(
+        "夹具编辑器组：编辑器经快捷方式打开",
+        accepted and editor is not None and editor.isVisible(),
+        f"accepted={accepted} "
+        + ("窗口未创建" if editor is None else f"visible={editor.isVisible()}"),
+    )
+    if editor is not None:
+        # 与主自检同款重试：selectedCorner 偶发被清（根因未明，见 _check_editor
+        # 里的调查注释），确认一次没生效就再来一拍。
+        for _attempt in range(3):
+            editor.selectCorner("bottom_center")
+            QTest.qWait(700)
+            if editor.property("editing") is True:
+                break
+        item = _wait_named(
+            editor.contentItem(), "editorInspectorItem_plugins__demo_flag", 8000
+        )
+        switch = _find_named(
+            editor.contentItem(), "editorInspectorSwitch_plugins__demo_flag"
+        )
+        _pcheck(
+            "夹具编辑器组：选中含 _demo_group 的角后检查器开关渲染",
+            item is not None and switch is not None and switch.isVisible(),
+            f"item={item is not None} switch={switch is not None} 尝试={_attempt + 1}",
+        )
+        if switch is not None:
+            # 检查器是 Flickable：夹具开关排在并集末尾，先滚到底再点
+            # （主自检「开机自启」那条踩过「窗口外的卡片点了没反应」的坑）。
+            body = _find_named(editor.contentItem(), "editorInspectorBody")
+            if body is not None:
+                overflow = float(body.property("contentHeight") or 0) - body.height()
+                if overflow > 0:
+                    body.setProperty("contentY", overflow)
+                    QTest.qWait(300)
+            spot = switch.mapToScene(
+                QPointF(switch.width() / 2, switch.height() / 2)
+            )
+            QTest.mouseClick(
+                editor, Qt.LeftButton, Qt.NoModifier,
+                QPoint(int(spot.x()), int(spot.y())),
+            )
+            QTest.qWait(300)
+        flag = backend.settings.get("plugins__demo_flag")
+        _pcheck(
+            "夹具编辑器组：翻转开关后 plugins._demo.flag 落盘且类型 bool",
+            flag is True,
+            f"flag={flag!r}",
+        )
+        # 「重启后读回」：进程内不能再装配第二次（注册表冻结），这里等价为
+        # 落盘后用全新 Config 实例读同一文件 —— 读的就是重启后会读到的字节。
+        app.config.save()
+        reread = app_config.Config(user_file=str(ctx.config_path))
+        value = reread.get("plugins._demo.flag")
+        _pcheck(
+            "夹具编辑器组：重启后读回类型保持（JSON true → Python bool）",
+            value is True and type(value) is bool,
+            f"读回={value!r}（{type(value).__name__}）",
+        )
+        backend.closeMainEditor()
+        QTest.qWait(200)
+
+
+def _scenario_fault(app, ctx: _ScenarioCtx) -> None:
+    """故障隔离：register 必抛的坏插件不拖垮应用，错误入日志。"""
+    from app.plugins import loader as plugin_loader
+
+    report = {entry["id"]: entry for entry in plugin_loader.loaded_plugins()}
+    bad = report.get(BAD_PLUGIN_ID, {})
+    _pcheck(
+        "故障隔离：坏插件 register 异常被捕获并跳过（清单列明原因）",
+        bad.get("loaded") is False and "register 异常" in str(bad.get("reason")),
+        str(bad),
+    )
+    avail = {str(item.get("id")) for item in app.backend.availableShortcutItems}
+    _pcheck(
+        "故障隔离：应用启动成功且其余插件照常（_demo_panel 目录在）",
+        app.backend is not None and "_demo_panel" in avail,
+        f"目录={sorted(avail)}",
+    )
+    errors = [
+        message for level, message in ctx.logs
+        if level >= logging.ERROR and BAD_PLUGIN_ID in message
+    ]
+    _pcheck(
+        "故障隔离：register 异常已写入日志（log.exception）",
+        bool(errors),
+        errors[0] if errors else "未捕到 ERROR 记录",
+    )
+
+
+def _scenario_orphan(app, ctx: _ScenarioCtx) -> None:
+    """孤儿容忍：不存在的组名 / 磁贴 id 只告警不崩，编辑器与面板照开。"""
+    warnings = [
+        message for level, message in ctx.logs
+        if level >= logging.WARNING and "孤儿组" in message
+    ]
+    _pcheck(
+        "孤儿容忍：不存在的组名记 warning 且孤儿角落被跳过（不崩）",
+        bool(warnings),
+        warnings[0] if warnings else "未捕到「孤儿组」warning",
+    )
+    # 开编辑器 + 开面板：抛异常会被 guarded 兜底成 FAIL，能跑到断言即证明无异常。
+    app.windows.show_editor()
+    QTest.qWait(600)
+    editor_ok = app.windows.editor is not None and app.windows.editor.isVisible()
+    app.windows.show_panel()
+    QTest.qWait(400)
+    panel_ok = app.windows.panel is not None and app.windows.panel.isVisible()
+    app.windows.hide_panel()
+    app.windows.hide_editor()
+    _pcheck(
+        "孤儿容忍：开编辑器 + 开面板均无异常（未知磁贴 id 被丢弃）",
+        editor_ok and panel_ok,
+        f"editor={editor_ok} panel={panel_ok}",
+    )
+
+
+def _scenario_disabled(app, ctx: _ScenarioCtx) -> None:
+    """禁用过滤：_demo 禁用后全部贡献缺席，_demo_dep 依赖缺失连带跳过。"""
+    from app.plugins import loader as plugin_loader
+
+    backend = app.backend
+    nav_absent = not any(
+        "_demo" in str(item.get("page", "")) for item in backend.settingsNavItems
+    )
+    catalog = {str(item.get("id")) for item in backend.availableShortcutItems}
+    pres = backend.presentationConfig
+    dock_absent = not any(
+        str(t.get("id", "")).startswith("plugin:_demo")
+        for t in pres.get("tools", [])
+    ) and not any(
+        str(a.get("id", "")).startswith("plugin:_demo")
+        for a in pres.get("actions", [])
+    )
+    group_names = {str(g.get("name")) for g in backend.presentationGroups}
+    setting_keys = [str(k) for k in backend.settings]
+    window_absent = "demo" not in app.windows._registered_windows
+    _pcheck(
+        "禁用过滤：_demo 全部贡献缺席（导航 / 磁贴 / dock / 编辑器组 / "
+        "设置键 / 窗口）",
+        nav_absent
+        and "_demo_panel" not in catalog
+        and dock_absent
+        and "_demo_group" not in group_names
+        and not any(k.startswith("plugins__demo") for k in setting_keys)
+        and window_absent,
+        f"导航含demo={not nav_absent} 磁贴={'_demo_panel' in catalog} "
+        f"dock缺席={dock_absent} 组={sorted(group_names)} "
+        f"设置键={[k for k in setting_keys if 'demo' in k]}",
+    )
+    report = {entry["id"]: entry for entry in plugin_loader.loaded_plugins()}
+    demo_entry = report.get("_demo", {})
+    dep_reason = str(report.get("_demo_dep", {}).get("reason") or "")
+    _pcheck(
+        "禁用过滤：_demo 标记禁用未加载，_demo_dep 因依赖缺失被跳过",
+        demo_entry.get("enabled") is False
+        and not demo_entry.get("loaded")
+        and "依赖不可用" in dep_reason,
+        f"_demo={demo_entry} _demo_dep.reason={dep_reason!r}",
+    )
+    warnings = [
+        message for level, message in ctx.logs
+        if level >= logging.WARNING and "_demo_dep" in message
+    ]
+    _pcheck(
+        "禁用过滤：跳过因果链已写入 warning 日志",
+        bool(warnings),
+        warnings[0] if warnings else "未捕到 _demo_dep 的 warning",
+    )
+
+
+#: 场景名 -> 场景函数。每个场景一个独立子进程（注册表冻结约束，见本节头注释）。
+_PLUGIN_SCENARIOS = {
+    "iron": _scenario_iron,
+    "iron-off": _scenario_iron_off,
+    "full": _scenario_full,
+    "fault": _scenario_fault,
+    "orphan": _scenario_orphan,
+    "disabled": _scenario_disabled,
+}
+
+
+def _plugin_scenario_main(scenario: str) -> int:
+    """子进程模式：用临时用户配置启动完整应用，跑一个插件场景。"""
+    fn = _PLUGIN_SCENARIOS.get(scenario)
+    if fn is None:
+        _pcheck(f"场景名 {scenario!r} 已登记", False,
+                f"可选: {sorted(_PLUGIN_SCENARIOS)}")
+        return 2
+    ctx = _ScenarioCtx()
+    if not ctx.config_path:
+        _pcheck("临时用户配置已由 LUMI_SMOKE_USER_CONFIG 指定", False, "环境变量缺失")
+        return 2
+    app = LuminaliumApplication(sys.argv)
+
+    def guarded() -> None:
+        try:
+            fn(app, ctx)
+        except Exception:
+            traceback.print_exc()
+            _pcheck("场景执行过程未抛异常", False,
+                    traceback.format_exc().splitlines()[-1])
+        finally:
+            # quit() 内含 config.save()：铁律直测要靠它把防抖落盘的账结掉。
+            app.quit()
+
+    QTimer.singleShot(900, guarded)
+    code = app.qt_app.exec()
+    app.ppt.shutdown()
+
+    # 铁律的字节 / 结构对比必须落在 quit() 的 save() 之后，所以在事件循环
+    # 退出后做（场景函数体内是什么都没做的「无交互」段）。
+    if scenario == "iron":
+        after = Path(ctx.config_path).read_bytes()
+        ok, detail, whitelisted = _config_diff_except(
+            ctx.before_bytes, after, whitelist=IRON_WHITELIST
+        )
+        _pcheck(
+            "铁律直测（debug 开）：除白名单键 plugins._demo.note 外配置零落盘",
+            ok, detail,
+        )
+        _pcheck(
+            "铁律直测（debug 开）：白名单键确为总线预期写入 note='ping'",
+            whitelisted.get("plugins._demo.note") == "ping",
+            repr(whitelisted),
+        )
+    elif scenario == "iron-off":
+        after = Path(ctx.config_path).read_bytes()
+        same = after == ctx.before_bytes
+        _pcheck(
+            "铁律直测（debug 关）：config 字节完全一致（零插件零写入）",
+            same,
+            "" if same else f"{len(ctx.before_bytes)}B -> {len(after)}B",
+        )
+
+    print(f"SMOKE-PLUGIN-END|{_PSCENARIO_FAILURES}", flush=True)
+    return 1 if _PSCENARIO_FAILURES or code != 0 else 0
+
+
+def _offline_self_test() -> int:
+    """插件断言组的离线自检：**不建 Qt 应用、不开窗口**，只验纯辅助逻辑。
+
+    覆盖：临时配置写入的字节形态（与 ``Config.save()`` 同款）、白名单
+    diff、坏插件注入 / 清理、场景输出解析。依赖真窗口的断言不在这里验
+    —— 它们的写法对照的是上方既有的 ``_wait_named`` / ``check`` 模式，
+    运行验证留给解锁后的全量 smoke。
+    """
+    failures = 0
+
+    def t(label: str, ok: bool, detail: str = "") -> None:
+        nonlocal failures
+        print(f"[{'PASS' if ok else 'FAIL'}] {label}"
+              + (f" — {detail}" if detail and not ok else ""))
+        if not ok:
+            failures += 1
+
+    tmp = Path(tempfile.mkdtemp(prefix="lumi-smoke-selftest-"))
+    try:
+        # 1) 临时配置写入 + 原样读回
+        cfg = tmp / "config.json"
+        data = _write_temp_config(cfg, {"probe": {"marker": "keep-me"}})
+        t("临时配置写入后读回字节一致", cfg.read_bytes() == data)
+        t(
+            "临时配置序列化与 Config.save() 同款（indent=2 / 无尾换行）",
+            data == json.dumps(
+                {"probe": {"marker": "keep-me"}}, ensure_ascii=False, indent=2
+            ).encode("utf-8"),
+        )
+
+        # 2) 白名单 diff
+        after = json.dumps(
+            {"probe": {"marker": "keep-me"}, "plugins": {"_demo": {"note": "ping"}}},
+            ensure_ascii=False, indent=2,
+        ).encode("utf-8")
+        ok, detail, whitelisted = _config_diff_except(
+            data, after, whitelist=IRON_WHITELIST
+        )
+        t(
+            "白名单 diff：唯一差异是白名单键时判通过并回收其值",
+            ok and whitelisted.get("plugins._demo.note") == "ping",
+            detail,
+        )
+        bad = json.dumps(
+            {"probe": {"marker": "changed"}, "plugins": {"_demo": {"note": "ping"}}},
+            ensure_ascii=False, indent=2,
+        ).encode("utf-8")
+        ok2, detail2, _ = _config_diff_except(data, bad, whitelist=IRON_WHITELIST)
+        t(
+            "白名单 diff：白名单外的改动必须被抓出来",
+            not ok2 and "probe.marker" in detail2,
+            detail2,
+        )
+        ok3, _, _ = _config_diff_except(data, b"{broken", whitelist=IRON_WHITELIST)
+        t("白名单 diff：坏 JSON 返回失败而不是抛异常", not ok3)
+
+        # 3) 坏插件注入 / 清理（清理责任的直测：用完必须还原）
+        _inject_bad_plugin()
+        plugin_file = BAD_PLUGIN_DIR / "plugin.py"
+        t(
+            "坏插件注入：目录与 plugin.py 就位、META.id 与目录名一致",
+            plugin_file.is_file()
+            and (BAD_PLUGIN_DIR / "__init__.py").is_file()
+            and f'"id": "{BAD_PLUGIN_ID}"'
+            in plugin_file.read_text(encoding="utf-8"),
+        )
+        _remove_bad_plugin()
+        t("坏插件清理：整个目录（含 __pycache__）已删除", not BAD_PLUGIN_DIR.exists())
+
+        # 4) 场景输出解析
+        sample = (
+            "噪音行\n"
+            "SMOKE-PLUGIN|PASS|标签甲|\n"
+            "SMOKE-PLUGIN|FAIL|标签乙|详情含 竖线/已转义\n"
+            "SMOKE-PLUGIN-END|1\n"
+        )
+        parsed = _parse_scenario_output(sample)
+        t(
+            "场景输出解析：只认标记行、PASS/FAIL/详情三段正确",
+            parsed == [("标签甲", True, ""), ("标签乙", False, "详情含 竖线/已转义")],
+            str(parsed),
+        )
+    finally:
+        _remove_bad_plugin()
+        shutil.rmtree(tmp, ignore_errors=True)
+    print(f"\n离线自检失败项: {failures}")
+    return 1 if failures else 0
+
+
+def _scenario_from_argv():
+    """内部入口解析：``--self-test`` / ``--plugin-scenario <名>``；都不是返回 None。"""
+    args = sys.argv[1:]
+    if "--self-test" in args:
+        return "self-test"
+    if "--plugin-scenario" in args:
+        index = args.index("--plugin-scenario")
+        return args[index + 1] if index + 1 < len(args) else ""
+    return None
+
+
 def main() -> int:
+    scenario = _scenario_from_argv()
+    if scenario == "self-test":
+        return _offline_self_test()
+    if scenario is not None:
+        return _plugin_scenario_main(scenario)
     app = LuminaliumApplication(sys.argv)
     qt_app = app.qt_app
 
@@ -4813,6 +5633,11 @@ def main() -> int:
         # 所以这里手动跑一遍完整生命周期。放在最后，免得那 1080×608 的卡片
         # 一直盖在屏幕上影响别的检查。
         _check_splash(app)
+        # ---- 插件断言组（2026-10-06 插件系统计划 Wave 4 任务 13，9 项）----
+        # 全部经子进程跑（原因 / 白名单方案 / 清理责任见上方「插件断言组」
+        # 一节注释）。放在**最后**：子进程会各自拉起完整应用实例（真窗口），
+        # 不能干扰既有断言；主进程保持 app.debug 关，既有断言零影响。
+        _check_plugin_suite()
         # 收尾（统计失败数 / 退出事件循环）统一由 run_checks_guarded 的
         # ``finally`` 负责 —— 这里再写一遍只会在抛异常时被跳过，反而留坑。
 

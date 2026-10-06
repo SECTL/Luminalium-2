@@ -27,8 +27,17 @@
   指定聚焦哪条控制条）
 - ``page_*.png``           —— 设置窗口里每个页面单独渲染一张（``NavigationView``
   只有在用户点进去时才创建页面，所以这里用临时宿主窗口把它们全跑一遍）
+- ``plugin_demo_settings.png`` / ``plugin_editor_demo.png`` / ``plugin_demo_window.png``
+  —— 插件接缝三件套（2026-10-06 插件系统计划 Wave 4 任务 14）：``_demo`` 设置页
+  （Loader 宿主）、主界面编辑器选中含 ``_demo_group`` 的角落、``_demo`` 夹具窗口。
+  由**子进程**渲染（``LUMI_PREVIEW_PLUGIN_RUN=1``，主进程跑完自动拉起）——
+  不同进程的理由见 ``_run_plugin_seams`` 头注释：注册表 freeze 不可逆，且插件
+  贡献是读取侧拼进快捷面板 / 设置导航 / 控制条的，同进程加载会把上面那些
+  既有预览图（视觉回归的对比基准）污染掉。浅色主题下三件套带 ``_light`` 后缀。
 
-窗口会被放到屏幕外（x = -6000）并强制渲染，因此**不会打扰桌面**。
+窗口会被放到屏幕外（x = -6000）并强制渲染，因此**不会打扰桌面**，锁屏
+（LogonUI 在跑）状态下也能正常出图 —— 离屏渲染不依赖桌面会话（smoke.py
+那种真窗口交互才依赖，锁屏必败，别混为一谈）。
 
 环境变量：
 
@@ -61,11 +70,22 @@
 - ``LUMI_PREVIEW_PEN=1`` —— 把工具切到「笔」并**展开笔的选单**（PenPaletteCard），
   输出 ``top_window_pen.png``；``LUMI_PREVIEW_PEN_COLOR`` 指定预点亮的颜色
   （默认 ``#EC4899``，故意跟配置默认的黄色错开，好核对「选中环 + 预览笔迹」）。
+- ``LUMI_PREVIEW_PLUGINS=0`` —— 关掉插件接缝三件套的补跑（默认开：常态全量档
+  与浅色档跑完后自动起子进程渲染；``_labels`` / ``_pager_*`` / 编辑态 / 笔选单 /
+  报告展开这些**对照档**不补跑 —— 插件接缝不受那些开关影响，跑了也是同样的图）。
+- ``LUMI_PREVIEW_PLUGIN_RUN=1`` —— 内部标记：本进程即插件接缝子进程，
+  只渲染三件套。不要手动用（缺了主进程那套前置就是张空配置）。
+
+⚠️ 历史坑（2026-10-06 修）：浅色档（``ONLY_SPLASH``）曾在抓完启动画面后
+直接 ``return``，既不调 ``qt_app.quit()`` 也不还原主题 —— 进程挂住、
+``RinUI/config/rin_ui.json`` 被留在 Light。现在所有档位都走统一的
+「还原主题 → 还原一次性配置 → quit」收尾。
 """
 
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -83,6 +103,7 @@ from app.bridge import Backend  # noqa: E402
 from app.config import Config  # noqa: E402
 from app.error_handler import ErrorHandler  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
+from app.plugins import loader  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
 from app.windows import WindowManager  # noqa: E402
 
@@ -158,6 +179,8 @@ PREVIEW_PEN = os.environ.get("LUMI_PREVIEW_PEN", "") not in ("", "0")
 PREVIEW_PEN_COLOR = os.environ.get("LUMI_PREVIEW_PEN_COLOR", "#EC4899")
 #: 报告窗出「查看详细信息」展开那一档（默认收起）
 PREVIEW_DETAILS = os.environ.get("LUMI_PREVIEW_DETAILS", "") not in ("", "0")
+#: 本进程是否就是插件接缝子进程（主进程拉起的内部标记，见模块 docstring）。
+PLUGIN_RUN = os.environ.get("LUMI_PREVIEW_PLUGIN_RUN", "") not in ("", "0")
 #: 浅色主题 **+** 笔选单 = 只出那一张（``top_window_pen_light.png``）。
 #: 浅色档默认只出启动画面，看选单得单独开口子 —— 与 ``EDITOR_LIGHT`` 同一个理由：
 #: 色板底色、描边、小标题都取主题色，浅色下「白点/黑点会不会与底色糊在一起」
@@ -197,6 +220,9 @@ def _find_by_name(item, name: str):
 
 
 def main() -> int:
+    if PLUGIN_RUN:
+        # 插件接缝子进程：只渲染三件套，主流程的窗口一概不建（见模块 docstring）
+        return _run_plugin_seams()
     config = Config()
     # 「显示按钮文本」预览：改内存里的配置（控制条读它），抓完图在 capture() 里还原。
     labels_previous = config.get("presentation.buttons.show_labels")
@@ -529,40 +555,44 @@ def main() -> int:
         # 报告窗两档对照图。放在最后：它要**改** ``ErrorHandler`` 的状态（切换
         # 崩溃 / 错误），放在别的窗口抓图之前会把中途状态漏出去。
         # 其余档位（只出启动画面 / 只出设置页 / 浅色）不出这两张，免得覆盖常态图。
-        if error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT or PEN_LIGHT:
-            return
-        # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
-        # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，
-        # 所以文件名带 ``_details`` 后缀，不与常态那两张互相覆盖。
-        _suffix = "_details" if PREVIEW_DETAILS else ""
-        if PREVIEW_DETAILS:
-            error_report.setProperty("detailsExpanded", True)
-        for name, kind in (
-            (f"error_report_crash{_suffix}.png", "crash"),
-            (f"error_report_error{_suffix}.png", "error"),
+        # ⚠️ 不出的档位**不能**在这里 return —— 下面的「还原主题 → 还原一次性
+        # 配置 → quit」是所有档位共同的收尾（2026-10-06 前这里直接 return，
+        # 浅色档跑完进程挂死、主题也不还原，见模块 docstring 末尾）。
+        if error_report is not None and not (
+            ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT or PEN_LIGHT
         ):
-            error_handler._capture(
-                kind=kind, summary="TimeoutError: timed out",
-                traceback_text=REPORT_TRACEBACK,
-            )
-            # ⚠️ 换报告会把 ``detailsExpanded`` 复位（QML 侧的 Connections），
-            # 所以「强制展开」必须在每次 ``_capture`` **之后**再设一次。
+            # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
+            # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，
+            # 所以文件名带 ``_details`` 后缀，不与常态那两张互相覆盖。
+            _suffix = "_details" if PREVIEW_DETAILS else ""
             if PREVIEW_DETAILS:
                 error_report.setProperty("detailsExpanded", True)
-            # 属性是**绑定**在 ``ErrorHandler`` 上的，改完要让事件循环跑一拍，
-            # QML 才把新文案 / 新表情 / 新主按钮取回来。
-            QCoreApplication.processEvents()
-            try:
-                error_report.grabWindow()
-                image = error_report.grabWindow()
-            except RuntimeError as exc:
-                print(f"[FAIL] {name}: {exc}")
-                continue
-            if image.isNull():
-                print(f"[FAIL] {name}: grabWindow() 返回空图")
-                continue
-            image.save(str(OUT_DIR / name))
-            print(f"[OK] {name} -> {OUT_DIR / name} ({image.width()}x{image.height()})")
+            for name, kind in (
+                (f"error_report_crash{_suffix}.png", "crash"),
+                (f"error_report_error{_suffix}.png", "error"),
+            ):
+                error_handler._capture(
+                    kind=kind, summary="TimeoutError: timed out",
+                    traceback_text=REPORT_TRACEBACK,
+                )
+                # ⚠️ 换报告会把 ``detailsExpanded`` 复位（QML 侧的 Connections），
+                # 所以「强制展开」必须在每次 ``_capture`` **之后**再设一次。
+                if PREVIEW_DETAILS:
+                    error_report.setProperty("detailsExpanded", True)
+                # 属性是**绑定**在 ``ErrorHandler`` 上的，改完要让事件循环跑一拍，
+                # QML 才把新文案 / 新表情 / 新主按钮取回来。
+                QCoreApplication.processEvents()
+                try:
+                    error_report.grabWindow()
+                    image = error_report.grabWindow()
+                except RuntimeError as exc:
+                    print(f"[FAIL] {name}: {exc}")
+                    continue
+                if image.isNull():
+                    print(f"[FAIL] {name}: grabWindow() 返回空图")
+                    continue
+                image.save(str(OUT_DIR / name))
+                print(f"[OK] {name} -> {OUT_DIR / name} ({image.width()}x{image.height()})")
         # 主题要等所有窗口都截完才切回去（切主题会触发窗口重绘/重建）
         if rinui.theme_manager.get_theme_name() != previous_theme:
             rinui.theme_manager.toggle_theme(previous_theme)
@@ -585,7 +615,21 @@ def main() -> int:
         qt_app.quit()
 
     QTimer.singleShot(1800, capture)
-    return qt_app.exec()
+    code = qt_app.exec()
+    # 插件接缝三件套由子进程补渲染（不同进程的理由见 ``_run_plugin_seams``
+    # 头注释）。放在主渲染**之后**：此刻主题与一次性配置改动都已还原，
+    # 子进程自己再切主题互不干扰。
+    if _should_render_plugin_seams():
+        child_env = dict(os.environ)
+        child_env["LUMI_PREVIEW_PLUGIN_RUN"] = "1"
+        result = subprocess.run(
+            [sys.executable, "-X", "utf8", str(Path(__file__).resolve())],
+            env=child_env,
+        )
+        if result.returncode != 0:
+            print(f"[FAIL] 插件接缝渲染子进程退出码 {result.returncode}")
+            return result.returncode or 1
+    return code
 
 
 PAGE_HOST_QML = """import QtQuick
@@ -653,6 +697,218 @@ def _build_page_hosts(engine) -> list[tuple[str, object]]:
         window.show()
         hosts.append((f"page_{page.stem}.png", window))
     return hosts
+
+
+class _PreviewWindowStub:
+    """``load_plugins`` 的最小窗口管理 stub（参照 task-17-render-list.py）。
+
+    预览不经 ``WindowManager`` 开插件窗口：夹具窗口用组件单独建实例渲染，
+    这里只要让 ``ctx.register_window`` 拿到一个能 show/hide 的句柄，
+    插件的 ``register()`` 就能跑完。
+    """
+
+    class _Handle:
+        def show(self) -> None: ...
+        def hide(self) -> None: ...
+
+    def register_window(self, name, qml_path, **options):
+        return _PreviewWindowStub._Handle()
+
+
+def _should_render_plugin_seams() -> bool:
+    """主进程跑完后是否补跑插件接缝子进程（默认开；对照档不补跑）。
+
+    ``_labels`` / ``_pager_*`` / 编辑态 / 笔选单 / 报告展开都是特定对照档，
+    插件接缝不受这些开关影响，补跑只会重复出同样的三张图，跳过。
+    """
+    if os.environ.get("LUMI_PREVIEW_PLUGINS", "1") in ("", "0"):
+        return False
+    if os.environ.get("LUMI_PREVIEW_ONLY", "") == "splash":
+        return False
+    return not (
+        PAGE_ONLY or PREVIEW_EDIT or PREVIEW_PEN
+        or PREVIEW_LABELS or PREVIEW_PAGER or PREVIEW_DETAILS
+    )
+
+
+def _grab(name: str, window) -> bool:
+    """抓两帧留第二帧并保存（与主流程 capture 同款手法，理由见那里的注释）。"""
+    try:
+        window.grabWindow()
+        image = window.grabWindow()
+    except RuntimeError as exc:  # 窗口已被 QML 引擎回收
+        print(f"[FAIL] {name}: {exc}")
+        return False
+    if image.isNull():
+        print(f"[FAIL] {name}: grabWindow() 返回空图")
+        return False
+    image.save(str(OUT_DIR / name))
+    print(f"[OK] {name} -> {OUT_DIR / name} ({image.width()}x{image.height()})")
+    return True
+
+
+def _run_plugin_seams() -> int:
+    """插件接缝三件套渲染（``LUMI_PREVIEW_PLUGIN_RUN=1`` 子进程模式）。
+
+    为什么不并进主流程（2026-10-06 插件系统计划 Wave 4 任务 14）：
+
+    * 注册表是模块级单例，``load_plugins`` 末尾 ``freeze()`` **不可逆** ——
+      单进程只能加载一次，加载后冻结；
+    * 插件贡献是**读取侧拼接**进主界面的（快捷面板磁贴 / 设置导航项 /
+      控制条 tools·actions，见 ``bridge.py`` 头注释），同进程加载后
+      ``quick_panel.png`` / ``settings.png`` / ``top_window.png`` /
+      ``main_editor.png`` / ``page_Plugins.png`` 全都会多出演示条目 ——
+      既有预览图是视觉回归的对比基准，文件名与内容都必须零回归。
+
+    所以主进程照常渲染（零回归由构造保证），三件套在这个子进程里出：
+
+    * ``plugin_demo_settings.png`` —— ``_demo`` 设置页（与 ``page_*`` 同款的
+      Loader 宿主；设置键已注册，开关绑定 ``plugins._demo.flag`` 能解析）；
+    * ``plugin_editor_demo.png`` —— 主界面编辑器选中 ``bottom_left``（其
+      groups 在内存里换成 ``["_demo_group", "pager"]``：``_demo_group`` 在前，
+      组件名 / 图标 / 检查器描述符都按演示组件解析；``pager`` 只是让控制条
+      有实体可聚焦 —— 空组区块高度为零，取景矩形会塌掉）；
+    * ``plugin_demo_window.png`` —— ``_demo`` 夹具窗口（组件直接建实例，
+      ``onClosing`` 的动作链路不演示）。
+
+    浅色主题（继承主进程的 ``LUMI_PREVIEW_THEME``）下文件名带 ``_light``
+    后缀，不覆盖深色版。锁屏可跑（离屏渲染，窗口摆屏幕外）。
+    """
+    config = Config()
+    # 演示开关置 ON（只改内存）：设置页与编辑器检查器的开关都绑
+    # ``plugins._demo.flag``，点亮了好核对「绑定通 + 强调色对」。
+    config.set("plugins._demo.flag", True, persist=False)
+
+    qt_app = QApplication(sys.argv)
+    qt_app.setQuitOnLastWindowClosed(False)
+
+    backend = Backend(config, qt_app)
+    # 内建组登记（幂等）必须在 load_plugins 之前 —— 加载末尾注册表冻结，
+    # 冻结后编辑器再读不到内建组会把内建角落全当未知组。
+    WindowManager._register_builtin_groups(None)
+    backend.apply_state(
+        PresentationState(active=True, slide_index=26, slide_total=41)
+    )
+    loader.load_plugins(backend, _PreviewWindowStub(), include_debug=True)
+    # 编辑器目标的角落换成「演示组件 + 翻页」（只改内存，子进程退出即抛）。
+    config.set("presentation.corners.bottom_left.enabled", True, persist=False)
+    config.set("presentation.corners.bottom_left.groups",
+               ["_demo_group", "pager"], persist=False)
+    backend.reload_from_config()
+
+    rinui = RinUIWindow()
+    rinui.engine.addImportPath(str(UI_DIR))
+    rinui.theme_manager.set_theme_color(str(config.get("app.accent")))
+    # setTheme 会持久化 rin_ui.json：抓完图必须切回原值（与主流程同款）。
+    previous_theme = rinui.theme_manager.get_theme_name()
+    rinui.setTheme(Theme.Light if IS_LIGHT else Theme.Dark)
+    rinui.engine.rootContext().setContextProperty("Backend", backend)
+    # ⚠️ 必须真 load 一个窗口：RinUI 只在 load() 时把窗口登记进主题管理，
+    # 不 load 直接建宿主会拿到「主题没生效」的画面（task-12-preview.py 记过）。
+    rinui.load(UI_DIR / "QuickPanel.qml")
+    rinui.setBackdropEffect(BackdropEffect.None_)
+    rinui.root_window.setPosition(OFFSCREEN_X, OFFSCREEN_Y)
+    rinui.root_window.show()
+
+    failed = False
+
+    # ---- _demo 设置页（Loader 宿主，与 _build_page_hosts 同一份宿主 QML）----
+    OUT_DIR.mkdir(exist_ok=True)
+    host_path = OUT_DIR / "_page_host.qml"
+    host_path.write_text(PAGE_HOST_QML, encoding="utf-8")
+    host_component = QQmlComponent(rinui.engine, QUrl.fromLocalFile(str(host_path)))
+    page_host = None
+    if host_component.isError():
+        for error in host_component.errors():
+            print("PLUGIN PAGE HOST ERROR:", error.toString())
+        failed = True
+    else:
+        page_host = host_component.createWithInitialProperties(
+            {
+                "pageUrl": QUrl.fromLocalFile(
+                    str(UI_DIR / "plugins" / "_demo" / "DemoSettings.qml")
+                ),
+                "hostHeight": PAGE_HEIGHT,
+                "hostWidth": PAGE_WIDTH,
+                "visible": True,
+            }
+        )
+        if page_host is None:
+            print("PLUGIN PAGE HOST CREATE ERROR")
+            failed = True
+        else:
+            page_host._host_component = host_component  # 持有引用防引擎回收
+            page_host.setPosition(OFFSCREEN_X - 1800, OFFSCREEN_Y - 1800)
+            page_host.show()
+
+    # ---- 主界面编辑器：选中含 _demo_group 的角落（backdropEnabled 关掉的
+    # 理由与主流程相同：离屏抓图拿不到 DWM 亚克力层）----
+    editor = None
+    editor_component = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "MainInterfaceEditor.qml"))
+    )
+    if editor_component.isError():
+        for error in editor_component.errors():
+            print("PLUGIN EDITOR ERROR:", error.toString())
+        failed = True
+    else:
+        editor = editor_component.createWithInitialProperties({"visible": True})
+        if editor is None:
+            for error in editor_component.errors():
+                print("PLUGIN EDITOR CREATE ERROR:", error.toString())
+            failed = True
+        else:
+            editor._editor_component = editor_component  # 持有引用防引擎回收
+            editor.setProperty("backdropEnabled", False)
+            editor.setPosition(OFFSCREEN_X - 1000, OFFSCREEN_Y - 900)
+            editor.show()
+            editor.setProperty("selectedCorner", "bottom_left")
+            # 窗口从没被暴露过时抓图可能拿到上一帧（主流程 PREVIEW_EDIT 同款坑），
+            # 抬一次窗口催曝光。
+            editor.raise_()
+            editor.requestActivate()
+
+    # ---- _demo 夹具窗口（按需创建型窗口在预览里单独建实例，与设置/调试窗同款）----
+    demo_window = None
+    demo_component = QQmlComponent(
+        rinui.engine,
+        QUrl.fromLocalFile(str(UI_DIR / "plugins" / "_demo" / "DemoWindow.qml")),
+    )
+    if demo_component.isError():
+        for error in demo_component.errors():
+            print("PLUGIN DEMO WINDOW ERROR:", error.toString())
+        failed = True
+    else:
+        demo_window = demo_component.createWithInitialProperties({"visible": True})
+        if demo_window is None:
+            for error in demo_component.errors():
+                print("PLUGIN DEMO WINDOW CREATE ERROR:", error.toString())
+            failed = True
+        else:
+            demo_window._demo_component = demo_component  # 持有引用防引擎回收
+            demo_window.setPosition(OFFSCREEN_X - 2400, OFFSCREEN_Y - 1000)
+            demo_window.show()
+
+    def capture() -> None:
+        nonlocal failed
+        suffix = "_light" if IS_LIGHT else ""
+        targets = []
+        if page_host is not None:
+            targets.append((f"plugin_demo_settings{suffix}.png", page_host))
+        if editor is not None:
+            targets.append((f"plugin_editor_demo{suffix}.png", editor))
+        if demo_window is not None:
+            targets.append((f"plugin_demo_window{suffix}.png", demo_window))
+        for name, window in targets:
+            if not _grab(name, window):
+                failed = True
+        if rinui.theme_manager.get_theme_name() != previous_theme:
+            rinui.theme_manager.toggle_theme(previous_theme)
+            print(f"[OK] 主题已还原为 {previous_theme}")
+        qt_app.exit(1 if failed else 0)
+
+    QTimer.singleShot(1800, capture)
+    return qt_app.exec()
 
 
 if __name__ == "__main__":

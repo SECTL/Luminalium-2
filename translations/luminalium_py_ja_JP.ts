@@ -172,4 +172,35 @@
 用途：エラーレポートウィンドウのレイアウト・絵文字・主ボタン（無視）の確認。</translation>
     </message>
 </context>
+<context>
+    <name>Settings</name>
+    <!-- 任务 7（2026-10-05）：设置窗口导航项从 QML 硬编码搬进 Python
+         （app/bridge.py::_BUILTIN_SETTINGS_NAV），标题改走 app.i18n.tr。
+         context 沿用原 QML 侧的 Settings，译文从 luminalium_ja_JP.ts 平移；
+         lupdate 重扫后 QML 侧这六条会消失，由本文件承接。 -->
+    <message>
+        <source>主页</source>
+        <translation>ホーム</translation>
+    </message>
+    <message>
+        <source>通用</source>
+        <translation>全般</translation>
+    </message>
+    <message>
+        <source>个性化</source>
+        <translation>パーソナライズ</translation>
+    </message>
+    <message>
+        <source>主界面</source>
+        <translation>メイン画面</translation>
+    </message>
+    <message>
+        <source>关于</source>
+        <translation>バージョン情報</translation>
+    </message>
+    <message>
+        <source>更新</source>
+        <translation>更新</translation>
+    </message>
+</context>
 </TS>

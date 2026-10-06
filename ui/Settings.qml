@@ -12,7 +12,16 @@ import Luminalium
     * ``navigationItems`` —— 每项 ``{ title, page, icon, position }``（还支持
       ``subItems`` 折叠子项，本项目目前没用到），``page`` 必须是**绝对 URL**：
       ``NavigationView`` 内部用 ``Qt.createComponent`` 加载，相对路径会以 RinUI
-      模块自身为基准而找不到文件，所以统一走 ``Qt.resolvedUrl``；
+      模块自身为基准而找不到文件。
+      2026-10-05（插件系统 Wave 2 任务 7）起列表**不再写死在本文件**，改由
+      Python 侧 ``Backend.settingsNavItems`` 数据驱动（内建项逐字搬进
+      ``app/bridge.py::_BUILTIN_SETTINGS_NAV``，插件设置页追加在后）——
+      原因：QML 的静态列表属性拼不了运行时数据，且动态条目的标题必须 Python
+      侧翻译（``qsTr`` 只认字面量，运行期字符串翻译不了；约定见
+      ``app/plugins/registry.py`` 头注释第 6 节）。URL 由 Python 侧拼好
+      file:/// 成品，QML 零拼接；``position`` 是 ``Rin.Position`` 枚举的
+      整数值，经 QVariant 后 ``=== Rin.Position.Bottom`` 仍成立，「关于 /
+      更新」钉底部的语义原样保留；
     * 页面本体是 ``Rin.FluentPage``：``title`` 走页面头部，内容默认进一个带
       左右留白的 ``ColumnLayout``；
     * ``position: Rin.Position.Bottom`` 的项（关于 / 更新）钉在导航底部。
@@ -100,52 +109,8 @@ Rin.FluentWindow {
         navigationView.push(url)
     }
 
-    navigationItems: [
-        {
-            title: qsTr("主页"),
-            page: Qt.resolvedUrl("settings/Home.qml"),
-            icon: "ic_fluent_home_20_regular"
-        },
-        {
-            // 2026-10-01：原先挂在「通用」下的子项「快捷面板」已删除
-            // （尺寸与位置、显示内容那些开关），此项现在是叶子节点。
-            // 同日第四轮：「应用主题 / 强调色」搬去了下面的「个性化」，
-            // 本页只留「快捷方式锁定」+「界面语言」两张卡。
-            title: qsTr("通用"),
-            page: Qt.resolvedUrl("settings/General/Index.qml"),
-            icon: "ic_fluent_settings_20_regular"
-        },
-        {
-            // 2026-10-01（第四轮）用户指令：「把外观那一块除了界面语言改到新的
-            // 个性化」—— 新建本页承接「应用主题」与「强调色」两张卡。
-            // 插在「通用」之后、「主界面」之前：它调的是**整个应用**的取色，
-            // 比「主界面（放映控制条画布）」的层级更高。
-            title: qsTr("个性化"),
-            page: Qt.resolvedUrl("settings/Personalization.qml"),
-            icon: "ic_fluent_paint_brush_20_regular"
-        },
-        {
-            // 2026-10-01 用户指令：导航项「外观」改名「主界面」，原页面里的
-            // 主题 / 强调色 / 界面语言三张卡挪去了「通用」页（后又于同日第四轮
-            // 把主题 / 强调色挪到「个性化」）；本页留空，专放主界面自己的设定
-            // （可视化编辑在独立的 MainInterfaceEditor 窗口）。
-            title: qsTr("主界面"),
-            page: Qt.resolvedUrl("settings/MainInterface.qml"),
-            icon: "ic_fluent_window_20_regular"
-        },
-        {
-            title: qsTr("关于"),
-            page: Qt.resolvedUrl("settings/About.qml"),
-            icon: "ic_fluent_info_20_regular",
-            position: Rin.Position.Bottom
-        },
-        {
-            title: qsTr("更新"),
-            page: Qt.resolvedUrl("settings/Update.qml"),
-            icon: "ic_fluent_arrow_sync_20_regular",
-            position: Rin.Position.Bottom
-        }
-    ]
+    // 导航清单的数据源在 Python 侧，原因见文件头注释。
+    navigationItems: Backend.settingsNavItems
 
     // ========================================================== 隐藏入口：调试窗口
     // 2026-09-30 用户指令：「把调试菜单单独作为一个窗口打开，打开方式就是设置

@@ -30,6 +30,14 @@ PresentationDock 的 Repeater 本就遍历这两个数组，插件贡献自动�
 ``selectTool`` 对 ``plugin:`` 前缀的工具 id 不进白名单、不调 ``ppt.set_tool``，
 改按动作处理（emit ``actionTriggered``），由应用层的 ``plugin:`` 特权通道
 分发给插件处理器 —— 插件工具与 COM / 按键注入零接触。
+
+2026-10-05（插件系统 Wave 2 任务 7）：设置窗口左侧导航同样改成数据驱动 ——
+原 ``ui/Settings.qml`` 里硬编码的 ``navigationItems`` 逐字搬进
+``_BUILTIN_SETTINGS_NAV``，与 ``registry.settings_pages()`` 的插件设置页在
+:meth:`Backend._get_settings_nav_items` 拼接（内建在前、插件在后）后作为
+``settingsNavItems`` 属性喂给 QML。搬到 Python 的原因：QML 的静态列表属性
+拼不了运行时数据，且动态条目的标题 ``qsTr`` 翻译不了（``qsTr`` 只认字面量），
+必须走 ``app.i18n.tr``。条目形状、顺序、「关于 / 更新」钉底部的语义全部照旧。
 """
 
 from __future__ import annotations
@@ -44,6 +52,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 
 from . import autostart
+from . import i18n
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
 from .plugins import registry
@@ -130,6 +139,51 @@ PAGER_POSITION_CORNERS: Dict[str, tuple] = {
     "bottom": ("bottom_left", "bottom_right"),
 }
 
+#: RinUI ``Position`` 枚举里 ``Bottom`` 的整数值（``utils/Position.qml``：
+#: Top=0, Bottom=1）。经 QVariant 递到 QML 后是 JS number，
+#: ``NavigationBar.qml`` 的 ``item.position === Position.Bottom`` 严格比较成立；
+#: 不写 ``position`` 键的条目在 QML 侧读为 ``undefined``，按 NavigationBar 的
+#: 判定落入普通区（不钉底）。
+_RIN_POSITION_BOTTOM = 1
+
+#: 设置窗口左侧导航的**内建**条目：``(ui/ 下相对页路径, 标题原文, 图标, position)``。
+#:
+#: 2026-10-05（插件系统 Wave 2 任务 7）从 ``ui/Settings.qml`` 的硬编码
+#: ``navigationItems`` **逐字**搬来 —— 标题、图标、页面、顺序、「关于 / 更新」
+#: 钉底部的语义全部照旧。搬到 Python 的原因见文件头注释。
+#:
+#: ⚠️ ``page`` 最终必须是 **file:/// 绝对 URL**：RinUI ``NavigationView`` 用
+#: ``Qt.createComponent`` 加载页面，相对路径会以 RinUI 模块自身为基准而解析失败
+#: （原 ``Settings.qml`` 头注释里记过的坑）。URL 在这里拼好成品，QML 侧零拼接。
+#:
+#: 条目的历史沿革（从被删的 QML 注释留档）：
+#: - 「通用」：2026-10-01 原挂在它下面的子项「快捷面板」删除后成为叶子节点；
+#:   同日第四轮「应用主题 / 强调色」搬去「个性化」，本页只留「快捷方式锁定」
+#:   +「界面语言」两张卡。
+#: - 「个性化」：2026-10-01（第四轮）新建，承接「应用主题」「强调色」两张卡；
+#:   插在「通用」之后、「主界面」之前 —— 它调的是**整个应用**的取色，层级更高。
+#: - 「主界面」：2026-10-01 由「外观」改名而来，原页的主题 / 强调色 / 界面语言
+#:   三张卡挪走；本页专放主界面自己的设定（可视化编辑在独立的
+#:   MainInterfaceEditor 窗口）。
+_BUILTIN_SETTINGS_NAV: Tuple[Tuple[str, str, str, Optional[int]], ...] = (
+    ("settings/Home.qml", "主页", "ic_fluent_home_20_regular", None),
+    ("settings/General/Index.qml", "通用", "ic_fluent_settings_20_regular", None),
+    (
+        "settings/Personalization.qml",
+        "个性化",
+        "ic_fluent_paint_brush_20_regular",
+        None,
+    ),
+    ("settings/MainInterface.qml", "主界面", "ic_fluent_window_20_regular", None),
+    ("settings/About.qml", "关于", "ic_fluent_info_20_regular", _RIN_POSITION_BOTTOM),
+    (
+        "settings/Update.qml",
+        "更新",
+        "ic_fluent_arrow_sync_20_regular",
+        _RIN_POSITION_BOTTOM,
+    ),
+)
+
 
 class Backend(QObject):
     """面向 QML 的应用后端。"""
@@ -154,6 +208,10 @@ class Backend(QObject):
     presentationScreenChanged = Signal()
     quickPanelConfigChanged = Signal()
     settingsChanged = Signal()
+    #: 设置窗口导航清单变了（插件设置页注册进 ``registry.settings_pages()``）。
+    #: 注册时机固定在加载期（冻结前），早于任何 QML 窗口创建，属性现算现读即可；
+    #: 若将来出现运行期注册，由注册方负责发这个信号。
+    settingsNavItemsChanged = Signal()
     statusChanged = Signal()
     #: 启动画面的进度 / 阶段文字变了
     splashChanged = Signal()
@@ -790,6 +848,56 @@ class Backend(QObject):
 
     settingsConfig = Property(
         "QVariantMap", _get_settings_config, notify=settingsChanged
+    )
+
+    def _get_settings_nav_items(self) -> List[Dict[str, Any]]:
+        """设置窗口左侧导航的数据源（2026-10-05 插件系统 Wave 2 任务 7）。
+
+        = 内建条目（``_BUILTIN_SETTINGS_NAV``，原 QML 硬编码列表逐字搬入）
+        ∪ 插件设置页（``registry.settings_pages()``）追加在后。
+
+        * 标题经 ``app.i18n.tr`` 标注：内建项的 context 沿用原 QML 侧的
+          ``Settings``（译文已同步进 ``translations/luminalium_py_*.ts``，
+          Python 侧 ts 手工维护、lupdate 不碰）；插件条目注册时应自带
+          翻译好的 ``title``（约定：插件自己的 ``tr(<插件 id>, ...)``），
+          这里原样透传。
+        * ``page`` 全部是 **file:/// 绝对 URL**（原因见
+          ``_BUILTIN_SETTINGS_NAV`` 的注释）；插件侧给的 ``page_url`` 键名
+          在这里映射成 QML 侧的 ``page``（两键名的语义区分见
+          ``app/plugins/registry.py`` 头注释第 4 条）。
+        * ``position`` 是 RinUI ``Position`` 枚举的**整数值**（经 QVariant
+          到 QML 后与 ``Rin.Position.Bottom`` 严格相等）；普通条目不写这个
+          键，QML 侧读为 ``undefined``，落入普通区。「关于 / 更新」钉底部
+          的语义由表里的 ``_RIN_POSITION_BOTTOM`` 原样保留。
+        * 每次读取现算（注册表在加载期冻结，读到的必是全量），且合并结果
+          **绝不写回 config**（列表型贡献注入默认层会被用户层整体顶掉 ——
+          铁律，见文件头注释与 ``app/plugins/registry.py`` 头注释第 3 条）。
+        """
+        items: List[Dict[str, Any]] = []
+        for rel, title_source, icon, position in _BUILTIN_SETTINGS_NAV:
+            item: Dict[str, Any] = {
+                "title": i18n.tr("Settings", title_source),
+                "page": "file:///" + (UI_DIR / rel).as_posix(),
+                "icon": icon,
+            }
+            if position is not None:
+                item["position"] = position
+            items.append(item)
+        for entry in registry.settings_pages().values():
+            plugin_item: Dict[str, Any] = {
+                "title": str(entry.get("title", "")),
+                "page": str(entry.get("page_url", "")),
+                "icon": str(entry.get("icon", "")),
+            }
+            if "position" in entry:
+                plugin_item["position"] = entry["position"]
+            items.append(plugin_item)
+        return items
+
+    settingsNavItems = Property(
+        "QVariantList",
+        _get_settings_nav_items,
+        notify=settingsNavItemsChanged,
     )
 
     @Slot(str, "QVariant")

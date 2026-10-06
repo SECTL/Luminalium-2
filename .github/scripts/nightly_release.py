@@ -83,6 +83,25 @@ _COMMIT_RE = re.compile(
 # ------------------------------------------------------------------ 小工具
 
 
+def _force_utf8_stdio() -> None:
+    """把 stdout / stderr 切成 UTF-8 输出。
+
+    本脚本到处打印中文（版本摘要、发布说明干跑），而 **Windows 上
+    ``sys.stdout`` 默认走控制台代码页**——GitHub Actions 的 windows-latest
+    runner 是 cp1252，遇到中文直接 ``UnicodeEncodeError`` 崩在 print 上
+    （2026-10-06 实测：nightly 就死在打印「nightly 版本」那一行）。
+    置 ``PYTHONIOENCODING`` 也能解，但那要改 workflow；落在脚本里，谁在什么
+    环境下跑都不会炸。``errors="replace"`` 是最后一道保险：万一是更窄的
+    代码页，宁可出问号也别让整个 nightly 挂掉。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if stream is None:
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def _run_git(*args: str, check: bool = True) -> str:
     """跑一条 git 命令，返回 stdout（去掉尾部空白）。"""
     result = subprocess.run(
@@ -408,6 +427,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="自上个 nightly 以来没有新提交时也照常发布",
     )
     args = parser.parse_args(argv)
+
+    # 必须在任何 print 之前：本机 / CI 的控制台代码页窄，中文会炸 print。
+    _force_utf8_stdio()
 
     # 环境变量优先（workflow 用 env 传），命令行参数可覆盖。
     force = args.force or os.environ.get("FORCE", "").strip().lower() in {

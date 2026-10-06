@@ -36,6 +36,9 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.13"
+  # Windows runner 的 Python 默认按控制台代码页（cp1252）输出，本仓库的脚本
+  # 到处打印中文，不设这个会 UnicodeEncodeError 崩在 print 上。
+  PYTHONIOENCODING: "utf-8"
   # 发布说明顶部那张头图，在仓库里的相对路径。
   BANNER_PATH: docs/NewVersionUpdate-Banner.png
 

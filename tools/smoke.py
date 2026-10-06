@@ -3085,7 +3085,10 @@ def main() -> int:
             banner_ok = (
                 banner is not None
                 and banner.isVisible()
-                and banner_src.endswith("banner.png")
+                # 2026-10-05：首页横幅已切到通栏专用的 banner-wide.png
+                # （Home.qml 头注释），banner.png 旧图保留在 resources/ 里，
+                # 两个名字都认，语义不变（「横幅真的挂上并画出来了」）。
+                and banner_src.endswith(("banner.png", "banner-wide.png"))
                 and painted_w > 100
                 # 「横幅在内容区顶部」——具体像素不写死（会跟页面在窗口里的偏移
                 # 耦合；实测本机 y≈90），只拦「图没挂上」和「掉到卡片区去了」。

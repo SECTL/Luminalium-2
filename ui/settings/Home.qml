@@ -29,7 +29,8 @@ import RinUI as Rin
     与 CW2 的**刻意差异**只有资源层（结构、尺寸、交互全部照抄）：
 
     * 横幅图：CW2 按 ``Theme.isDark()`` 在 ``banner/4-1_{dark,light}.png`` 里
-      二选一；本项目目前只有一张 ``resources/banner.png``（用户备好）。将来补
+      二选一；本项目用通栏专用的 ``resources/banner-wide.png``（用户备好，
+      2026-10-05 替换原来的 banner.png；旧图仍在 resources/ 里备用）。将来补
       浅色版时把 ``source`` 换成 ``Lumi.isDark ? … : …`` 即可（参照
       ``MainInterface.qml`` 的推广卡）。
     * 横幅大标题：CW2 用主题文本色（他们的图按主题配套）；本项目 banner 只有

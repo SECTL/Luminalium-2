@@ -7,13 +7,50 @@
 放映控制条（工具栏 / 翻页栏等）统一托管在**一个全屏置顶的顶层窗口**
 （``ui/presentation/TopWindow.qml``）里：窗口整窗鼠标/触摸穿透，
 仅当光标落在某个控制条表面矩形内时临时收回穿透，让工具栏可点。
+
+----------------------------------------------------------------------
+自管窗口（设置 / 调试 / 编辑器 / 插件窗口）约定（2026-10-05）：
+
+* :meth:`WindowManager.register_window` 是创建这类窗口的**唯一合法途径**。
+  它封装了「懒创建 → ``_attach_to_rinui`` 三清单注册 → ``_keep_frameless``
+  兜底 → 定位 → show/raise/requestActivate」这整套约 90 行的易错清单；
+  插件**不得**直接调 ``_attach_to_rinui``（绕过封装会漏掉句柄刷新、
+  post_reattach 回调登记与同名幂等检查）。
+* 同名重复注册是**幂等**的：返回既有句柄并记 ``log.warning``，绝不建出
+  第二个窗口对象。这是刻意决策 —— 插件reload / 多次初始化时不允许
+  同一逻辑窗口在屏幕上出现两份。
+* QML 侧约定：根项必须是 ``Rin.FluentWindow``（或等价的 Window），声明
+  ``visible: false``，并在 ``onClosing`` 里 ``event.accepted = false`` 后
+  调 ``Backend`` 的关窗槽（由 ``*CloseRequested`` 信号绕回 Python 侧
+  ``hide_*``）；**禁止**给窗口加 ``Qt.FramelessWindowHint``（边框 / 阴影 /
+  圆角全由 RinUI 接管，QML 插手会把系统阴影弄没）；Python 侧**禁止**把槽
+  连到 ``closing(QQuickCloseEvent*)`` 信号（PySide 无法转换该参数，
+  一点关闭按钮就把应用打死，见 ``_bind_panel`` 的注释）。
+* 窗口一律懒创建、只藏不销毁（splash 是唯一例外）。
+
+----------------------------------------------------------------------
+角落组 → dock QML 解析规则（2026-10-05 插件系统 Wave 2 任务 8）：
+
+* 每个启用角落用哪个 QML 组件渲染，由 :meth:`WindowManager._resolve_dock_qml`
+  查 ``registry.editor_groups()`` 决定 —— 组名前缀硬编码（``middle_*`` →
+  ``SidePager.qml``）已移除。角落朝向从 ``CORNERS`` 的对齐数据推导
+  （垂直对齐 ``middle`` = 竖版贴边），**不看角名字符串**。
+* 解析顺序：groups 中首个「有 dock_qml 且 orientation 匹配角落朝向」的组
+  胜出；没有匹配 → 回落 ``presentation/PresentationDock.qml``（tools /
+  actions / exit 无 dock_qml，底部翻页 pill 是它的 pagerOnly 形态）。
+* **孤儿容忍**：角落 groups 全部未在注册表登记（手改 config / 插件卸载
+  残留）→ 跳过该角 + ``log.warning``，不让一份坏配置打死整个叠加层。
+* 内建组（tools/actions/exit/pager）在 :meth:`WindowManager._register_builtin_groups`
+  里登记，幂等；注册表是组元数据的**代码侧唯一事实来源**，绝不写进 config。
 """
 
 from __future__ import annotations
 
+import copy
 import ctypes
 import ctypes.wintypes as wintypes
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import (
@@ -34,6 +71,7 @@ from PySide6.QtQuick import QQuickItem, QQuickWindow
 
 from .config import Config
 from .paths import UI_DIR
+from .plugins import registry
 from .ppt_controller import PptController
 
 log = logging.getLogger(__name__)
@@ -51,6 +89,68 @@ CORNERS: Dict[str, tuple[str, str]] = {
     "top_center": ("center", "top"),
     "middle_left": ("left", "middle"),
     "middle_right": ("right", "middle"),
+}
+
+# 内建编辑器分组 → 注册表条目（2026-10-05 插件系统 Wave 2 任务 8）。
+# 形状对齐 ``app.plugins.registry`` 的 ``editor_groups`` 贡献点：
+# ``{dock_qml?, display_name, icon, inspector_items, traits}``。
+#
+# * ``dock_qml``：该组**专属**的 dock 渲染组件，UI_DIR 相对路径字符串
+#   （不写绝对路径 —— 注册表条目要保持「代码侧声明、与安装位置无关」的形状）。
+#   只有 ``pager`` 有：竖版两侧角落（CORNERS 垂直对齐为 ``middle``）用它；
+#   横条角落没有组级 dock_qml，一律回落 ``PresentationDock.qml``（翻页 pill
+#   是它的 ``pagerOnly`` 形态，不是另一个组件）。
+# * ``traits`` 承载语义而非外观：``toolbar`` / ``pager`` 供编辑器
+#   「有工具栏语义 / 有翻页语义」判定（Wave 2 任务 9 接管），
+#   ``section_order`` 与 ``divider_before`` 对齐 ``PresentationDock.qml`` 的
+#   ``sectionOrder`` / 分隔线规则，``orientation`` 标记 dock_qml 的朝向变体。
+# * ``inspector_items`` 本任务刻意留空：检查器条目是任务 10 的地盘，
+#   这里先把键位占好，任务 10 直接往里填、不用改登记结构。
+_BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
+    "tools": {
+        "display_name": "工具",
+        "icon": "ic_fluent_pen_20_filled",
+        "inspector_items": [],
+        "traits": {
+            "toolbar": True,
+            "section_order": 0,
+            "divider_before": False,
+        },
+    },
+    "actions": {
+        "display_name": "动作",
+        "icon": "ic_fluent_broom_20_filled",
+        "inspector_items": [],
+        "traits": {
+            "toolbar": True,
+            "section_order": 1,
+            "divider_before": False,
+        },
+    },
+    "exit": {
+        "display_name": "退出",
+        "icon": "ic_fluent_power_20_filled",
+        "inspector_items": [],
+        "traits": {
+            "toolbar": True,
+            "section_order": 3,
+            "divider_before": True,
+        },
+    },
+    "pager": {
+        "display_name": "翻页",
+        "icon": "ic_fluent_chevron_left_20_filled",
+        "dock_qml": "presentation/SidePager.qml",
+        "inspector_items": [],
+        "traits": {
+            "pager": True,
+            "section_order": 2,
+            "divider_before": True,
+            # dock_qml 是竖版变体：只对「贴屏幕左右、垂直居中」的角落生效，
+            # 横条角落的翻页 pill 走 PresentationDock 的 pagerOnly 回落。
+            "orientation": "vertical",
+        },
+    },
 }
 
 #: 亚克力在窗口**显示之后**要补打的那一拍（毫秒）。
@@ -318,6 +418,148 @@ def _covers_monitor(hwnd: int, ratio: float = 0.9) -> bool:
     return win_area / mon_area >= ratio
 
 
+class RegisteredWindow:
+    """:meth:`WindowManager.register_window` 返回的窗口句柄。
+
+    封装一只「自管窗口」的全生命周期：**懒创建**（第一次 :meth:`show` 才
+    实例化 QML）、RinUI 三清单接管、失败回退 frameless、按声明的模式定位、
+    只藏不销毁。调用方（含插件）只面对 ``show()/hide()/toggle()`` 三个方法
+    与只读的 :attr:`window`，不需要、也不允许再碰 ``_attach_to_rinui``
+    那套内部清单。
+
+    定位模式（``position`` 参数）：
+
+    * ``"cursor_screen_center"`` —— 居中到**光标所在**显示器（多屏不跑屏）；
+    * ``"beside_settings"`` —— 贴在设置窗口旁边（设置窗口没开就退化为上一项），
+      调试窗口 / 主界面编辑器这类「从别的窗口里点出来」的窗口用这套；
+    * 可调用对象 ``callable(window)`` —— 完全自定义摆位（留给插件）。
+    """
+
+    def __init__(
+        self,
+        manager: "WindowManager",
+        name: str,
+        qml_path,
+        *,
+        position="cursor_screen_center",
+        label: Optional[str] = None,
+        post_reattach=None,
+        post_show=None,
+    ) -> None:
+        self._manager = manager
+        self._name = name
+        self._qml_path = qml_path
+        self._position = position
+        #: 只用于日志与「贴在设置窗口旁边」的报错文案，让人一眼看出是谁
+        self._label = label or name
+        self._post_reattach = post_reattach
+        self._post_show = post_show
+        self._window: Optional[QQuickWindow] = None
+        # WindowManager 上若存在同名属性槽（settings / debug / editor 这三个
+        # 内建窗口），创建后同步写入 —— 既有代码与 tools/ 下的自检脚本都直接
+        # 读 ``app.windows.settings`` 这种属性，迁移不能改变这个对外形状。
+        self._sync_attr = hasattr(manager, name)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def window(self) -> Optional[QQuickWindow]:
+        """底层窗口对象；尚未懒创建时为 ``None``（读它不会触发创建）。"""
+        return self._window
+
+    def is_visible(self) -> bool:
+        return self._window is not None and self._window.isVisible()
+
+    def show(self) -> None:
+        window = self._ensure_created()
+        if window is None:
+            log.info("%s 不可用", self._label)
+            return
+        self._place(window)
+        window.show()
+        # 显示后的补充钩子（编辑器用它补打亚克力：show() 后系统会重置
+        # backdrop，见 ``_attach_editor_acrylic`` 的注释）
+        if self._post_show is not None:
+            try:
+                self._post_show(window)
+            except Exception:
+                log.warning("%s post_show 钩子执行失败", self._label, exc_info=True)
+        window.raise_()
+        window.requestActivate()
+
+    def hide(self) -> None:
+        if self.is_visible():
+            self._window.hide()
+
+    def toggle(self) -> None:
+        if self.is_visible():
+            self.hide()
+        else:
+            self.show()
+
+    def _ensure_created(self) -> Optional[QQuickWindow]:
+        """懒创建窗口并交给 RinUI 接管（失败退回 frameless 兜底）。"""
+        if self._window is not None:
+            return self._window
+        manager = self._manager
+        qml_path = self._qml_path
+        if not isinstance(qml_path, Path):
+            qml_path = Path(qml_path)
+        if not qml_path.exists():
+            log.warning("%s不存在，跳过: %s", self._label, qml_path)
+            return None
+        root = manager._create(qml_path, {"visible": False})
+        if root is None:
+            log.error("%s创建失败: %s", self._label, qml_path)
+            return None
+        self._window = root
+        if self._sync_attr:
+            setattr(manager, self._name, root)
+        # post_reattach 回调要先登记再接管：接管会挂 visibleChanged →
+        # ``_refresh_rinui_handle``，后者按窗口查这张表
+        if self._post_reattach is not None:
+            manager._reattach_callbacks[root] = self._post_reattach
+        # 交给 RinUI 管（否则没有 DWM 阴影 / 圆角 / resize 边框 / Snap，
+        # 且 WS_CAPTION 会露出原生标题栏）
+        if not manager._attach_to_rinui(root):
+            manager._keep_frameless(root)
+        # 首次接管也算一次「接管完成」，补一遍 post_reattach（编辑器的亚克力
+        # 就是在这里打的：接管补了 WS_CAPTION / frame，次序反了会被覆盖）
+        if self._post_reattach is not None:
+            try:
+                self._post_reattach(root)
+            except Exception:
+                log.warning("%s post_reattach 钩子执行失败", self._label, exc_info=True)
+        return root
+
+    def _place(self, window: QQuickWindow) -> None:
+        if callable(self._position):
+            self._position(window)
+            return
+        if self._position == "beside_settings":
+            self._manager._place_beside_settings(window, self._label)
+            return
+        # 默认 "cursor_screen_center"：居中到光标所在显示器（不是主屏），
+        # 多屏时窗口不会跑到别的屏幕上
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        x = area.left() + (area.width() - window.width()) // 2
+        y = area.top() + (area.height() - window.height()) // 2
+        window.setPosition(int(x), int(y))
+
+    def _reset(self) -> None:
+        """``shutdown()`` 时清掉句柄状态（窗口本身随进程退出回收）。"""
+        if self._window is not None:
+            self._manager._reattach_callbacks.pop(self._window, None)
+        self._window = None
+        if self._sync_attr:
+            setattr(self._manager, self._name, None)
+
+
 class WindowManager(QObject):
     """集中管理所有顶层窗口。"""
 
@@ -346,13 +588,21 @@ class WindowManager(QObject):
         self.panel: Optional[QQuickWindow] = None
         #: 启动画面（只在启动阶段存在，淡出后销毁）
         self.splash: Optional[QQuickWindow] = None
+        # 以下三个属性槽由 :meth:`register_window` 的句柄在懒创建时同步写入
+        # （句柄名与属性名一致）；不要直接赋值，一律走 ``_registered_windows``
+        # 里对应句柄的 ``show()/hide()/toggle()``。
         self.settings: Optional[QQuickWindow] = None
         #: 调试窗口（隐藏入口：设置窗口标题连点 10 次）
         self.debug: Optional[QQuickWindow] = None
         #: 主界面编辑器（入口：快捷面板的「主界面编辑器」快捷方式）
         self.editor: Optional[QQuickWindow] = None
-        #: 错误 / 崩溃报告（入口：``ErrorHandler`` 捕获到未捕获异常）
+        #: 错误 / 崩溃报告（入口：``ErrorHandler`` 捕获到未捕获异常）。
+        #: 定位逻辑带尺寸夹取、且在异常栈里被调用，刻意不走 register_window。
         self.error_report: Optional[QQuickWindow] = None
+        #: 已注册的自管窗口句柄：名字 -> :class:`RegisteredWindow`
+        self._registered_windows: Dict[str, RegisteredWindow] = {}
+        #: 窗口对象 -> post_reattach 回调（``_refresh_rinui_handle`` 按窗口查）
+        self._reattach_callbacks: Dict[Any, Any] = {}
         self.overlay: Optional[QQuickWindow] = None
         self._docks: Dict[str, QQuickItem] = {}
         self._components: List[QQmlComponent] = []
@@ -403,7 +653,10 @@ class WindowManager(QObject):
             self._create_panel()
         else:
             self._bind_panel()
+        # 组登记必须先于 dock 创建：``_create_docks`` 靠注册表解析渲染组件。
+        self._register_builtin_groups()
         self._load_docks()
+        self._register_builtin_windows()
         self._wire_signals()
 
     # ---------------------------------------------------------------- 面板
@@ -463,6 +716,45 @@ class WindowManager(QObject):
 
     # ---------------------------------------------------------------- 控制条
 
+    def _resolve_dock_qml(self, name: str, groups: List[str]) -> Optional[Path]:
+        """解析角落 ``name`` 该用哪个 QML 组件渲染（组 → 组件，注册表驱动）。
+
+        规则（2026-10-05 插件系统 Wave 2 任务 8，替代 ``middle_*`` 字符串
+        前缀硬编码）：
+
+        1. **孤儿容忍**：``groups`` 里一个注册表认识的组都没有（用户手改
+           config 写了不存在的组名 / 插件已卸载但配置残留）→ 记
+           ``log.warning`` 并返回 ``None``，调用方跳过该角，**不崩**。
+        2. 取 ``groups`` 中**首个**在注册表里有 ``dock_qml`` 且其
+           ``traits.orientation`` 与角落朝向匹配的组，用它的 ``dock_qml``。
+           角落朝向**从 CORNERS 的对齐数据推导**（垂直对齐 ``middle`` =
+           竖版贴边），不看角名前缀 —— 角名只是配置的键，对齐才是语义。
+        3. 没有匹配的组级 dock_qml（tools/actions/exit 本来就没有；pager 的
+           竖版变体在横条角落不适用）→ 回落横向 ``PresentationDock.qml``
+           （现状行为：底部翻页 pill 是它的 ``pagerOnly`` 形态）。
+        """
+        registered = registry.editor_groups()
+        if groups and not any(g in registered for g in groups):
+            log.warning(
+                "角落 %s 的组全部未在注册表登记（孤儿组）: %s，跳过该角",
+                name, groups,
+            )
+            return None
+        _, vertical = CORNERS.get(name, ("left", "bottom"))
+        orientation = "vertical" if vertical == "middle" else "horizontal"
+        for group in groups:
+            entry = registered.get(group)
+            if entry is None:
+                continue
+            dock_qml = entry.get("dock_qml")
+            if not dock_qml:
+                continue
+            traits = entry.get("traits") or {}
+            if (traits.get("orientation") or "horizontal") != orientation:
+                continue
+            return UI_DIR / dock_qml
+        return UI_DIR / "presentation" / "PresentationDock.qml"
+
     def _create_docks(self, container) -> None:
         """按当前配置给各角落建控制条（挂到顶层窗口的容器里）。
 
@@ -470,17 +762,18 @@ class WindowManager(QObject):
         启用的角落集合（竖版两侧 ↔ 横版下部），而且两边的组件根本不是一个
         QML 文件（``SidePager`` vs ``PresentationDock``）—— 光挪位置不够，
         得整批销毁重建。
+
+        用哪个 QML 组件由 :meth:`_resolve_dock_qml` 按注册表决定，这里不再
+        关心组名语义；孤儿角落（组全都不认识）被跳过，只留一条 warning。
         """
         corners = self._config.get("presentation.corners", {}) or {}
         for name in CORNERS:
             settings = corners.get(name) or {}
             if not settings.get("enabled", False):
                 continue
-            # 竖版两侧翻页（middle_*）用独立的竖排组件，其余角落仍是横向 dock
-            if name.startswith("middle"):
-                qml_path = UI_DIR / "presentation" / "SidePager.qml"
-            else:
-                qml_path = UI_DIR / "presentation" / "PresentationDock.qml"
+            qml_path = self._resolve_dock_qml(name, settings.get("groups") or [])
+            if qml_path is None:
+                continue
             root = self._create(qml_path, {"corner": name})
             if root is None or not isinstance(root, QQuickItem):
                 log.error("控制条加载失败: %s", name)
@@ -681,10 +974,12 @@ class WindowManager(QObject):
             if hwnd not in self._rinui.theme_manager.windows:
                 self._rinui.theme_manager.set_window(window)
             event_filter.sync_window_backdrop(window)
-            # 编辑器窗口的亚克力是挂在 hwnd 上的：句柄重建、以及本次显隐引起的
-            # frame 重应用都会把它清掉，所以这里也补一拍
-            if window is self.editor:
-                self._attach_editor_acrylic(schedule=True)
+            # 句柄重建、以及本次显隐引起的 frame 重应用都可能把窗口自定义的
+            # DWM 效果清掉（编辑器的亚克力就是挂在 hwnd 上的），所以按注册时
+            # 声明的 post_reattach 回调补一拍 —— 不再硬编码「是哪个窗口」。
+            callback = self._reattach_callbacks.get(window)
+            if callback is not None:
+                callback(window)
         except Exception:
             log.debug("刷新 RinUI 窗口句柄失败", exc_info=True)
 
@@ -702,6 +997,99 @@ class WindowManager(QObject):
 
     def _schedule_reposition(self, corner: str) -> None:
         QTimer.singleShot(0, lambda: self._position_dock(corner))
+
+    # ======================================================== 自管窗口注册
+
+    def register_window(
+        self,
+        name: str,
+        qml_path,
+        *,
+        position="cursor_screen_center",
+        label: Optional[str] = None,
+        post_reattach=None,
+        post_show=None,
+    ) -> RegisteredWindow:
+        """注册一只自管窗口（设置 / 调试 / 编辑器 / 插件窗口），返回句柄。
+
+        这是这类窗口的**唯一合法创建途径**（2026-10-05 起，插件系统 Wave 1
+        的地基）：懒创建、RinUI 接管、失败兜底、定位、显隐三件套全部封装在
+        返回的 :class:`RegisteredWindow` 里，插件不得直接调
+        ``_attach_to_rinui``。
+
+        **幂等**：同名重复注册不建新窗口、不覆盖既有配置，记一条
+        ``log.warning`` 并返回既有句柄 —— 插件 reload / 重复初始化时
+        屏幕上绝不允许出现两份同一逻辑窗口。
+
+        参数：
+
+        * ``position``：定位模式，见 :class:`RegisteredWindow` 的说明；
+        * ``post_reattach``：可选回调 ``callable(window)``，在**每次**
+          RinUI 接管完成 / 原生句柄刷新后调用（窗口专属 DWM 效果的补打
+          入口，编辑器亚克力走的就是这里）；
+        * ``post_show``：可选回调 ``callable(window)``，每次 ``show()``
+          之后、``raise_()`` 之前调用。
+        """
+        existing = self._registered_windows.get(name)
+        if existing is not None:
+            log.warning("窗口 %s 重复注册，返回既有句柄（幂等）", name)
+            return existing
+        handle = RegisteredWindow(
+            self,
+            name,
+            qml_path,
+            position=position,
+            label=label,
+            post_reattach=post_reattach,
+            post_show=post_show,
+        )
+        self._registered_windows[name] = handle
+        return handle
+
+    def _register_builtin_groups(self) -> None:
+        """把四个内建编辑器分组登记进 ``registry.editor_groups()``。
+
+        只登记、不消费 —— 消费在 ``_create_docks`` 的组件解析里。
+
+        **幂等**：先查 ``editor_groups()`` 再登记。注册表对重复 id 抛
+        ``ValueError``（刻意设计，防两个插件抢 id 时静默覆盖），而
+        ``load_windows()`` 理论上可能被多次进入（重启装配 / 测试夹具），
+        不查重就会把正常流程打成异常。
+        """
+        already = registry.editor_groups()
+        for name, entry in _BUILTIN_DOCK_GROUPS.items():
+            if name in already:
+                continue
+            # 深拷一层再交出去：模块级字典是模板，注册表条目理论上可被
+            # 后续任务扩展（任务 10 填 inspector_items），不能共享引用。
+            registry.add_editor_group(name, copy.deepcopy(entry))
+
+    def _register_builtin_windows(self) -> None:
+        """注册三只内建自管窗口（只登记，不创建 —— 懒创建语义不变）。
+
+        错误报告窗口**刻意不在**这里：它的定位带尺寸夹取、且在异常处理栈里
+        被调用（要自己包 try），保持原来的手写路径。
+        """
+        self.register_window(
+            "settings", UI_DIR / "Settings.qml", label="设置窗口"
+        )
+        self.register_window(
+            "debug",
+            UI_DIR / "DebugWindow.qml",
+            position="beside_settings",
+            label="调试窗口",
+        )
+        # 编辑器的亚克力：post_reattach 负责「接管 / 句柄刷新后补打」，
+        # post_show 负责「show() 后再打 + 320ms 补拍」（原因见
+        # ``_attach_editor_acrylic`` 的注释），两个钩子缺一不可。
+        self.register_window(
+            "editor",
+            UI_DIR / "MainInterfaceEditor.qml",
+            position="beside_settings",
+            label="主界面编辑器",
+            post_reattach=lambda w: self._attach_editor_acrylic(schedule=True),
+            post_show=lambda w: self._attach_editor_acrylic(schedule=True),
+        )
 
     # ================================================================== 信号
 
@@ -870,32 +1258,8 @@ class WindowManager(QObject):
 
     # ================================================================ 设置窗口
 
-    def _create_settings(self) -> None:
-        """按需创建设置窗口。
-
-        不在启动时建：``FluentWindow`` 会连带建出导航栏 / 内容层 / 页面栈，
-        托盘常驻应用里没必要为一个可能一直不开的窗口付这份开销。
-        """
-        if self.settings is not None:
-            return
-        qml_path = UI_DIR / "Settings.qml"
-        if not qml_path.exists():
-            log.warning("设置界面不存在，跳过: %s", qml_path)
-            return
-        root = self._create(qml_path, {"visible": False})
-        if root is None:
-            log.error("设置窗口创建失败: %s", qml_path)
-            return
-        self.settings = root
-        # 交给 RinUI 管（否则没有 DWM 阴影 / 圆角 / resize 边框 / Snap）
-        if not self._attach_to_rinui(root):
-            self._keep_frameless(root)
-
     def toggle_settings(self) -> None:
-        if self.settings is not None and self.settings.isVisible():
-            self.hide_settings()
-        else:
-            self.show_settings()
+        self._registered_windows["settings"].toggle()
 
     def show_settings(self, page: str = "") -> None:
         """打开设置窗口；``page`` 为 ``ui`` 下相对路径（可空 = 默认页）。
@@ -904,18 +1268,14 @@ class WindowManager(QObject):
         ``NavigationView.push``）。用 ``QMetaObject.invokeMethod`` 调，
         因为 QML 函数不在 Python 的静态元对象里。
         """
-        self._create_settings()
-        if self.settings is None:
-            log.info("设置界面不可用")
-            return
         # 每次打开都让 QML 重取一遍设置项：``settings`` 里混着**实时状态**
         # （「开机自启」读的是注册表，用户可能在任务管理器里刚把它禁掉），
         # 而页面是按需创建、之后只隐藏不销毁的 —— 不主动刷就会显示上次的旧值。
         self._backend.refreshSettings()
-        self._position_settings()
-        self.settings.show()
-        self.settings.raise_()
-        self.settings.requestActivate()
+        handle = self._registered_windows["settings"]
+        handle.show()
+        if self.settings is None:
+            return
         if page:
             resolved = (UI_DIR / page).as_posix()
             # PySide6 没有 QVariant 类型可导入；Q_ARG 接受类型名字符串。
@@ -931,85 +1291,26 @@ class WindowManager(QObject):
             QTimer.singleShot(0, _invoke)
 
     def hide_settings(self) -> None:
-        if self.settings is not None and self.settings.isVisible():
-            self.settings.hide()
-
-    def _position_settings(self) -> None:
-        """居中到光标所在显示器（不是主屏），多屏时不会跑到别的屏幕上。"""
-        if self.settings is None:
-            return
-        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
-        if screen is None:
-            return
-        area = screen.availableGeometry()
-        x = area.left() + (area.width() - self.settings.width()) // 2
-        y = area.top() + (area.height() - self.settings.height()) // 2
-        self.settings.setPosition(int(x), int(y))
+        self._registered_windows["settings"].hide()
 
     # ================================================================ 调试窗口
 
-    def _create_debug(self) -> None:
-        """按需创建调试窗口。
-
-        入口是隐藏的（设置窗口标题连点 10 次，见 ``Backend.openDebugWindow``），
-        与设置窗口同理：不打开就一个对象都不建。
-        """
-        if self.debug is not None:
-            return
-        qml_path = UI_DIR / "DebugWindow.qml"
-        if not qml_path.exists():
-            log.warning("调试窗口不存在，跳过: %s", qml_path)
-            return
-        root = self._create(qml_path, {"visible": False})
-        if root is None:
-            log.error("调试窗口创建失败: %s", qml_path)
-            return
-        self.debug = root
-        # 同设置窗口：不接管的话没有系统阴影 / 圆角，且 WS_CAPTION 会露原生标题栏
-        if not self._attach_to_rinui(root):
-            self._keep_frameless(root)
-
     def show_debug(self) -> None:
-        self._create_debug()
-        if self.debug is None:
-            log.info("调试窗口不可用")
-            return
-        self._position_debug()
-        self.debug.show()
-        self.debug.raise_()
-        self.debug.requestActivate()
+        self._registered_windows["debug"].show()
 
     def hide_debug(self) -> None:
-        if self.debug is not None and self.debug.isVisible():
-            self.debug.hide()
+        self._registered_windows["debug"].hide()
 
     def toggle_debug(self) -> None:
-        if self.debug is not None and self.debug.isVisible():
-            self.hide_debug()
-        else:
-            self.show_debug()
-
-    def _position_debug(self) -> None:
-        """摆在设置窗口旁边（设置窗口开着的时候），否则居中到光标所在显示器。
-
-        两个窗口都是居中摆放的话会**完全重叠** —— 调试窗口是从设置窗口里点
-        出来的，贴边并排才符合「母子关系」的直觉。右侧放不下就翻到左侧；
-        两侧都放不下（窄屏上两个窗口加起来比屏还宽，很常见）就退到右下角
-        错开，至少让设置窗口露出一角。
-        """
-        self._place_beside_settings(self.debug, "调试窗口")
-
-    def _position_editor(self) -> None:
-        """主界面编辑器：与调试窗口同一套摆位（设置窗口开着就贴边并排）。
-
-        编辑器的入口是**快捷面板**而不是设置窗口，但两者仍可能同时在屏幕上，
-        居中摆放会整块压住设置窗口；沿用同一套「先贴边、放不下再错开」的策略
-        比各写一份更省心。
-        """
-        self._place_beside_settings(self.editor, "主界面编辑器")
+        self._registered_windows["debug"].toggle()
 
     def _place_beside_settings(self, window, label: str) -> None:
         """把 ``window`` 摆在设置窗口旁边，没有设置窗口就居中到光标所在显示器。
+
+        两个窗口都是居中摆放的话会**完全重叠** —— 调试窗口 / 编辑器是从别的
+        窗口里点出来的，贴边并排才符合「母子关系」的直觉。右侧放不下就翻到
+        左侧；两侧都放不下（窄屏上两个窗口加起来比屏还宽，很常见）就退到
+        右下角错开，至少让设置窗口露出一角。
 
         ``label`` 只用于日志（窗口没建起来时能一眼看出是谁没位置）。
         """
@@ -1119,31 +1420,6 @@ class WindowManager(QObject):
             return False
         return True
 
-    def _create_editor(self) -> None:
-        """按需创建主界面编辑器窗口（**占位骨架**，正文待填）。
-
-        入口是快捷面板的「主界面编辑器」快捷方式（``shortcut_catalog`` 里
-        ``action: "open_editor"``）。与设置 / 调试窗口同理：不打开就一个对象
-        都不建。
-        """
-        if self.editor is not None:
-            return
-        qml_path = UI_DIR / "MainInterfaceEditor.qml"
-        if not qml_path.exists():
-            log.warning("主界面编辑器不存在，跳过: %s", qml_path)
-            return
-        root = self._create(qml_path, {"visible": False})
-        if root is None:
-            log.error("主界面编辑器创建失败: %s", qml_path)
-            return
-        self.editor = root
-        # 同设置窗口：不接管的话没有系统阴影 / 圆角，且 WS_CAPTION 会露原生标题栏
-        if not self._attach_to_rinui(root):
-            self._keep_frameless(root)
-        # 亚克力背景（用户指令：窗口整体背景除标题栏外都是亚克力）。
-        # 要在接管之后打：接管会补 WS_CAPTION / 扩展 frame，属性次序反了会被覆盖。
-        self._attach_editor_acrylic()
-
     def _attach_editor_acrylic(self, schedule: bool = False) -> None:
         """给编辑器窗口铺亚克力，并把结果写回 QML（自检读得到）。
 
@@ -1169,27 +1445,15 @@ class WindowManager(QObject):
             self._attach_editor_acrylic()
 
     def show_editor(self) -> None:
-        self._create_editor()
-        if self.editor is None:
-            log.info("主界面编辑器不可用")
-            return
-        self._position_editor()
-        self.editor.show()
-        # 显示后再打一次，并排一拍补打（原因见 _attach_editor_acrylic 的注释：
-        # show() 后 ~200ms 内系统会把 backdrop 重置回 0）
-        self._attach_editor_acrylic(schedule=True)
-        self.editor.raise_()
-        self.editor.requestActivate()
+        # 定位与「show 后补打亚克力」都在句柄里（注册时声明的 position /
+        # post_show 钩子），这里只剩一行
+        self._registered_windows["editor"].show()
 
     def hide_editor(self) -> None:
-        if self.editor is not None and self.editor.isVisible():
-            self.editor.hide()
+        self._registered_windows["editor"].hide()
 
     def toggle_editor(self) -> None:
-        if self.editor is not None and self.editor.isVisible():
-            self.hide_editor()
-        else:
-            self.show_editor()
+        self._registered_windows["editor"].toggle()
 
     # ======================================================= 错误 / 崩溃报告
 
@@ -1842,16 +2106,16 @@ class WindowManager(QObject):
     def shutdown(self) -> None:
         self._destroy_splash()
         self.hide_panel()
-        self.hide_settings()
-        self.hide_debug()
-        self.hide_editor()
+        # 注册窗口统一清理：逐句柄隐藏并复位（含同名属性槽同步置 None）；
+        # 错误报告窗口不走注册封装（见 _register_builtin_windows），单独收。
+        for handle in self._registered_windows.values():
+            handle.hide()
         self.hide_error_report()
         self.hide_docks()
         self._docks.clear()
         self._components.clear()
         self.panel = None
-        self.settings = None
-        self.debug = None
-        self.editor = None
+        for handle in self._registered_windows.values():
+            handle._reset()
         self.error_report = None
         self.overlay = None

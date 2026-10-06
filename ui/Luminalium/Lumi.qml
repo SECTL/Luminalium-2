@@ -406,11 +406,19 @@ QtObject {
         L1 用的是 accent —— 那是 L1 自己 CSS 变量映射的选择，WinUI 的 ScrollBar
         常态本来就不是强调色。宽度取主题的 ``scrollBarMinWidth`` /
         ``scrollBarWidth``，别再手写 3px。 */
+    /*! 滑块**中心线**离内容右缘多少。WinUI 的 ScrollBar：轨道 ``scrollBarWidth``
+        (6) + ``scrollBarPadding`` (3)，滑块常态 ``scrollBarMinWidth`` (2) 居中
+        → 差不多 4px。
+
+        ⚠️ 第一版按「面板内边距的一半」算，滑块于是悬在面板与卡片之间**两边不靠**，
+        看着像一根多余的竖线（2026-10-06 用户报「滚动条」）。贴内容才像 WinUI。 */
+    readonly property int dockJumpScrollInset: 4
     readonly property int dockJumpScrollWidth:
         (themeAppearance ? themeAppearance.scrollBarMinWidth : 2)
     readonly property int dockJumpScrollWidthHover:
         (themeAppearance ? themeAppearance.scrollBarWidth : 6)
-    readonly property color dockJumpScrollThumb: fade(textPrimary, 0.28)
+    /*! 常态再淡一档：WinUI 的细滚动条平时几乎看不见，鼠标进来才显形。 */
+    readonly property color dockJumpScrollThumb: fade(textPrimary, 0.22)
     readonly property color dockJumpScrollThumbHover: fade(textPrimary, 0.45)
     /*! 进场时长 / 曲线 —— L1 ``transition: transform .4s
         cubic-bezier(0.19, 1, 0.22, 1)``。那条曲线就是 **OutExpo**（起步极快、

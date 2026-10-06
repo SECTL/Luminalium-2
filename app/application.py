@@ -4,6 +4,18 @@
 
     读取配置 -> 建立 QApplication -> 注册 QML 上下文 -> 加载快捷面板
     -> 创建放映控制条 -> 托盘常驻 -> 开始轮询放映状态
+
+2026-10-05（插件系统 Wave 2 任务 5）：快捷方式的动作分发从硬编码 if 链
+改成**动词注册表**（``app.plugins.registry.action_handlers()``）—— 动作串
+按最长前缀匹配注册表里的动词，处理器拿到完整动作串自己解析后缀。动机：
+插件磁贴的动作（约定 ``plugin:<id>:<verb>``）不可能进内建 if 链，必须有一条
+运行期可扩展的分发通道；任务 6 会把同一张注册表复用到控制条动作分发。
+内建动词（``open_settings`` / ``open_editor``）作为首批注册项在装配段登记，
+行为与原 if 链逐字一致。
+
+⚠️ 注册时机约束（2026-10-05）：内建动词的注册在装配段、``WindowManager``
+就绪后立即进行，**必须先于 Wave 3 任务 11 插入的 ``load_plugins``** ——
+loader 末尾会 ``registry.freeze()``，冻结后注册直接抛 RuntimeError。
 """
 
 from __future__ import annotations
@@ -13,7 +25,7 @@ import logging.handlers
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QCursor
@@ -34,6 +46,42 @@ from .tray import TrayIcon, build_app_icon
 from .windows import WindowManager
 
 log = logging.getLogger("luminalium")
+
+
+def _match_verb_handler(action: str) -> Optional[Callable[[str], Any]]:
+    """在动词注册表里按**最长前缀**找 ``action`` 的处理器；未命中返回 None。
+
+    匹配规则：``action == 动词`` 或 ``action`` 以 ``动词 + ":"`` 开头 ——
+    后者把 ``open_settings:settings/Home.qml`` 这类带后缀的动作交给
+    ``open_settings`` 处理器，后缀由处理器自己解析。最长前缀优先保证
+    ``plugin:<id>`` 这类层级动词里，更具体的注册项赢过泛化的。
+
+    模块级函数、不依赖应用实例：任务 6 的 ``_on_action`` 注册表分发直接
+    复用它，测试脚本也可以脱离窗口装配单独验收分发链路。
+    """
+    from .plugins import registry
+
+    best_verb = ""
+    best_handler: Optional[Callable[[str], Any]] = None
+    for verb, handler in registry.action_handlers().items():
+        if action == verb or action.startswith(verb + ":"):
+            if len(verb) > len(best_verb):
+                best_verb, best_handler = verb, handler
+    return best_handler
+
+
+def _dispatch_shortcut_action(action: str) -> bool:
+    """把快捷方式动作串交给动词注册表分发；返回是否有处理器受理。
+
+    未命中只记日志、不抛异常 —— 插件被卸载后其磁贴 id 可能还留在用户的
+    启用列表里，点击时必须安全落空而不是把面板点崩。
+    """
+    handler = _match_verb_handler(action)
+    if handler is None:
+        log.info("未实现的快捷方式动作: %s", action)
+        return False
+    handler(action)
+    return True
 
 #: 启动画面的推进节奏 —— 每一步至少停留这么久才进下一步。
 #:
@@ -87,7 +135,13 @@ class LuminaliumApplication:
     """把各模块拼装成一个可运行的应用。"""
 
     def __init__(self, argv: list[str]) -> None:
-        self.config = Config()
+        # 插件默认值注入：插件加载器第一阶段在任务 11 才完整接线，
+        # 这里先做防御式回退——registry 模块不存在或导入失败时退化为纯 Config()。
+        try:
+            from app.plugins import registry
+            self.config = Config(extra_defaults=registry.plugin_defaults())
+        except ImportError:
+            self.config = Config()
         setup_logging(str(self.config.get("app.log_level", "INFO")))
         log.info("Luminalium 2 v%s 启动", __version__)
 
@@ -188,6 +242,11 @@ class LuminaliumApplication:
         self.windows.attach_panel(self.rinui.root_window)
         self.windows.load_windows()
 
+        # 内建动作动词注册：必须在 Wave 3 的 load_plugins（末尾 freeze 注册表）
+        # 之前完成，且处理器闭包要用 windows，所以卡在这个位置。
+        # 详见 _register_builtin_verbs 与文件头注释。
+        self._register_builtin_verbs()
+
         self._wire()
 
     # ================================================================ 连接
@@ -273,38 +332,58 @@ class LuminaliumApplication:
     # ================================================================ 动作
 
     def _on_shortcut(self, shortcut_id: str) -> None:
-        """快捷方式分发。
+        """快捷方式分发：查动作串 → 动词注册表最长前缀匹配 → 处理器执行。
 
-        目前的动作有两类：
-
-        * ``open_settings[:<相对 ui 的页面路径>]`` —— 打开设置窗口（可落到某一页）；
-          不带页面的 ``open_settings`` 落在默认页；
-        * ``open_editor`` —— 打开**主界面编辑器**独立窗口
-          （``ui/MainInterfaceEditor.qml``）。
+        动作串从**合并后**的目录取（``Backend.shortcut_action``，config 内建
+        ∪ registry 插件）；分发给注册表处理器，内建动词的行为由
+        :meth:`_register_builtin_verbs` 登记的那两个闭包保证与原 if 链一致。
+        注册表未命中时记日志落空（不抛异常）。
 
         Luminalium 没有课表类功能，不再提供占位快捷方式。
         """
-        catalog = self.config.get("quick_panel.shortcut_catalog", []) or []
-        action = ""
-        for item in catalog:
-            if str(item.get("id")) == shortcut_id:
-                action = str(item.get("action", ""))
-                break
+        action = self.backend.shortcut_action(shortcut_id)
         if not action:
             log.info("未注册的快捷方式: %s", shortcut_id)
             return
-        if action == "open_settings" or action.startswith("open_settings:"):
+        _dispatch_shortcut_action(action)
+
+    def _register_builtin_verbs(self) -> None:
+        """把内建动词注册进插件注册表（``open_settings`` / ``open_editor``）。
+
+        ⚠️ 时机约束（2026-10-05）：必须在 Wave 3 任务 11 的 ``load_plugins``
+        **之前**调用 —— loader 末尾会 ``registry.freeze()``，冻结后注册
+        直接抛 RuntimeError。所以这一步放在装配段、``WindowManager`` 就绪后
+        立即进行（处理器闭包要用 ``self.windows``）。
+
+        幂等的原因：装配可能被重复执行（测试脚本 / 未来多实例装配场景），而
+        registry 对重复动词抛 ValueError，所以先查 ``action_handlers()``
+        再注册；已存在就直接跳过，不覆盖（后到的装配不该顶掉先注册的行为）。
+
+        处理器签名统一为 ``handler(action: str)``：拿到完整动作串、自己解析
+        后缀 —— ``open_settings:settings/Update.qml`` 的页面段就是这么来的。
+        """
+        from .plugins import registry
+
+        def _open_settings_verb(action: str) -> None:
             page = action.split(":", 1)[1] if ":" in action else ""
             self._open_settings(page)
-            return
-        if action == "open_editor":
+
+        def _open_editor_verb(action: str) -> None:
             # 与 _open_settings 同款：先把托盘面板收起，否则两个浮窗会叠在一起。
             # （QML 侧触发快捷方式时也会 hidePanel，这里再收一次是因为走
             #  ``Backend.activateShortcut`` 之外的入口时面板可能是开着的。）
             self.windows.hide_panel()
             self.windows.show_editor()
-            return
-        log.info("未实现的快捷方式动作: %s", action)
+
+        builtins = {
+            "open_settings": _open_settings_verb,
+            "open_editor": _open_editor_verb,
+        }
+        registered = registry.action_handlers()
+        for verb, handler in builtins.items():
+            if verb in registered:
+                continue
+            registry.add_action_handler(verb, handler)
 
     def _dump_diagnostics(self) -> None:
         """把「顶层窗口为什么看不见」需要的所有证据写进日志。"""

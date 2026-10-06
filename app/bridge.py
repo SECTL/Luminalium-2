@@ -2,13 +2,29 @@
 
 QML 只依赖这里暴露的属性与槽函数，不直接触碰配置、Win32 或 PowerPoint 细节。
 新增功能时通常只需要：加一个 ``Slot`` + 在 QML 里连上按钮。
+
+2026-10-05：设置系统改成「内建常量 + 动态注册」双轨。加一个设置项仍然是
+「加一行」—— 内建项写进 ``SETTING_PATHS`` 常量（副作用按下面的两级表登记），
+插件项走 :meth:`Backend.register_setting_path` 运行时注册。插件键命名约定
+``plugins_<id>_<name>``：既不会撞内建键，也不会误中 ``presentation_`` 前缀
+广播规则。``setSetting`` 的副作用不再是硬编码 if/elif，而是两级查找：
+① 键级回调表（精确命中，可带 side_effect）② 前缀 / 集合规则表（按前缀发
+整块配置变更信号）。未注册的键照旧被日志丢弃。
+
+2026-10-05（插件系统 Wave 2 任务 5）：快捷面板磁贴目录改成**双来源** ——
+config 的 ``quick_panel.shortcut_catalog`` 内建条目 ∪ ``app.plugins.registry``
+的插件磁贴，在 :meth:`Backend._catalog` 这个唯一读取点做纯拼接（插件追加在
+内建之后，同名 id 内建胜出并记 warning）。合并绝不写回 config：配置层只存
+用户启用 / 排序的 id 列表（``quick_panel.shortcuts``），目录内容不落盘是
+铁律 —— 列表若走 config 默认层会被用户层的旧列表整体顶掉（详见
+``app/plugins/registry.py`` 头注释第 3 条）。
 """
 
 from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtCore import QUrl
@@ -17,6 +33,7 @@ from PySide6.QtGui import QGuiApplication
 from . import autostart
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
+from .plugins import registry
 from .ppt_controller import PresentationState
 
 log = logging.getLogger(__name__)
@@ -68,6 +85,27 @@ SETTING_PATHS: Dict[str, str] = {
 
 #: 值一变就需要 QML 重新取整块配置的键。
 _BROADCAST_KEYS = {"panel_section_shortcuts", "panel_section_footer"}
+
+#: 键级副作用回调的签名：``(config, 扁平键, 新值)``。config 在前是因为这类回调
+#: 十有八九是「再连带改几个配置键」（比如翻页组件位置 → corners）；要发信号的
+#: 场景走 ``notify`` 信号名，不必在回调里碰 Backend。
+SettingSideEffect = Callable[["Config", str, Any], None]
+
+#: 副作用第二级：前缀规则表。扁平键命中前缀即发对应的整块配置变更信号
+#: （``(信号名, 是否带 str(值) 作为参数)``）。``presentation_`` 前缀：控制条
+#: 外观 / 几何变了；改 ``presentation_screen_index`` 会换一块显示器，还没放映
+#: 过时 ``presentationScreen`` 是按配置现算的，所以连 ``presentationScreenChanged``
+#: 一起发，给它一个重取的理由。
+_PREFIX_NOTIFY_RULES: Tuple[Tuple[str, Tuple[Tuple[str, bool], ...]], ...] = (
+    (
+        "presentation_",
+        (("presentationConfigChanged", False), ("presentationScreenChanged", False)),
+    ),
+)
+
+#: 键级副作用条目的结构：``signals`` 为 ``(信号名, 是否带值)`` 列表，
+#: ``side_effect`` 为可选回调（见 ``SettingSideEffect``）。
+_KeyEffect = Dict[str, Any]
 
 #: 「翻页组件位置」的两种形态 -> 该形态下**启用**的角落。
 #:
@@ -175,6 +213,29 @@ class Backend(QObject):
         #: 只为「同一件事不并发第二次」而持有；线程本身是 daemon，退出即回收。
         self._echo_thread: Optional[threading.Thread] = None
         self._diagnostics_thread: Optional[threading.Thread] = None
+
+        # ---- 设置项注册表（内建常量 + 动态注册）----
+        #: 动态注册的「扁平键 -> 点号路径」（插件走 ``register_setting_path``）。
+        #: 与 ``SETTING_PATHS`` 合成视图见 :meth:`_setting_paths` —— 内建优先，
+        #: 动态注册同名键会被拒绝，防插件顶掉内建行为。
+        self._dynamic_paths: Dict[str, str] = {}
+        #: 副作用第一级：键级回调表（精确命中优先于前缀规则）。内建特例原样
+        #: 登记在这里，行为与重构前的硬编码 if/elif 完全一致：
+        #: - ``presentation_pager_position``：连带开关四个角落（两种形态二选一，
+        #:   见 ``PAGER_POSITION_CORNERS`` 处的说明）—— 真实生效的是 ``corners``，
+        #:   所以这一步不是「副作用」而是这个开关的本体；角落集合变了控制条得按
+        #:   新角落重建（``docksRebuildRequested``）。
+        #: - ``theme`` / ``accent``：各自带值发请求信号，由应用层真正换肤。
+        self._key_effects: Dict[str, _KeyEffect] = {
+            "presentation_pager_position": {
+                "signals": [("docksRebuildRequested", False)],
+                "side_effect": lambda config, key, value: self._apply_pager_position(
+                    str(value)
+                ),
+            },
+            "theme": {"signals": [("themeChangeRequested", True)], "side_effect": None},
+            "accent": {"signals": [("accentChangeRequested", True)], "side_effect": None},
+        }
 
 
     # ==================================================================== 常量
@@ -507,8 +568,38 @@ class Backend(QObject):
     # ============================================================ 快捷方式清单
 
     def _catalog(self) -> List[Dict[str, Any]]:
-        """全部可用的快捷方式（``shortcut_catalog``）。"""
-        return list(self._config.get("quick_panel.shortcut_catalog", []) or [])
+        """全部可用的快捷方式：config 内建目录 ∪ registry 插件磁贴（读取侧纯拼接）。
+
+        合并规则（2026-10-05 插件系统 Wave 2 任务 5）：
+
+        * 插件条目追加在内建之后 —— 面板「+」浮层里插件磁贴自然排在后面；
+        * id 冲突时**内建胜出**并记 warning（插件让位，防插件顶掉内建行为）；
+        * 合并是纯读取侧拼接，**绝不写回 config**（铁律，见文件头注释）。
+
+        合并必须发生在这一处：``_resolve_shortcuts`` 会静默丢弃目录外的 id，
+        在别处合并的插件条目到不了面板。``setShortcutEnabled`` /
+        ``activateShortcut`` 的 id 校验走的也是这里，插件 id 天然被认。
+        """
+        merged = list(self._config.get("quick_panel.shortcut_catalog", []) or [])
+        builtin_ids = {str(item.get("id")) for item in merged}
+        for entry in registry.shortcuts().values():
+            tile_id = str(entry.get("id"))
+            if tile_id in builtin_ids:
+                log.warning("插件磁贴 id 与内建冲突，内建胜出: %s", tile_id)
+                continue
+            merged.append(dict(entry))
+        return merged
+
+    def shortcut_action(self, shortcut_id: str) -> str:
+        """按 id 在**合并后**的目录里查动作串；未命中返回空串。
+
+        应用层（``application.py::_on_shortcut``）专用：目录双来源之后，
+        应用层不能再只翻 config，否则插件磁贴的动作永远查不到。
+        """
+        for item in self._catalog():
+            if str(item.get("id")) == shortcut_id:
+                return str(item.get("action", ""))
+        return ""
 
     def _resolve_shortcuts(self, ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """把 id 列表解析成目录里的完整条目；未知 id 直接丢弃。"""
@@ -567,8 +658,49 @@ class Backend(QObject):
 
     # ================================================================== 设置
 
+    def _setting_paths(self) -> Dict[str, str]:
+        """内建 ``SETTING_PATHS`` ∪ 动态注册的合成视图（内建优先）。"""
+        return {**self._dynamic_paths, **SETTING_PATHS}
+
+    def register_setting_path(
+        self,
+        key: str,
+        path: str,
+        notify: Optional[str] = None,
+        side_effect: Optional[SettingSideEffect] = None,
+    ) -> bool:
+        """动态注册一个设置项（插件用）。
+
+        :param key: 扁平键（QML 侧 ``Backend.settings.<key>`` 读、
+            ``Backend.setSetting("<key>", 值)`` 写）。插件键命名约定
+            ``plugins_<id>_<name>``，避免撞内建键与 ``presentation_`` 前缀广播。
+        :param path: 配置里的点号路径（如 ``plugins._t.volume``）。
+        :param notify: 值变更时额外发的信号名字符串（无参，如
+            ``"presentationConfigChanged"``）；None 则只发 ``settingsChanged``。
+        :param side_effect: 可选回调 ``(config, key, value)``，在改完内存、
+            排好延迟落盘之后、发信号之前调用。
+        :return: 注册是否成功（与内建键冲突或参数为空会被拒绝并记日志）。
+        """
+        if not key or not path:
+            log.warning("动态注册设置项被拒绝（键或路径为空）: %r -> %r", key, path)
+            return False
+        if key in SETTING_PATHS:
+            log.warning("动态注册与内建设置项冲突，已忽略: %s", key)
+            return False
+        self._dynamic_paths[key] = path
+        if notify is not None or side_effect is not None:
+            self._key_effects[key] = {
+                "signals": [(notify, False)] if notify else [],
+                "side_effect": side_effect,
+            }
+        log.info("动态注册设置项: %s -> %s", key, path)
+        return True
+
     def _get_settings(self) -> Dict[str, Any]:
-        values = {key: self._config.get(path) for key, path in SETTING_PATHS.items()}
+        values = {
+            key: self._config.get(path)
+            for key, path in self._setting_paths().items()
+        }
         # 「开机自启」的真相在**注册表**里，不在配置里：用户可能在「任务管理器 →
         # 启动」里禁用它，也可能手动删过那个注册表值 —— 配置里那份影子会骗人。
         # 所以每次都回读一次实际状态（注册表读取是微秒级的，代价可以忽略）。
@@ -587,7 +719,7 @@ class Backend(QObject):
     @Slot(str, "QVariant")
     def setSetting(self, key: str, value: Any) -> None:
         """改一项设置。类型按默认值对齐，避免 QML 把 int 传成字符串。"""
-        path = SETTING_PATHS.get(key)
+        path = self._setting_paths().get(key)
         if path is None:
             log.info("未知设置项: %s", key)
             return
@@ -619,24 +751,39 @@ class Backend(QObject):
         self._save_timer.start()
         log.info("设置 %s = %r", path, value)
 
-        # 翻页组件位置：连带开关四个角落（两种形态二选一，见常量处的说明）。
-        # 真实生效的是 ``corners``，所以这一步不是「副作用」而是这个开关的本体。
-        if key == "presentation_pager_position":
-            self._apply_pager_position(str(value))
-            self.docksRebuildRequested.emit()
-
-        if key == "theme":
-            self.themeChangeRequested.emit(str(value))
-        elif key == "accent":
-            self.accentChangeRequested.emit(str(value))
+        # 副作用两级查找（注册表驱动，不再是硬编码 if/elif）：
+        # ① 键级回调表（精确命中，side_effect 先于信号 —— 翻页位置得先把
+        #    corners 改完再喊重建）；② 前缀 / 集合规则表。
+        effect = self._key_effects.get(key)
+        if effect is not None:
+            side_effect: Optional[SettingSideEffect] = effect.get("side_effect")
+            if side_effect is not None:
+                side_effect(self._config, key, value)
+            for signal_name, pass_value in effect["signals"]:
+                self._emit_setting_signal(signal_name, value, pass_value)
         if key in _BROADCAST_KEYS:
             self.quickPanelConfigChanged.emit()
-        if key.startswith("presentation_"):
-            self.presentationConfigChanged.emit()
-            # 改 ``presentation_screen_index`` 会换一块显示器；还没放映过时
-            # ``presentationScreen`` 是按配置现算的，得给它一个重取的理由。
-            self.presentationScreenChanged.emit()
+        for prefix, signal_specs in _PREFIX_NOTIFY_RULES:
+            if key.startswith(prefix):
+                for signal_name, pass_value in signal_specs:
+                    self._emit_setting_signal(signal_name, value, pass_value)
+                break
         self.settingsChanged.emit()
+
+    def _emit_setting_signal(self, signal_name: str, value: Any, pass_value: bool) -> None:
+        """按名字发设置类信号；``pass_value`` 为真时带 ``str(值)`` 作为参数。
+
+        按名字查是为了让注册表（内建键级表 / 前缀规则 / 动态注册）不用持有
+        Backend 就能声明「改完发什么」；名字打错时记警告而不是静默吞掉。
+        """
+        signal = getattr(self, signal_name, None)
+        if signal is None:
+            log.warning("注册的通知信号不存在: %s", signal_name)
+            return
+        if pass_value:
+            signal.emit(str(value))
+        else:
+            signal.emit()
 
     def _apply_pager_position(self, position: str) -> None:
         """把「翻页组件位置」落到 ``corners`` 那四个角的开关上。

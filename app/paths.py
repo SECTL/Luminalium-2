@@ -52,6 +52,26 @@ DATA_DIR = _default_data_root()
 
 CONFIG_DIR = DATA_DIR / "config"
 LOG_DIR = DATA_DIR / "logs"
+# 运行期缓存（可随时删）在数据根下 —— 出问题时用户能直接翻到这个文件夹，
+# 而且「只清自己写的、不碰别人的临时文件」这条清理逻辑简单得多。
+CACHE_DIR_NAME = "cache"
+
+
+def cache_dir() -> Path:
+    """运行期缓存根目录。**跟随 ``data_dir()`` 的 ``LUMINALIUM_DATA_DIR`` 覆盖**。
+
+    ⚠️ 这里是**函数**而不是模块级常量，与 ``CONFIG_DIR`` / ``LOG_DIR`` 那套不同：
+    缩略图缓存是这个应用里**唯一会主动整目录删文件**的地方（换一场放映清一次），
+    而 ``LUMINALIUM_DATA_DIR`` 正是给「自检 / 探针别碰用户真实数据」准备的。
+    常量写法在导入那一刻就把路径钉死了，覆盖就失效 —— 那样跑一轮自检就会去删
+    用户数据目录里的东西。
+    """
+    return data_dir() / CACHE_DIR_NAME
+
+
+def slide_thumb_dir() -> Path:
+    """放映页缩略图目录（见 ``app/slide_thumbs.py``）。"""
+    return cache_dir() / "slide_thumbs"
 
 DEFAULT_CONFIG_FILE = RESOURCE_ROOT / "config" / "default_config.json"
 USER_CONFIG_FILE = CONFIG_DIR / "config.json"

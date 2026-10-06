@@ -52,6 +52,7 @@ from .config import Config
 from .error_handler import ErrorHandler
 from .paths import APP_NAME, LOG_DIR, UI_DIR, ensure_runtime_dirs
 from .ppt_controller import COM_PROG_IDS, PptController
+from .slide_thumbs import SlideThumbCache
 from .tray import TrayIcon, build_app_icon
 from .windows import WindowManager
 
@@ -194,6 +195,12 @@ class LuminaliumApplication:
             interval_ms=int(self.config.get("presentation.poll_interval_ms", 400)),
             config=self.config,
         )
+        # 幻灯片缩略图缓存（页码快速跳转面板上那几十张画面）。它一头是
+        # PptController 的**消费者**（往 COM 线程投 ``Slides(i).Export``）、
+        # 一头是桥的**数据源**（``Backend.thumbUrls``），所以在这儿把两头接上。
+        # 见 app/slide_thumbs.py。
+        self.slide_thumbs = SlideThumbCache(self.ppt, self.backend)
+        self.backend.attach_slide_thumbs(self.slide_thumbs)
         # 「⋯」溢出菜单。必须持有引用，否则局部变量回收后菜单立即消失。
         self._overflow_menu: Optional[QMenu] = None
 
@@ -358,6 +365,11 @@ class LuminaliumApplication:
         self._splash(1.0, i18n.tr("Splash", "正在进行启动后操作"))
         log.info("启动完成")
         QTimer.singleShot(SPLASH_HOLD_MS, self.windows.hide_splash)
+        # 自动检查更新（ClassIsland ``AppStartupBackground`` 的开机检查同款）：
+        # update.mode >= 1 就在启动收尾后查一次。放在启动画面淡出**之后**再错开
+        # 一拍 —— 检查在后台线程跑，不抢装配的场；等 1.5s 是让刚开屏的应用
+        # 别立刻就往外发请求（回声洞预热线程同理，错峰）。
+        QTimer.singleShot(1500, self.backend.autoCheckUpdates)
 
     # ================================================================ 动作
 
@@ -541,20 +553,32 @@ class LuminaliumApplication:
             log.info("当前没有放映，忽略动作: %s", action)
             return
 
-        # 内建动作分发表（2026-10-05 任务 6 由硬编码 if/elif 改表驱动，
-        # 行为逐字不变）。统一成无参 callable：ppt 方法都要 hwnd，溢出菜单不要。
-        handlers: Dict[str, Callable[[], Any]] = {
-            "exit_presentation": lambda: self.ppt.exit_slideshow(hwnd),
-            "pager:next": lambda: self.ppt.next_slide(hwnd),
-            "pager:previous": lambda: self.ppt.previous_slide(hwnd),
-            "clear_screen": lambda: self.ppt.clear_screen(hwnd),
-            "overflow": self._show_overflow_menu,
-        }
-        handler = handlers.get(action)
-        if handler is None:
-            log.info("未处理的放映动作: %s", action)
+        if action.startswith("pager:goto:"):
+            # 快速切页面板点了一格（页码 1-based）。与 next/previous 一样不占
+            # 「翻页限流」—— 它是直接定位，不是连打翻页手势。带参数（页码），
+            # 放不进下面的无参分发表，单独前置处理。
+            try:
+                page = int(action.rsplit(":", 1)[1])
+            except (ValueError, IndexError):
+                log.warning("无法解析跳转页码: %r", action)
+                return
+            self.ppt.goto_slide(page, hwnd)
+            log.info("跳转到第 %s 页", page)
         else:
-            handler()
+            # 内建动作分发表（2026-10-05 任务 6 由硬编码 if/elif 改表驱动，
+            # 行为逐字不变）。统一成无参 callable：ppt 方法都要 hwnd，溢出菜单不要。
+            handlers: Dict[str, Callable[[], Any]] = {
+                "exit_presentation": lambda: self.ppt.exit_slideshow(hwnd),
+                "pager:next": lambda: self.ppt.next_slide(hwnd),
+                "pager:previous": lambda: self.ppt.previous_slide(hwnd),
+                "clear_screen": lambda: self.ppt.clear_screen(hwnd),
+                "overflow": self._show_overflow_menu,
+            }
+            handler = handlers.get(action)
+            if handler is None:
+                log.info("未处理的放映动作: %s", action)
+            else:
+                handler()
 
         # 翻页后页码要立刻跟上：COM 命令是异步投递的，先等一小会儿让它执行完
         # （命令结束会自己轻量刷一次快照），再 poke 两条线程把新页码送出去。
@@ -599,6 +623,9 @@ class LuminaliumApplication:
         log.info("退出应用")
         self.ppt.stop()
         self.ppt.shutdown()
+        # 缩略图缓存是纯临时物（下一次放映会重新导），退出时顺手清掉，
+        # 别在数据目录里留一堆没人认领的 PNG。
+        self.slide_thumbs.clear()
         self.windows.shutdown()
         self.tray.hide()
         self.config.save()

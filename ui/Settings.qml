@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Layouts
 import RinUI as Rin
 import Luminalium
 
@@ -109,7 +110,10 @@ Rin.FluentWindow {
         navigationView.push(url)
     }
 
-    // 导航清单的数据源在 Python 侧，原因见文件头注释。
+    // 导航清单的数据源在 Python 侧（``app/bridge.py`` 的
+    // ``_BUILTIN_SETTINGS_NAV``），原因见文件头注释。远端 2026-10-06 对
+    // 「通用 / 个性化」页面内容的调整（主题模式搬回「通用」）不影响导航条目，
+    // 两边条目本就一致（本地多一个内建「插件」页）。
     navigationItems: Backend.settingsNavItems
 
     // ========================================================== 隐藏入口：调试窗口
@@ -204,6 +208,8 @@ Rin.FluentWindow {
         —— 只挂 ``anchors.right`` 时标签宽度就等于一行文字的自然宽（实测三种
         ``wrapMode`` 都是 ``lineCount=1``、53×16），加不加都一样。 */
     Rin.Text {
+        id: settingsVersionLabel
+
         objectName: "settingsVersionLabel"
         parent: settingsWindow.titleBarHost
         anchors.right: parent.right
@@ -212,6 +218,146 @@ Rin.FluentWindow {
         typography: Rin.Typography.Caption
         color: Lumi.textSecondary
         text: Backend.appVersion
+    }
+
+    // ============================================================ 「需要重启」
+    /*! 改了「要重启才生效」的设置（``app/bridge.py::RESTART_REQUIRED_KEYS``）之后，
+        标题栏右侧、版本号**左边**亮出这枚强调色按钮。
+
+        位置与形态照抄 ClassIsland ``SettingsWindowNew.axaml`` —— 它就在标题栏
+        右侧那一行（版本号与「更多选项」之间）::
+
+            <Button Classes="accent"
+                    ToolTip.Tip="部分设置需要重启才能生效，点击以重启应用。"
+                    Margin="0 -8" VerticalAlignment="Center"
+                    IsVisible="{Binding ViewModel.IsRequestedRestart}"
+                    Click="ButtonRestartApp_OnClick">
+                <commands:IconText Glyph="&#xE0BD;" Text="需要重启"/>
+            </Button>
+
+        挂点用 ``titleBarHost``（与版本号同一个，理由见上面那段长注释）；
+        锚到 ``settingsVersionLabel.left``、``rightMargin: 12`` ——
+        这样它出现在版本号左侧，且**出现/消失都不会把版本号推走**。
+
+        ⚠️ 标题栏只有 ``dialogTitleBarHeight`` = 32 高，而 ``Rin.Button`` 的
+        ``implicitHeight`` 正好也是 32（``max(text.height + 12, 32)``）——
+        不夹的话按钮会顶满整条标题栏的上下沿，看着像贴死在边上。这里给
+        ``height: 24`` + ``radius``（跟版本号一样，横着一条不喧宾夺主）。 */
+    Rin.Button {
+        objectName: "settingsRestartButton"
+        parent: settingsWindow.titleBarHost
+        anchors.right: settingsVersionLabel.left
+        anchors.rightMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
+        visible: Backend.restartPending
+        highlighted: true
+        height: 24
+        radius: 6
+        icon.name: "ic_fluent_arrow_counterclockwise_20_regular"
+        text: qsTr("需要重启")
+        onClicked: restartDialog.open()
+
+        Rin.ToolTip {
+            // 逐字照抄 ClassIsland 的 ToolTip.Tip
+            text: qsTr("部分设置需要重启才能生效，点击以重启应用。")
+            visible: parent.hovered
+        }
+    }
+
+    // ============================================================ 重启询问框
+    /*! 对应 ClassIsland ``SettingsWindowNew.axaml.cs``：:
+
+            private async void ShowRestartDialog()
+            {
+                var r = await new ContentDialog()
+                {
+                    Title = "需要重启",
+                    Content = "部分设置需要重启以应用",
+                    PrimaryButtonText = "重启",
+                    CloseButtonText = "取消",
+                    DefaultButton = ContentDialogButton.Primary,
+                }.ShowAsync(this);
+                if (r != ContentDialogResult.Primary)
+                    return;
+                AppBase.Current.Restart();
+            }
+
+        ⚠️ 四处文案**逐字照抄**（标题「需要重启」/ 正文「部分设置需要重启以应用」/
+        主按钮「重启」/ 次按钮「取消」），别顺手改成更顺口的说法 ——
+        这个页面的整体要求就是「一比一复刻」。
+
+        正文直接写成子项即可：``Rin.Dialog`` 基类的 ``contentItem`` 已经渲染了
+        ``title``（Subtitle 号），声明的子项会追加进那个 ``ColumnLayout``
+        （``contentData`` → ``contentItem``），于是「大字标题 + 正文」两行齐了。
+        别去覆盖 ``contentItem`` —— 那要自己补 ``implicitWidth/Height``（铁律）。
+
+        ⚠️ 底栏用 ``Rin.DialogButtonBox``（RinUI 的标准底栏，自带分隔背景与
+        半宽均分），照 ``About.qml`` 那份诊断框的写法：**不传** ``standardButtons``
+        —— 那套文案来自 Qt 自带的 ``qtbase_*.qm``，本项目只装 ``luminalium_*.qm``，
+        装了也只会显示英文 OK / Cancel。
+
+        ⚠️⚠️ **正文必须是实色**（``Lumi.textPrimary``），别写成 ``textSecondary``：
+        WinUI／ClassIsland 的 ``ContentDialog`` 里降一级的只有辅助信息，
+        ``Content`` 走的是 ``TextFillColorPrimary``（2026-10-05 修：原先写成
+        secondary，弹出来正文是灰的，跟上面的标题不像一套）。
+        ``typography`` 也要显式写 ``Body`` —— ``Rin.Text`` 默认 ``-1``（体积凑巧
+        等于 bodySize），但行高/自重只有在确定档位上才稳。 */
+    Rin.Dialog {
+        id: restartDialog
+
+        objectName: "settingsRestartDialog"
+        title: qsTr("需要重启")
+        modal: true
+
+        Rin.Text {
+            objectName: "settingsRestartDialogBody"
+            Layout.fillWidth: true
+            typography: Rin.Typography.Body
+            color: Lumi.textPrimary
+            text: qsTr("部分设置需要重启以应用")
+        }
+
+        footer: Rin.DialogButtonBox {
+            id: restartDialogButtons
+
+            Rin.Button {
+                objectName: "settingsRestartCancelButton"
+                Layout.fillWidth: true
+                Layout.preferredWidth: restartDialogButtons.availableWidth / 2
+                text: qsTr("取消")
+                onClicked: restartDialog.close()
+            }
+
+            Rin.Button {
+                id: restartConfirmButton
+                objectName: "settingsRestartConfirmButton"
+                Layout.fillWidth: true
+                Layout.preferredWidth: restartDialogButtons.availableWidth / 2
+                text: qsTr("重启")
+                onClicked: {
+                    restartDialog.close()
+                    // 真的去重启（应用层拉起新进程后退出），与标题栏那枚按钮同一条路。
+                    Backend.requestRestart()
+                }
+            }
+        }
+
+        onOpened: {
+            // ⚠️ 高亮必须在 ``onOpened`` 里补，不能写在按钮自己身上：
+            // ``DialogButtonBox`` 创建子项时会覆盖 ``highlighted``（见 About.qml
+            // 诊断框同款注释，2026-10-04 实测）。
+            restartConfirmButton.highlighted = true
+        }
+    }
+
+    /*! 设置项改到「要重启才生效」的那些时，后端发 ``restartSuggested`` →
+        弹框问一次。用户点「取消」后框关掉，标题栏那枚「需要重启」按钮仍然留着
+        （``restartPending`` 不复位），随时可以再点 —— 与 ClassIsland 一致。 */
+    Connections {
+        target: Backend
+        function onRestartSuggested() {
+            restartDialog.open()
+        }
     }
 
     // ============================================================ 开发水印

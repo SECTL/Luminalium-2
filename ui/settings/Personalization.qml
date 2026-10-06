@@ -4,14 +4,20 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    个性化：全局外观设定。
+    个性化：目前只有「强调色」一项。
 
     2026-10-01（第四轮）用户指令：「把外观那一块除了界面语言改到新的个性化」
     —— 原挂在「通用」页末尾的「外观」组里共三张卡（应用主题 / 强调色 / 界面语言），
     前两张整体搬到本页，「界面语言」留在「通用」页（它不是外观、是语言与区域）。
 
+    ⚠️ 2026-10-06 用户指令：「把应用是跟随系统还是亮色暗色移到通用，个性化设置
+    先只留强调色」—— 「应用主题」（跟随系统 / 浅色 / 深色）那张卡整体搬回
+    ``settings/General/Index.qml``，本页只剩「强调色」。这么分的道理是：深浅
+    **模式**是跟系统走的环境设定（属于「通用」那种整机级开关），而**强调色**
+    才是纯粹的审美选择；两件事放一起时用户会以为它们是同一组。
+
     导航项插在「通用」之后、「主界面」之前（``Settings.qml`` 的 ``navigationItems``）。
-    ⚠️ 别把主题 / 强调色再塞回「通用」或「主界面」：它们调的是**整个应用**的取色，
+    ⚠️ 别把强调色再塞回「通用」或「主界面」：它调的是**整个应用**的取色，
     跟「主界面（放映时那块控制条画布）」不是一回事 —— 这条从 2026-10-01 改名那次
     就定下来了，只是归属页从「通用」换成了这里。
 
@@ -30,31 +36,13 @@ Rin.FluentPage {
     title: qsTr("个性化")
     contentSpacing: 10
 
+    // 2026-10-06：「应用主题」搬回「通用」页，本页只剩下面这一张卡。
+    // 分组标题仍是「外观」—— 等将来这一页再收新卡时不用改标题。
+
     Rin.Text {
         Layout.fillWidth: true
         typography: Rin.Typography.BodyStrong
         text: qsTr("外观")
-    }
-
-    Rin.SettingCard {
-        objectName: "personalizationTheme"
-
-        Layout.fillWidth: true
-        title: qsTr("应用主题")
-        description: qsTr("影响所有窗口与控件的取色")
-        icon.name: "ic_fluent_dark_theme_20_regular"
-
-        Rin.ComboBox {
-            Layout.preferredWidth: 150
-            model: [qsTr("跟随系统"), qsTr("浅色"), qsTr("深色")]
-            currentIndex: {
-                const value = Backend.settings.theme
-                if (value === "light") return 1
-                if (value === "dark") return 2
-                return 0
-            }
-            onActivated: Backend.setSetting("theme", ["auto", "light", "dark"][currentIndex])
-        }
     }
 
     Rin.SettingCard {

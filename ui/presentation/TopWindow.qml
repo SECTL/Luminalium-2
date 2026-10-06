@@ -28,6 +28,16 @@ import ".."
     区域外既不绘制也不命中 —— 所以左下角的开发水印必须让 Python 侧
     把它的矩形一并算进区域（``windows.py`` 读 ``watermarkItem``），
     否则会被整个裁掉。
+
+    2026-10-06 用户指令「放映工具顶层窗口可以更智能些」之后，窗口本身也归
+    Python 侧的看护定时器管（``windows.py::_watch_overlay``）：
+
+    * **几何跟着放映窗口走** —— 全屏放映时两者重合，窗口化放映时遮罩就贴着
+      那个窗口（``_apply_overlay_geometry``）；
+    * **放映窗口不在前台时临时隐去** —— 走下面这个 ``suppressed`` 属性做淡出，
+      不是 ``hide()`` 窗口（藏一只全屏分层窗口再显示会闪一帧）。
+
+    QML 这边只管「淡成 0 / 淡回来」，穿透与区域由 Python 同步处理。
 */
 Window {
     id: topWindow
@@ -51,9 +61,22 @@ Window {
     */
     readonly property Item watermarkItem: devWatermark
 
+    /*! 「临时隐去」开关（Python 侧 ``windows.py::_set_overlay_suppressed`` 置位）。
+
+        放映窗口不在前台时（用户切去别的程序），控制条淡出；切回来自动淡入。
+        用淡出而不是 ``hide()``：隐藏一只全屏分层窗口再显示会闪一帧，而这里
+        只是「先让开」。淡出期间 Python 会把整窗穿透打开 —— 内容看不见了，
+        但那几块命中矩形还在，不穿透的话会继续吃掉点击。
+    */
+    property bool suppressed: false
+
     Item {
         id: containerItem
         anchors.fill: parent
+        opacity: topWindow.suppressed ? 0 : 1
+        Behavior on opacity {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
     }
 
     // 开发中水印：左下角、左翻页 pill 的**上方**（pill 占 bottom-82..bottom-20，
@@ -66,5 +89,7 @@ Window {
         x: 20
         y: topWindow.height - 90 - height
         z: 10
+        // 水印是窗口根的直接子项（不在 container 里），临时隐去要跟着一起淡
+        opacity: containerItem.opacity
     }
 }

@@ -56,6 +56,7 @@ from __future__ import annotations
 import copy
 import logging
 import threading
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
@@ -64,6 +65,7 @@ from PySide6.QtGui import QGuiApplication
 
 from . import autostart
 from . import i18n
+from . import update_checker
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
 from .plugins import loader, registry
@@ -114,6 +116,11 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_exit_style": "presentation.exit.style",
     # 只在调试窗口出现（隐藏入口：设置标题连点 10 次），普通用户看不到水印开关
     "dev_watermark": "app.dev_watermark",
+    # 更新模式 / 更新通道（设置 → 更新 → 更新设置）。⚠️ ``update.`` 段里其余的键
+    # （last_status / last_check_time）**没有**登记在这里：它们是程序自己写的
+    # 检查记录，不给设置页当输入 —— 登记了反而会多出一组没人写的代理属性。
+    "update_mode": "update.mode",
+    "update_channel": "update.channel",
 }
 
 #: 值一变就需要 QML 重新取整块配置的键。
@@ -139,6 +146,42 @@ _PREFIX_NOTIFY_RULES: Tuple[Tuple[str, Tuple[Tuple[str, bool], ...]], ...] = (
 #: 键级副作用条目的结构：``signals`` 为 ``(信号名, 是否带值)`` 列表，
 #: ``side_effect`` 为可选回调（见 ``SettingSideEffect``）。
 _KeyEffect = Dict[str, Any]
+#: 改完**必须重启才生效**的设置项（扁平键）。
+#:
+#: 改动这些项时走 :meth:`Backend._notify_restart_required`：① ``restartPending``
+#: 翻 true → 设置窗口标题栏右侧亮出强调色「需要重启」按钮；② 发 ``restartSuggested``
+#: → 设置窗口弹对话框问「现在重启吗」。
+#:
+#: 参考 ClassIsland（``ClassIsland/Views/SettingsWindowNew.axaml{,.cs}``）。那边是::
+#:
+#:     private void CommandBindingRestartApp_OnExecuted(...)
+#:     {
+#:         ViewModel.IsRequestedRestart = true;   // → 标题栏亮出「需要重启」按钮
+#:         ShowRestartDialog();                   // → 弹框问「现在重启吗」
+#:     }
+#:
+#: ⚠️ ClassIsland **自己并不会在设置变更时自动弹框** —— 它订阅了
+#: ``SettingsService.Settings.PropertyChanged``，而 ``SettingsOnPropertyChanged``
+#: 是**空方法**；也没有任何「哪些设置要重启」的清单或 ``[RequiresRestart]`` 标记。
+#: 它只是把「需要重启」当成通用提示，靠用户自己去点标题栏那枚按钮。
+#:
+#: 所以这里做了两点适配：
+#: ① 触发点从「用户点按钮」挪到 ``setSetting`` —— 用户的原话是「对需要重新启动
+#:   才能应用的设置项**更改时**做出行动」，条件本来就是「某项设置变了」，
+#:   由 QML 逐项去想起来发命令，迟早会有页面忘了发；
+#: ② 清单由 Python 侧集中维护（就是下面这个 frozenset），而不是散在各页面里。
+#:
+#: **入选理由（``language``）**：翻译（``app/i18n.py::install_translators`` 装载
+#: ``luminalium_*.qm``）与 UI 字体（``apply_ui_font``，``ja_JP`` 切 Yu Gothic UI）
+#: 都在 ``application.py`` 里装配**一次**，之后没有任何重新装配的路径。
+#:
+#: ⚠️ **刻意没收 ``dev_watermark``**：它经 ``Backend.devWatermark``（``constant=True``）
+#: 出给 QML，窗口构造时求值一次 → 改完确实是「老窗口不变、新窗口跟着变」的半吊子
+#: 状态。但它只在隐藏的调试窗口里出现，每拨一次就弹一次框太吵（且重启与否都存在
+#: 半生效的部分），所以留着不动，等真要给这个开关做热更新时再一起解决。
+RESTART_REQUIRED_KEYS: frozenset = frozenset({
+    "language",
+})
 
 #: 「翻页组件位置」的两种形态 -> 该形态下**启用**的角落。
 #:
@@ -211,6 +254,8 @@ class Backend(QObject):
     # ---- 通知类信号 ----
     presentationActiveChanged = Signal()
     slideChanged = Signal()
+    #: 幻灯片缩略图表变了（某几张就绪 / 整场复位，见 ``thumbUrls``）
+    slideThumbsChanged = Signal()
     activeToolChanged = Signal()
     #: 墨迹颜色变了（QML 侧的笔选单靠它回显选中的那一格）
     penColorChanged = Signal()
@@ -235,6 +280,9 @@ class Backend(QObject):
     statusChanged = Signal()
     #: 启动画面的进度 / 阶段文字变了
     splashChanged = Signal()
+    #: 检查更新的状态机动了（详见下方「检查更新」一节）。
+    updateStatusChanged = Signal()
+    updateWorkingChanged = Signal()
 
     # ---- 请求类信号（由窗口管理器 / 应用层响应）----
     panelHideRequested = Signal()
@@ -244,6 +292,12 @@ class Backend(QObject):
     #: 原 ``reloadRequested``（仅重读配置）已按 2026-10-02 用户指令改成重启 ——
     #: 用户语义里这个按钮就该是「重启程序」，只重读配置反而「点了没反应」。
     restartRequested = Signal()
+    #: 改了一项「要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）→ 设置窗口
+    #: 弹对话框问「现在重启吗」（ClassIsland 的 ``ShowRestartDialog()`` 同款）。
+    #: ⚠️ 与 ``restartRequested`` 是两回事：那个是**真的去重启**，这个是**提示**。
+    restartSuggested = Signal()
+    #: ``restartPending`` 变了。
+    restartPendingChanged = Signal()
     quitRequested = Signal()
     settingsRequested = Signal()
     settingsCloseRequested = Signal()
@@ -266,6 +320,10 @@ class Backend(QObject):
         self._presentation_active = False
         self._slide_index = 0
         self._slide_total = 0
+        #: 幻灯片缩略图缓存（``app/slide_thumbs.py``）。由 ``application.py`` 在
+        #: 播完 COM 控制器之后接上（``attach_slide_thumbs``）—— 预览 / 自检这类
+        #: 只造 Backend 的宿主没有它，此时 ``thumbUrls`` 是空表、请求静默忽略。
+        self._slide_thumbs = None
         #: 默认工具是**鼠标指针**（``arrow``）。
         #:
         #: ⚠️ 2026-10-01 用户指令「顶层窗口的工具栏的 Segmented 默认工具不应该
@@ -278,6 +336,12 @@ class Backend(QObject):
         #: 哪一格点亮（见 :meth:`setPenColor`）。
         self._pen_color = ""
         self._status_text = ""
+
+        #: 有没有「改了但要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）。
+        #: 一旦翻 true 就**不再复位**（ClassIsland 的 ``IsRequestedRestart`` 同样只
+        #: 置位）：用户把值改回原样也当作改过 —— 判断「有没有绕过」的成本远高于
+        #: 多显示一个按钮，而重启一次本来也没有副作用。
+        self._restart_pending = False
 
         #: 启动画面进度（0..1）与阶段文字。由应用层按真实里程碑推进
         #: （见 ``application.py::LuminaliumApplication._boot_*``）。
@@ -309,6 +373,29 @@ class Backend(QObject):
         #: 只为「同一件事不并发第二次」而持有；线程本身是 daemon，退出即回收。
         self._echo_thread: Optional[threading.Thread] = None
         self._diagnostics_thread: Optional[threading.Thread] = None
+        #: 检查更新的后台线程（同上，见 :meth:`requestCheckUpdate`）。
+        self._update_thread: Optional[threading.Thread] = None
+
+        # ------------------------------------------------ 检查更新的状态机
+        #:
+        #: 对齐 ClassIsland ``UpdateService`` 的两组状态：
+        #:
+        #: * ``_update_status`` —— 上次检查的结论，对应它的 ``UpdateStatus``：
+        #:   ``uptodate`` / ``available``（+ 部署环节的 ``updatedownloaded`` /
+        #:   ``updatedeployed``，部署未实现、预留）＋ 本项目自己的 ``unknown``
+        #:   （本次运行还没查过）。ClassIsland 把它持久化在 Settings 里，
+        #:   这里同样落 ``update.last_status``。
+        #: * ``_update_working`` —— 正在干什么，对应 ``UpdateWorkingStatus``：
+        #:   目前只有 ``idle`` / ``checking``（下载 ``downloading`` /
+        #:   部署 ``extracting`` 随部署一起接入）。
+        self._update_status = str(self._config.get("update.last_status", "")
+                                  or update_checker.STATUS_UNKNOWN)
+        self._update_working = "idle"
+        self._update_latest_version = ""
+        self._update_changelog = ""
+        self._update_current_changelog = ""
+        self._update_release_url = ""
+        self._update_error = ""
 
         # ---- 设置项注册表（内建常量 + 动态注册）----
         #: 动态注册的「扁平键 -> 点号路径」（插件走 ``register_setting_path``）。
@@ -345,6 +432,15 @@ class Backend(QObject):
         from . import __version__
 
         return __version__
+
+    @Property(bool, notify=restartPendingChanged)
+    def restartPending(self) -> bool:
+        """有没有「改了但要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）。
+
+        设置窗口靠它决定标题栏右侧那枚「需要重启」按钮显不显示
+        （ClassIsland 的 ``ViewModel.IsRequestedRestart`` 同款）。
+        """
+        return self._restart_pending
 
     @Property(str, constant=True)
     def accent(self) -> str:
@@ -524,6 +620,159 @@ class Backend(QObject):
             fields = []
         self.diagnosticsReady.emit(fields)
 
+    # ================================================================ 检查更新
+    #:
+    #: 界面是 ClassIsland 更新页的一比一复刻（``ui/settings/Update.qml``），
+    #: 这组属性 / 槽就是那边 ViewModel + UpdateService 公开面拆出来的最小集。
+    #: 与回声洞 / 诊断同一条异步约定：**网络在后台线程、结果走信号**，
+    #: 界面期间能正常画出「正在检查更新…」。
+    #:
+    #: ⚠️ **下载 / 安装 / 部署刻意未实现**（2026-10-05 用户指令）：界面上
+    #: 「下载并安装」等按钮先以占位方式出现，点了由 QML 侧亮提示条；
+    #: 状态机里 ``updatedownloaded`` / ``updatedeployed`` 两档留给部署接入时。
+
+    def _get_update_status(self) -> str:
+        return self._update_status
+
+    updateStatus = Property(str, _get_update_status, notify=updateStatusChanged)
+    def _get_update_working(self) -> str:
+        return self._update_working
+
+    updateWorkingStatus = Property(str, _get_update_working, notify=updateWorkingChanged)
+
+    def _get_update_latest_version(self) -> str:
+        return self._update_latest_version
+
+    updateLatestVersion = Property(
+        str, _get_update_latest_version, notify=updateStatusChanged
+    )
+
+    def _get_update_changelog(self) -> str:
+        return self._update_changelog
+
+    updateChangelog = Property(str, _get_update_changelog, notify=updateStatusChanged)
+
+    def _get_update_current_changelog(self) -> str:
+        return self._update_current_changelog
+
+    updateCurrentChangelog = Property(
+        str, _get_update_current_changelog, notify=updateStatusChanged
+    )
+
+    def _get_update_release_url(self) -> str:
+        return self._update_release_url
+
+    updateReleaseUrl = Property(
+        str, _get_update_release_url, notify=updateStatusChanged
+    )
+
+    def _get_update_error(self) -> str:
+        return self._update_error
+
+    updateError = Property(str, _get_update_error, notify=updateStatusChanged)
+
+    def _get_update_last_check_time(self) -> str:
+        """上次检查更新的本地时间（人读格式；从未查过返回空串）。"""
+        text = str(self._config.get("update.last_check_time", "") or "")
+        if not text:
+            return ""
+        try:
+            return datetime.fromisoformat(text).strftime("%Y/%m/%d %H:%M")
+        except ValueError:
+            return text
+
+    updateLastCheckTime = Property(
+        str, _get_update_last_check_time, notify=updateStatusChanged
+    )
+
+    @Slot(bool)
+    def requestCheckUpdate(self, force: bool = False) -> None:
+        """检查更新（异步）。``force`` = 强制检查（见 ``update_checker.check``）。
+
+        ⚠️ **检查期间再点直接忽略**：并发检查的两次结果互相覆盖没有意义，
+        与回声洞 / 诊断「不并发」同一个理由。界面侧在检查中会把按钮藏起来，
+        这里是兜底。
+        """
+        if self._update_thread is not None and self._update_thread.is_alive():
+            return
+        self._update_working = "checking"
+        self.updateWorkingChanged.emit()
+        self._update_thread = threading.Thread(
+            target=self._run_update_check, args=(bool(force),), name="update-check",
+            daemon=True,
+        )
+        self._update_thread.start()
+
+    @Slot()
+    def autoCheckUpdates(self) -> None:
+        """按配置的更新模式自动检查一次（应用启动后由应用层调用）。
+
+        对应 ClassIsland ``AppStartupBackground`` 的第一段：
+        ``UpdateMode >= 1`` 就 ``CheckUpdateAsync()``。模式 2（自动下载）与
+        3（自动安装）在部署接入之前与 1 等效 —— 只检查、只通知。
+        """
+        mode = int(self._config.get("update.mode", 1))
+        if mode < 1:
+            return
+        if mode >= 2:
+            log.info("更新模式为 %d：自动下载/安装尚未实现，本次仅检查并通知", mode)
+        self.requestCheckUpdate(False)
+
+    def _run_update_check(self, force: bool) -> None:
+        """后台线程体：查 → 记录 → 发信号（排队回主线程）。"""
+        result = update_checker.check(
+            channel=str(self._config.get("update.channel", "stable")),
+            current_version=self.appVersion,
+            force=force,
+        )
+        self._update_status = result["status"]
+        self._update_latest_version = result["latest_version"]
+        self._update_changelog = result["changelog"]
+        self._update_current_changelog = result["current_changelog"]
+        self._update_release_url = result["release_url"]
+        self._update_error = result["error"]
+        # 检查记录持久化（ClassIsland 同样记 LastUpdateStatus /
+        # LastCheckUpdateTime）：重启后设置页还能看到上一次的结论。
+        # 这里一次检查只写一次盘，不值得套延迟落盘。
+        self._config.set("update.last_status", self._update_status)
+        self._config.set(
+            "update.last_check_time", datetime.now().isoformat(timespec="minutes")
+        )
+        self._update_working = "idle"
+        self.updateStatusChanged.emit()
+        self.updateWorkingChanged.emit()
+
+    @Slot()
+    def clearUpdateError(self) -> None:
+        """关掉错误 InfoBar（对应 ClassIsland 把 ``NetworkErrorException`` 置空）。"""
+        if self._update_error:
+            self._update_error = ""
+            self.updateStatusChanged.emit()
+
+    def _get_update_channels(self) -> list:
+        """更新通道候选（``[{"id", "name", "description"}, ...]``）。
+
+        ⚠️ 通道表**只有这一份**，就是 ``update_checker.CHANNELS`` —— 界面上的
+        名称与说明直接由它派生，不在 QML 里另抄一份（否则两边文案迟早漂）。
+
+        2026-10-05：这也顺手绕掉了一个跨语言坑。原先通道表是 QML 里的
+        ``property var updateChannels: [...]``，经 ``Loader.setProperty``
+        推给「更新设置」Tab；QML 的 ``var`` 属性期望 ``QJSValue``，直接塞
+        JS ``Array`` 过去会被包成**空 QJSValue**，子项遍历 ``.length`` 得 0 →
+        通道下拉空、说明行标题与描述双空（自检实测）。改成由 Python 侧发
+        ``QVariantList``，QML 拿到的就是原生数组。
+        """
+        return [
+            {
+                "id": key,
+                "name": update_checker.CHANNEL_NAMES.get(key, key),
+                "description": desc,
+            }
+            for key, desc in update_checker.CHANNELS.items()
+        ]
+
+    updateChannels = Property("QVariantList", _get_update_channels, constant=True)
+
     # ================================================================ 放映状态
 
     def _get_presentation_active(self) -> bool:
@@ -542,6 +791,39 @@ class Backend(QObject):
         return self._slide_total
 
     slideTotal = Property(int, _get_slide_total, notify=slideChanged)
+
+    # ---------------------------------------------------------- 幻灯片缩略图
+    #: 页码快速跳转面板上那几十张「幻灯片画面」。**索引 = 页码 - 1**，空串 =
+    #: 还没就绪（卡片显示空底 + 页码，这是正常的加载态）。
+    #:
+    #: ⚠️ 走 ``QVariantList`` 而不是逐张发信号：QML 里 ``var`` 属性收 JS 数组会
+    #: 被包成空 QJSValue（见 memory 里那条），而列表整份重发只是几十个字符串，
+    #: 比「41 条信号各接一次」简单得多。真正的产出链路在 ``app/slide_thumbs.py``。
+    def _get_thumb_urls(self) -> List[str]:
+        cache = self._slide_thumbs
+        return list(cache.urls) if cache is not None else []
+
+    thumbUrls = Property("QVariantList", _get_thumb_urls, notify=slideThumbsChanged)
+
+    def attach_slide_thumbs(self, cache) -> None:
+        """接上缩略图缓存（由 ``application.py`` 装配，见 ``slide_thumbs.py``）。"""
+        self._slide_thumbs = cache
+        if cache is not None:
+            cache.urlsChanged.connect(self.slideThumbsChanged)
+            self.slideThumbsChanged.emit()
+
+    @Slot(int, int)
+    def requestThumbnails(self, start: int, end: int) -> None:
+        """要 ``[start, end]``（1-based 闭区间）这几页的缩略图。
+
+        由 ``PageJumpPanel`` 在**展开时**（当前页 ±5）与**滚动时**（可见范围 ±3）
+        调 —— 就是 Luminalium 1 的 ``requestThumbnailsForRange``，只换了个入口。
+        没在放映 / 缓存没接上时静默忽略。
+        """
+        cache = self._slide_thumbs
+        if cache is None:
+            return
+        cache.request(int(start), int(end))
 
     def _get_active_tool(self) -> str:
         return self._active_tool
@@ -576,6 +858,13 @@ class Backend(QObject):
             self._slide_index = state.slide_index
             self._slide_total = state.slide_total
             self.slideChanged.emit()
+
+        # 缩略图缓存跟着「放映开始 / 结束 / 页数变化」走。放在这里而不是
+        # ``windows.py``：每个状态快照都会经过这个方法，缓存的新场 / 清场
+        # 只需要一个入口（见 ``slide_thumbs.SlideThumbCache.set_show``）。
+        cache = self._slide_thumbs
+        if cache is not None:
+            cache.set_show(bool(state.active), int(state.slide_total))
 
     def set_status_text(self, text: str) -> None:
         if text != self._status_text:
@@ -1032,6 +1321,10 @@ class Backend(QObject):
                 self._emit_setting_signal(signal_name, value, pass_value)
         if key in _BROADCAST_KEYS:
             self.quickPanelConfigChanged.emit()
+        # 「改了要重启才生效」的项：亮出设置窗口那枚「需要重启」按钮，并弹一次
+        # 询问框（见 ``RESTART_REQUIRED_KEYS`` 处的说明）。
+        if key in RESTART_REQUIRED_KEYS:
+            self._notify_restart_required(key)
         for prefix, signal_specs in _PREFIX_NOTIFY_RULES:
             if key.startswith(prefix):
                 for signal_name, pass_value in signal_specs:
@@ -1053,6 +1346,28 @@ class Backend(QObject):
             signal.emit(str(value))
         else:
             signal.emit()
+
+    def _notify_restart_required(self, key: str) -> None:
+        """某项「改了要重启才生效」的设置刚被改动 → 亮按钮 + 弹询问框。
+
+        参考 ClassIsland ``SettingsWindowNew.axaml.cs``：::
+
+            private void CommandBindingRestartApp_OnExecuted(...)
+            {
+                ViewModel.IsRequestedRestart = true;
+                ShowRestartDialog();
+            }
+
+        也就是「置位 + 立刻弹框」两件事。用户选「取消」后框关掉，但那枚
+        「需要重启」按钮留着（``restartPending`` 不复位），随时可以再点。
+        """
+        log.info("设置 %s 需要重启才生效", key)
+        if not self._restart_pending:
+            self._restart_pending = True
+            self.restartPendingChanged.emit()
+        # ⚠️ 询问框**每次都弹**（哪怕 ``restartPending`` 早就是 true）：
+        # 与 ClassIsland 一致 —— 用户刚改完就该被问一次，而不是只有第一次改才问。
+        self.restartSuggested.emit()
 
     def _apply_pager_position(self, position: str) -> None:
         """把「翻页组件位置」落到 ``corners`` 那四个角的开关上。
@@ -1196,6 +1511,27 @@ class Backend(QObject):
     @Slot()
     def previousSlide(self) -> None:
         self.actionTriggered.emit("pager:previous")
+
+    @Slot(int)
+    def gotoSlide(self, page: int) -> None:
+        """跳到指定页（控制条上「点页码展开快速切页面板」里点了一格）。
+
+        ``page`` 是 **1-based** 的页码 —— 与 ``slideIndex`` 同一个口径，
+        PowerPoint 的 ``View.GotoSlide`` 本来就是 1-based，中间不要再换算一次。
+
+        这里只挡掉 ``< 1``：面板里的格子全是从 ``slideTotal`` 铺出来的，正常
+        不会越界，但这是 QML 能直接调到的公开槽，一个手滑的 0 会让 COM 那侧
+        抛异常（越界上限交给 COM 自己判 —— 它失败也只是这一次跳页不生效，
+        不会伤到别的状态）。"""
+        try:
+            target = int(page)
+        except (TypeError, ValueError):
+            log.warning("忽略非法的跳转页码: %r", page)
+            return
+        if target < 1:
+            log.warning("忽略越界的跳转页码: %r", page)
+            return
+        self.actionTriggered.emit(f"pager:goto:{target}")
 
     @Slot()
     def exitPresentation(self) -> None:

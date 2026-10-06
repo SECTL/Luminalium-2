@@ -310,6 +310,122 @@ QtObject {
     /*! 还没选中任何一格时，预览笔迹用的颜色（= 卡片底色上一道中性线）。 */
     readonly property color dockPaletteIdleStroke: fade(textPrimary, 0.35)
 
+    // ---- 页码快速跳转面板（``presentation/PageJumpPanel.qml``）----
+    // 出处是 **Luminalium 1** 的点按翻页组件：L1 里点页码那一块，会从屏幕侧边
+    // 滑出一列页面（``#page-selector``），点哪一页就跳哪一页。
+    //
+    // ⚠️ 下面这一组分两件事写，**别混**：
+    //
+    // 1. **形态**照 L1 的 CSS 原值抄（宽度 / 贴边 / 铺满整高 / 单列 16:9 /
+    //    卡间距 / 进场位移与时长）。2026-10-06 之前这里是另一套（5 列页码网格 +
+    //    贴控制条），用户看了预览图说「不像」，于是整块重做。**别再往「密实的
+    //    方格」方向收** —— 那正是被否掉的一版。
+    // 2. **设计语言**走项目自己的 Fluent 档位（圆角 / 底色 / 描边 / 三态填充 /
+    //    滚动条 / 字重），刻意偏离 L1 的地方都在下面逐条写了理由。用户随后要求
+    //    「Fluent 化改造」，指的就是这一层。
+    //
+    // L1 形态原值（``ui/overlay.html`` 的 ``#page-selector`` / ``.page-item``）：
+    //   width 260 / top+bottom 24 / left|right 16 / padding 12 / radius 16
+    //   border 1px var(--overlay-popup-border) / box-shadow none / z-index 200
+    //   .page-grid: 单列 flex column, gap 16
+    //   .page-item: width 100%, aspect-ratio 16/9, radius 8, overflow hidden
+    //   .page-num: 右下 4/8, font-size 2em, color rgba(255,255,255,.9)
+    //   .visible: transform 0（进场前是 translateX(±(100% + 32px))），
+    //             transition .4s cubic-bezier(0.19, 1, 0.22, 1)
+    /*! 面板宽度（设计单位）。 */
+    readonly property int dockJumpWidth: 260
+    /*! 面板贴**窗口**左右边的距离。 */
+    readonly property int dockJumpEdge: 16
+    /*! 面板上下各留多少（L1 是 top/bottom: 24 —— 面板铺满整高再各让 24）。 */
+    readonly property int dockJumpInset: 24
+    /*! 面板内边距。 */
+    readonly property int dockJumpPadding: 12
+    /*! 面板圆角 = **项目浮出层的统一档**（``flyoutRadius``，笔选单同款）。
+        刻意不用 L1 的 16：Fluent 没有 16 这一档，贴边浮出层在项目里一律 12，
+        这里跟着自己人说话（卡片 8 比它小 4，嵌套关系正常）。 */
+    readonly property int dockJumpRadius: flyoutRadius
+    /*! 卡片之间的间距（L1 ``.page-grid { gap: 16px }``）。 */
+    readonly property int dockJumpItemSpacing: 16
+    /*! 卡片圆角（L1 是 8，这里也留 8 —— 与笔选单色板卡片 ``dockPaletteRadius``
+        同档：浮出层里的卡片该是同一个圆角语言）。
+        ⚠️ 缩略图**在 Python 侧就烤好圆角 alpha**（见 ``app/slide_thumbs.py``）——
+        QML 里不必再给每张图挂一层 ``OpacityMask``（41 张图 = 41 个 FBO）。
+        改了这里的数值要同步改那边的烤角半径。 */
+    readonly property int dockJumpItemRadius: dockPaletteRadius
+    /*! 卡片三态填充 —— **复用控制条按钮那一档**：常态取主题的 ``controlFillColor``
+        （``tileBg``）、hover = ``dockButtonHoverFill``、按下 = ``dockButtonActiveFill``。
+        理由：面板和控制条是同一个组件家族，而格子又是「更想让人点」的那一层，
+        反馈不该比按钮弱。L1 的常态 3% 是个偏「卡片」的值，压在幻灯片画面上
+        几乎看不出边界。 */
+    readonly property color dockJumpItemFill: tileBg
+    readonly property color dockJumpItemHover: dockButtonHoverFill
+    readonly property color dockJumpItemPressed: dockButtonActiveFill
+    /*! 按下时收缩的量感。
+        ⚠️ 这是**替换**掉 L1 的 ``.page-item:hover { transform: scale(1.02) }``：
+        Fluent 控件的 hover 是纯状态层（填充变化），缩放属于 Web CSS 那一套；
+        「按下缩一点」才是项目既有的做法（``PenPaletteCard`` 的色板格子
+        ``down ? 0.88 : 1``）。缩放轴也从 hover 挪到了 down。 */
+    readonly property real dockJumpItemPressedScale: 0.96
+    /*! **当前页**：L1 是「2px accent 描边」，项目里笔选单的选中也是描环
+        （``PenPaletteCard`` 的 ``dockSwatchRing``）—— 描边**留着**，那是被认可的
+        形态的一部分。Fluent 化补的是**淡底**（AccentFill 的 Subtle 一档）：
+        描边负责「定位到哪一页」，淡底负责「它在这儿」，两层各干一件事。
+        ⚠️ 别把描边换成 accent 实底（前一版试过，说「不像」）。 */
+    readonly property color dockJumpCurrentFill: fade(accent, 0.16)
+    readonly property color dockJumpCurrentBorder: accent
+    readonly property int dockJumpCurrentBorderWidth: 2
+    /*! 页码字号（L1 ``font-size: 2em``，根字号 16 → 32）。 */
+    readonly property int dockJumpNumberSize: 32
+    /*! 页码字重。Fluent 字阶里 Display / Title 一律 **SemiBold**（600）而不是
+        Bold：32px 的粗体压在缩略图上已经够重，600 更精致。 */
+    readonly property int dockJumpNumberWeight: Font.DemiBold
+    readonly property color dockJumpNumberColor: "#FFFFFF"
+    /*! 页码的「文字阴影」：L1 用 text-shadow，QML 侧用同一串文字错位 1px 画一遍
+        （见组件）。这一档是那层影子的不透明度。 */
+    readonly property real dockJumpNumberShadowOpacity: 0.5
+    /*! 面板底色 = Fluent ``SolidBackgroundFillColorBase``（深 #202020 / 浅
+        #F3F3F3）。
+
+        ⚠️ 不是 ``Lumi.surfaceBg``（那是 ``backgroundAcrylicColor``，名字带
+        Acrylic，深色档其实也是实色 #2C2C2C，只是**比 Fluent 的实色浅一档**）；
+        也不是 L1 那种随手取的 ``var(--overlay-popup-bg)``。主题里这一档就是
+        「实心表面」，而 L1 深色档的 ``popup_bg`` 恰好也是 #202020 —— 两者天然
+        对齐。透出放映画面会让缩略图糊成一片，所以坚持实底。 */
+    readonly property color dockJumpBg: themeColors
+        ? themeColors.backgroundColor : "#202020"
+    /*! 面板描边 = **RinUI 的表面描边**（``windowBorderColor``，启动画面卡片
+        同一档），不是 ``hairline``。
+
+        区别值得记一笔：``hairline`` 是 ``dividerBorderColor``，Fluent 里那是
+        **分隔线**用的；面板是「独立表面」，对应 ControlStroke —— 后者才是绕着
+        一整块面走的那圈线。⚠️ 更别用 ``cardBorderColor``：深色下它是黑 10%，
+        压在深色面板上等于没有（``Lumi.hairline`` 的头注释记着这个坑）。 */
+    readonly property color dockJumpBorder: themeColors
+        ? themeColors.windowBorderColor : "#12FFFFFF"
+    /*! 滚动条：Fluent 的**细滚动条**是「常态 2px、悬停加粗」，颜色中性。
+        L1 用的是 accent —— 那是 L1 自己 CSS 变量映射的选择，WinUI 的 ScrollBar
+        常态本来就不是强调色。宽度取主题的 ``scrollBarMinWidth`` /
+        ``scrollBarWidth``，别再手写 3px。 */
+    /*! 滑块**中心线**离内容右缘多少。WinUI 的 ScrollBar：轨道 ``scrollBarWidth``
+        (6) + ``scrollBarPadding`` (3)，滑块常态 ``scrollBarMinWidth`` (2) 居中
+        → 差不多 4px。
+
+        ⚠️ 第一版按「面板内边距的一半」算，滑块于是悬在面板与卡片之间**两边不靠**，
+        看着像一根多余的竖线（2026-10-06 用户报「滚动条」）。贴内容才像 WinUI。 */
+    readonly property int dockJumpScrollInset: 4
+    readonly property int dockJumpScrollWidth:
+        (themeAppearance ? themeAppearance.scrollBarMinWidth : 2)
+    readonly property int dockJumpScrollWidthHover:
+        (themeAppearance ? themeAppearance.scrollBarWidth : 6)
+    /*! 常态再淡一档：WinUI 的细滚动条平时几乎看不见，鼠标进来才显形。 */
+    readonly property color dockJumpScrollThumb: fade(textPrimary, 0.22)
+    readonly property color dockJumpScrollThumbHover: fade(textPrimary, 0.45)
+    /*! 进场时长 / 曲线 —— L1 ``transition: transform .4s
+        cubic-bezier(0.19, 1, 0.22, 1)``。那条曲线就是 **OutExpo**（起步极快、
+        尾巴很长），QML 里有同名的 ``Easing.OutExpo``，直接用，别自己拟合贝塞尔。 */
+    readonly property int dockJumpEnterDuration: 400
+    readonly property int dockJumpFadeDuration: durationFast
+
     // ================================================================== 快捷面板
     //
     // 版式对齐 **Class Widgets 2** 的托盘面板（`Windows/TrayPanel.qml` +
@@ -575,6 +691,24 @@ QtObject {
     /*! 底部渐隐高度（L1 ``.about-header::after`` 的 100）。 */
     readonly property int aboutHeroFade: 100
     readonly property int aboutLogoSize: 248
+
+    /*! 英雄区**右下角**的署名字标（``design_by_yunofactory.svg`` 那份
+        「DESIGN BY + YUNOFACTORY」锁定版式）—— 与 Logo 同一套「混色」剪影，
+        只是没有光晕与投影（见 ``GlassLogo.qml`` 的 ``glowEnabled``）。
+
+        ⚠️ 尺寸是**字标本体**的量级，不是一块主视觉：150 宽时下面那行
+        YUNOFACTORY 字高 ≈ 17，顶上那行 DESIGN BY 只剩 ~3px —— 它是落款里的
+        小字，读作一道细纹而不是一行可读文本。2026-10-05 第一版给到 220
+        （字高 24），用户反馈「太大了」，同时明确**不要**为了让它可读而把
+        DESIGN BY 裁掉。想要那行小字真能读，字标得放到 270 以上 —— 那时它已经
+        压到中间那个 248 的 Logo 了，摆不下。
+
+        高度不写死，由 ``aboutCreditsAspect`` 现算，免得把字标拉变形。 */
+    readonly property int aboutCreditsWidth: 150
+    readonly property int aboutCreditsMargin: 20
+    /*! 字标素材 ``resources/design_by_yunofactory.svg`` 的宽高比（4687 : 734）。
+        ⚠️ 换素材这个数要跟着改 —— 写错的症状是字标被拉扁/拉长，预览图上不显眼。 */
+    readonly property real aboutCreditsAspect: 4687 / 734
 
     /*! 窗口/页面基色 —— RinUI ``FluentWindowBase`` 在没有 backdrop 时就是用
         ``colors.backgroundColor`` 铺底（``app.backdrop`` 默认 "none"）。 */

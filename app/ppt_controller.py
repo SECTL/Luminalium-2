@@ -1072,6 +1072,62 @@ class _ComBackend:
             log.debug("退出放映失败", exc_info=True)
             return False
 
+    def _presentation(self):
+        """取**放映中**那份演示文稿对象（Luminalium 1 同款的两级回退）。
+
+        先从**放映窗口**的 ``Presentation`` 拿（放映态下它才是权威的那一份），
+        拿不到再退 ``Application.ActivePresentation``。两条都可能抛
+        ``AttributeError``（动态绑定下属性不一定存在），所以逐条吞异常。
+        """
+        for source in (self._slideshow_window(), self._attached()):
+            if source is None:
+                continue
+            try:
+                presentation = getattr(source, "Presentation", None)
+            except Exception:
+                continue
+            if presentation is not None:
+                return presentation
+        app = self._attached()
+        if app is not None:
+            try:
+                return app.ActivePresentation
+            except Exception:
+                pass
+        return None
+
+    def export_slide(self, index: int, path: str, width: int, height: int) -> bool:
+        """把第 ``index`` 页（**1-based**）导出成 PNG 写到 ``path``。
+
+        这是 Luminalium 1 ``export_slide_thumbnail`` 的核心那一行：::
+
+            pres.Slides(index).Export(path, "PNG", 320, 180)
+
+        ⚠️ 这是**唯一**能拿到任意页画面的通道（L2 的 COM 只读页码与总页数）。
+        一次调用约几十毫秒，且必须排在 COM 线程里做 —— 调用方（
+        ``app/slide_thumbs.py``）按 500ms 一格节流，别在这儿加并发。
+        导出尺寸由**调用方**给（那是显示尺寸决定的，不归这里管）。
+        失败只记 debug：拿不到图时面板显示空卡片，这不是故障。
+        """
+        try:
+            index = int(index)
+            width = max(1, int(width))
+            height = max(1, int(height))
+        except (TypeError, ValueError):
+            return False
+        if index < 1:
+            return False
+        presentation = self._presentation()
+        if presentation is None:
+            log.debug("导出缩略图：取不到演示文稿对象（第 %d 页）", index)
+            return False
+        try:
+            presentation.Slides(index).Export(str(path), "PNG", width, height)
+            return True
+        except Exception:
+            log.debug("导出第 %d 页缩略图失败", index, exc_info=True)
+            return False
+
     def set_pointer(self, pointer_type: int, hwnd: int = 0) -> bool:
         """切换放映指针（笔 / 橡皮 / 箭头）。
 
@@ -1438,6 +1494,8 @@ class _ComThread(QThread):
     COM 卡住只退化成「页码 0/0 + 翻页走键盘回退」，而且看护逻辑会把它明确写进日志。
     """
 
+    thumbnailReady = Signal(int, str)  # (页码 1-based, 导出的 PNG 路径)
+
     def __init__(self, interval_ms: int = 800, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._interval_ms = max(300, int(interval_ms))
@@ -1610,10 +1668,15 @@ class _ComThread(QThread):
             # 命令执行完立刻刷一次，页码不必再等一个周期。
             # 用轻量刷新：命令（尤其是翻页）后页码要马上跟上手势，但诊断字段
             # 可以晚一拍 —— 两次跨进程诊断读会把「点击 → 页码更新」拉长成几百毫秒。
-            try:
-                self._refresh_snapshot(light=True)
-            except Exception:  # pragma: no cover
-                pass
+            #
+            # ⚠️ ``export`` 例外：缩略图是一串后台任务（几十条连着投进来），
+            #    每条后面都跟一次跨进程页码读纯属浪费，还会让「补图」这段路
+            #    把 COM 线程占得更久。Luminalium 1 也是导出走独立队列、不碰页码。
+            if name != "export":
+                try:
+                    self._refresh_snapshot(light=True)
+                except Exception:  # pragma: no cover
+                    pass
 
     # 命令实现（只在 COM 线程被调用）
 
@@ -1631,6 +1694,16 @@ class _ComThread(QThread):
     def _cmd_goto(self, hwnd: int, index: int) -> None:
         if not self._com.goto_slide(index):
             log.info("跳转页码失败，目标 %s", index)
+
+    def _cmd_export(self, index: int, path: str, width: int, height: int) -> None:
+        """导出一页缩略图（页码快速跳转面板用）。
+
+        ⚠️ **成败都发信号**：失败时把路径发成空串。只发成功的话调用方分不清
+        「还在路上」和「这辈子都不会来」—— 那一页会永远空着（见
+        ``slide_thumbs.SlideThumbCache._on_ready``，它靠空串决定「要不要重试」）。
+        """
+        got = self._com.export_slide(index, path, width, height)
+        self.thumbnailReady.emit(int(index), str(path) if got else "")
 
     def _cmd_exit(self, hwnd: int, keep_ink: bool = False, kind: str = "") -> None:
         """退出放映。``keep_ink`` 为真时先把墨迹「留下」再退（L1 的保留墨迹语义）。
@@ -1926,6 +1999,11 @@ class PptController(QObject):
     """
 
     stateChanged = Signal(object)  # PresentationState（在主线程发出）
+    #: 一页缩略图导出**结束**：``(页码 1-based, 写好的 PNG 绝对路径)``。
+    #: 由 :meth:`export_slide_thumbnail` 的调用方接（见 ``app/slide_thumbs.py``）。
+    #: ⚠️ 失败时路径是**空串**（不是不发信号）—— 调用方据此区分「还在路上」与
+    #: 「这次没成」，然后决定要不要重试。
+    thumbnailReady = Signal(int, str)
 
     def __init__(
         self,
@@ -1938,6 +2016,7 @@ class PptController(QObject):
         self._com = _ComThread(max(450, int(interval_ms * 1.5)), self)
         self._thread = _ProbeThread(interval_ms, self._com, self)
         self._thread.stateReady.connect(self._on_state_ready)
+        self._com.thumbnailReady.connect(self.thumbnailReady)
         self._watchdog = QTimer(self)
         self._watchdog.setInterval(WATCHDOG_INTERVAL_MS)
         self._watchdog.timeout.connect(self._on_watchdog)
@@ -2241,6 +2320,17 @@ class PptController(QObject):
 
     def goto_slide(self, index: int, hwnd: int = 0) -> bool:
         self._com.request("goto", int(hwnd or 0), int(index))
+        return True
+
+    def export_slide_thumbnail(
+        self, index: int, path: str, width: int, height: int
+    ) -> bool:
+        """投递一页缩略图的导出（**异步**），完成后发 :attr:`thumbnailReady`。
+
+        只是投进 COM 线程的队列，立即返回 —— 调用方（``app/slide_thumbs.py``）
+        负责节流与排队。导出尺寸由调用方给（它才知道显示尺寸）。
+        """
+        self._com.request("export", int(index), str(path), int(width), int(height))
         return True
 
     def exit_slideshow(self, hwnd: int = 0) -> bool:

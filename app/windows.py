@@ -4,9 +4,15 @@
 :class:`~app.bridge.Backend` 暴露的配置，Python 侧不重复注入，
 避免出现两处配置来源。
 
-放映控制条（工具栏 / 翻页栏等）统一托管在**一个全屏置顶的顶层窗口**
+放映控制条（工具栏 / 翻页栏等）统一托管在**一个置顶的顶层窗口**
 （``ui/presentation/TopWindow.qml``）里：窗口整窗鼠标/触摸穿透，
 仅当光标落在某个控制条表面矩形内时临时收回穿透，让工具栏可点。
+
+----------------------------------------------------------------------
+2026-10-06 起这层遮罩还会**跟着放映窗口走**（``_watch_overlay``，200ms 一拍）：
+铺开的大小 / 位置取放映窗口的矩形（全屏放映即整屏），放映窗口不在前台时
+把控制条淡出、切回来再淡入 —— 见 ``_apply_overlay_geometry`` 与
+``_set_overlay_suppressed``。
 
 ----------------------------------------------------------------------
 自管窗口（设置 / 调试 / 编辑器 / 插件窗口）约定（2026-10-05）：
@@ -508,6 +514,70 @@ def monitor_rect_for_window(hwnd: int) -> Optional[tuple[int, int, int, int]]:
         return None
 
 
+#: 「这个放映窗口就是全屏」的面积比阈值（2026-10-06，遮罩跟随放映窗口用）。
+#: 到比例就直接取**显示器矩形**：全屏放映窗口常带一圈不可见边框，
+#: ``GetWindowRect`` 会大出（或小掉）几个像素，照抄会让贴边距离静默偏掉。
+FULLSCREEN_SNAP_RATIO = 0.97
+
+#: 「快速切页面板点外部收起」的判定余量（逻辑像素）。面板贴屏幕边时，光标压在
+#: 它的边缘上稍微抖一下就会被判成「出去了」→ 面板一闪一闪。四边各放这么宽。
+JUMP_DISMISS_SLACK = 6
+
+
+def _window_pid(hwnd: int) -> int:
+    """窗口所属进程 id；取不到返回 0。"""
+    if not hwnd or not hasattr(ctypes, "windll"):
+        return 0
+    try:
+        pid = wintypes.DWORD(0)
+        ctypes.windll.user32.GetWindowThreadProcessId(
+            wintypes.HWND(hwnd), ctypes.byref(pid)
+        )
+        return int(pid.value)
+    except OSError:  # pragma: no cover
+        return 0
+
+
+def _foreground_window() -> int:
+    """当前前台窗口句柄；没有（锁屏 / 切换途中）返回 0。"""
+    if not hasattr(ctypes, "windll"):
+        return 0
+    try:
+        return int(ctypes.windll.user32.GetForegroundWindow() or 0)
+    except OSError:  # pragma: no cover
+        return 0
+
+
+def _logical_rect_from_native(screen, rect: tuple[int, int, int, int]) -> QRect:
+    """把**物理**矩形 ``(x, y, w, h)`` 换算成 ``screen`` 所属坐标系里的逻辑矩形。
+
+    直接按主屏 DPR 去除是不行的（多屏不同缩放倍率时会打偏到别的屏），
+    必须用这块屏自己的「逻辑原点 + 物理原点 + DPR」三者换算。
+    """
+    native = _native_window_rect_for(screen)
+    geometry = screen.geometry()
+    dpr = screen.devicePixelRatio() or 1.0
+    return QRect(
+        geometry.x() + int(round((rect[0] - native[0]) / dpr)),
+        geometry.y() + int(round((rect[1] - native[1]) / dpr)),
+        max(1, int(round(rect[2] / dpr))),
+        max(1, int(round(rect[3] / dpr))),
+    )
+
+
+def _native_rect_from_logical(screen, rect: QRect) -> tuple[int, int, int, int]:
+    """:func:`_logical_rect_from_native` 的逆运算（自检对照用）。"""
+    native = _native_window_rect_for(screen)
+    geometry = screen.geometry()
+    dpr = screen.devicePixelRatio() or 1.0
+    return (
+        native[0] + int(round((rect.x() - geometry.x()) * dpr)),
+        native[1] + int(round((rect.y() - geometry.y()) * dpr)),
+        int(round(rect.width() * dpr)),
+        int(round(rect.height() * dpr)),
+    )
+
+
 def _covers_monitor(hwnd: int, ratio: float = 0.9) -> bool:
     """窗口是否铺满它所在的显示器（面积占比 ≥ ``ratio``）。"""
     rect = _window_rect(hwnd)
@@ -746,6 +816,21 @@ class WindowManager(QObject):
         self._hide_timer.setSingleShot(True)
         self._hide_timer.setInterval(140)
         self._hide_timer.timeout.connect(self._maybe_hide_panel)
+
+        #: 遮罩当前实际铺开的逻辑矩形（= :meth:`_apply_overlay_geometry` 的结果，
+        #: 也是 :meth:`_position_dock` 的摆放基准）。全屏放映时等于整屏几何。
+        self._overlay_rect: Optional[QRect] = None
+        #: 遮罩当前所在的显示器 —— 逻辑↔物理换算要它自己的 DPR
+        self._overlay_screen: Optional[QScreen] = None
+        #: 是否因「放映窗口不在前台」而临时隐去（见 :meth:`_set_overlay_suppressed`）
+        self._suppressed = False
+        #: 顶层窗口「智能跟随」看护：放映窗口挪动 / 缩放 → 遮罩跟着动；
+        #: 放映窗口不在前台 → 临时隐去。一拍只做两次系统调用，代价可忽略。
+        self._watch_timer = QTimer(self)
+        self._watch_timer.setInterval(
+            max(80, int(self._config.get("presentation.follow_interval_ms", 200)))
+        )
+        self._watch_timer.timeout.connect(self._watch_overlay)
 
     # ================================================================== 装配
 
@@ -1625,9 +1710,9 @@ class WindowManager(QObject):
     # ================================================================ 顶层窗口
 
     def show_docks(self) -> None:
-        """放映开始：顶层窗口全屏铺到放映所在显示器，控制条落到各角落。
+        """放映开始：遮罩铺到放映窗口（全屏放映时即整屏），控制条落到各角落。
 
-        顺序很重要：**先定屏 → 再全屏 → 再摆控制条 → 最后才谈穿透**。
+        顺序很重要：**先定屏 → 再定几何 → 再摆控制条 → 最后才谈穿透**。
 
         2026-10-01 起没有「放映总开关」了（``presentation.enabled`` 已按用户
         指令删除）：探测到放映就显示，不再读任何开关。
@@ -1640,19 +1725,20 @@ class WindowManager(QObject):
             log.warning("找不到放映所在显示器，控制条未显示")
             return
 
-        # 先把「这只窗口属于哪块屏」告诉 Qt：多屏 / 多 DPI 时代 Window 的
-        # 逻辑↔物理换算依赖它，漏了这一步窗口可能被摆到别的屏幕上。
-        try:
-            self.overlay.setScreen(screen)
-        except Exception:  # pragma: no cover - 平台差异
-            log.debug("setScreen 失败", exc_info=True)
-        self.overlay.setGeometry(screen.geometry())
+        # 几何跟着**放映窗口**走（拿不到就退回整块显示器），见
+        # :meth:`_apply_overlay_geometry`。
+        self._apply_overlay_geometry(screen)
         for name in self._docks:
             self._position_dock(name)
 
         # 把「放映铺在哪块屏」告诉 Bridge：主界面编辑器的画布比例以它为准
         # （Bridge 自己复现不了这段判定 —— 它依赖放映窗口的**物理**显示器，
         # 见 :meth:`_presentation_screen`）。
+        #
+        # ⚠️ 这里推的仍是**整屏**几何，不是 ``_overlay_rect``：编辑器舞台是
+        # 「屏幕舞台」（1:1 屏幕坐标系 + 屏框），全屏放映时两者本来就相等；
+        # 窗口化放映时编辑器预览会比真实遮罩大一圈，这是**已知边界**，
+        # 别顺手改成 ``_overlay_rect``（会连带改掉编辑器的画布与屏框）。
         geometry = screen.geometry()
         self._backend.syncPresentationScreen(
             geometry.width(), geometry.height(), screen.name(),
@@ -1666,15 +1752,19 @@ class WindowManager(QObject):
         self._sync_input_mode()
 
         self._topmost_timer.start()
+        self._watch_timer.start()
         QTimer.singleShot(0, self.reposition_all_docks)
+        # 立刻按当前前景判一次「该不该露脸」：不走这一步的话，用户从别的
+        # 程序里用遥控器翻页触发 stateChanged 时，控制条会白亮 200ms
+        QTimer.singleShot(0, self._watch_overlay)
         # 放映窗口刚起来时会重申 z 序；等它安顿完再压一次顶并自检
         QTimer.singleShot(300, self._assert_topmost)
         QTimer.singleShot(int(self._config.get("presentation.verify_after_ms", 500)),
                           lambda: self._verify_overlay(False))
 
         log.info(
-            "顶层窗口显示于屏幕 %s（请求 geometry=%s），控制条 x%d",
-            screen.name(), screen.geometry(), len(self._docks),
+            "顶层窗口显示 屏幕 %s 遮罩=%s（显示器 %s），控制条 x%d",
+            screen.name(), self._overlay_rect, screen.geometry(), len(self._docks),
         )
 
     def toggle_docks_manual(self) -> None:
@@ -1697,13 +1787,19 @@ class WindowManager(QObject):
         """放映结束：收起顶层窗口（穿透状态复位，轮询停止）。"""
         self._hit_timer.stop()
         self._topmost_timer.stop()
+        self._watch_timer.stop()
         self._manual_shown = False
         self._below_slideshow = 0
+        # ⚠️ 必须先解除「临时隐去」：它落在 QML 的 ``suppressed`` 上，
+        # 带着它藏窗口的话，下一次 show() 出来的是**整窗透明**（看着像没显示）。
+        self._set_overlay_suppressed(False)
         if self.overlay is not None and self.overlay.isVisible():
             if self.overlay.isVisible():
                 _set_window_region(int(self.overlay.winId()), None)
             self._last_region_rects = None
             self.overlay.hide()
+        self._overlay_rect = None
+        self._overlay_screen = None
         self._click_through = True
 
     def reposition_all_docks(self) -> None:
@@ -1711,18 +1807,213 @@ class WindowManager(QObject):
             self._position_dock(name)
         self._sync_input_mode()
 
+    # ------------------------------------------------- 遮罩跟随放映窗口 / 前台
+
+    def _apply_overlay_geometry(self, screen: Optional[QScreen] = None) -> Optional[QRect]:
+        """把遮罩摆到**放映窗口**的矩形上（拿不到就退回整块显示器）。
+
+        2026-10-06 用户指令：「根据放映窗口的大小和位置自动调节遮罩总大小和
+        位置」。全屏放映时两者本就重合，但这里做了一次**吸附**：窗口面积占到
+        显示器 :data:`FULLSCREEN_SNAP_RATIO` 以上就按显示器矩形算 —— 全屏放映
+        窗口常带一圈不可见边框，``GetWindowRect`` 会大出几个像素，照抄会让贴边
+        距离静默偏掉。窗口化放映（PPT 的「观众自行浏览」、WPS 窗口放映）时
+        遮罩就贴着那个窗口。
+
+        返回实际生效的逻辑矩形，它同时是 :meth:`_position_dock` 的摆放基准。
+        """
+        if self.overlay is None:
+            return None
+        if screen is None:
+            screen = self._presentation_screen()
+        if screen is None:
+            return None
+
+        rect: Optional[QRect] = None
+        if self._config.get("presentation.follow_window_rect", True):
+            rect = self._slideshow_logical_rect(screen)
+        if rect is None or rect.width() <= 0 or rect.height() <= 0:
+            rect = QRect(screen.geometry())
+
+        # 先把「这只窗口属于哪块屏」告诉 Qt：多屏 / 多 DPI 时代 Window 的
+        # 逻辑↔物理换算依赖它，漏了这一步窗口可能被摆到别的屏幕上。
+        if self._overlay_screen is not screen:
+            try:
+                self.overlay.setScreen(screen)
+            except Exception:  # pragma: no cover - 平台差异
+                log.debug("setScreen 失败", exc_info=True)
+            self._overlay_screen = screen
+        if self.overlay.geometry() != rect:
+            self.overlay.setGeometry(rect)
+        self._overlay_rect = QRect(rect)
+        return rect
+
+    def _slideshow_native_rect(self) -> Optional[tuple[int, int, int, int]]:
+        """放映窗口的**物理**矩形 ``(x, y, w, h)``；没有放映窗口返回 None。"""
+        hwnd = int(self._ppt.state.window_handle or 0)
+        if not hwnd:
+            return None
+        window = _window_rect(hwnd)
+        if window is None or window[2] <= 0 or window[3] <= 0:
+            return None
+        monitor = monitor_rect_for_window(hwnd)
+        if monitor is None:
+            return window
+        mon_w = max(1, monitor[2] - monitor[0])
+        mon_h = max(1, monitor[3] - monitor[1])
+        if (window[2] * window[3]) / float(mon_w * mon_h) >= FULLSCREEN_SNAP_RATIO:
+            return (monitor[0], monitor[1], mon_w, mon_h)
+        # 窗口化放映：夹进它所在的显示器，别让控制条摆到屏幕外
+        left = max(monitor[0], window[0])
+        top = max(monitor[1], window[1])
+        right = min(monitor[2], window[0] + window[2])
+        bottom = min(monitor[3], window[1] + window[3])
+        if right - left <= 0 or bottom - top <= 0:
+            return window
+        return (left, top, right - left, bottom - top)
+
+    def _slideshow_logical_rect(self, screen) -> Optional[QRect]:
+        """放映窗口在 ``screen`` 坐标系里的逻辑矩形；拿不到返回 None。"""
+        native = self._slideshow_native_rect()
+        if native is None:
+            return None
+        return _logical_rect_from_native(screen, native)
+
+    def _slideshow_in_foreground(self) -> bool:
+        """放映窗口是否在前台（**拿不到放映窗口时恒为真**，宁可露着）。
+
+        判据是**进程**而不是句柄：放映时演示软件常有好几只窗口（PPT 的
+        「演示者视图」在前台、放映窗口在第二块屏上就是这种局面），只比句柄会把
+        正常的单屏 / 双屏放映误判成「用户切走了」，控制条一闪一闪。
+        """
+        hwnd = int(self._ppt.state.window_handle or 0)
+        if not hwnd:
+            return True
+        foreground = _foreground_window()
+        if not foreground:
+            return False              # 锁屏 / 切换途中：此刻隐去最不打扰
+        if foreground == hwnd:
+            return True
+        pid = _window_pid(hwnd)
+        return bool(pid) and pid == _window_pid(foreground)
+
+    def _watch_overlay(self) -> None:
+        """顶层窗口看护（``presentation.follow_interval_ms`` 一拍）。
+
+        两件事：放映窗口挪动 / 缩放了 → 遮罩跟着走；放映窗口不在前台了 →
+        临时隐去。以前这里什么都没有，遮罩在放映开始那一刻定死，用户把放映
+        窗口拖动 / 从全屏切到窗口化之后，控制条就留在原地不跟了。
+        """
+        if self.overlay is None or not self.overlay.isVisible():
+            return
+        if self._config.get("presentation.follow_window_rect", True):
+            before = self._overlay_rect
+            after = self._apply_overlay_geometry()
+            if before != after:
+                # 尺寸 / 原点一变，控制条的**局部**坐标全变了：区域塑形的矩形集
+                # 也必须整份重算（短路判据是按 rects 逐项比的，留着旧的就停在
+                # 旧位置：「看不见的控制条」正是这么来的）。
+                self._last_region_rects = None
+                for name in self._docks:
+                    self._position_dock(name)
+                self._sync_input_mode()
+        # 快速切页面板的「点外部收起」—— 见 _dismiss_jump_panels。
+        # ⚠️ 必须放在下面 ``_manual_shown`` 的提前 return **之前**：手动显示
+        #    （托盘菜单叫出控制条）时这条路径会被跳过，面板就再也收不掉了。
+        self._dismiss_jump_panels()
+        # 手动显示（托盘菜单）时不隐去：那条路径本来就没有放映窗口可依，
+        # 而且用户刚点完托盘菜单，前台窗口是开始菜单 / 托盘，隐去等于白点。
+        if self._manual_shown:
+            return
+        if self._config.get("presentation.follow_foreground", True):
+            self._set_overlay_suppressed(not self._slideshow_in_foreground())
+
+    def _dismiss_jump_panels(self) -> None:
+        """光标移出控制条 → 收起「快速切页面板」（= 点外部收起）。
+
+        QML 侧**收不到**「面板以外」的点击：区域塑形模式下那些地方是系统级穿透的
+        （``WS_EX_TRANSPARENT``），事件根本进不了这个进程 —— 挂多少个 MouseArea
+        都白搭。所以判据只能在 Python 侧用光标位置做，而这个看护本来
+        （``_watch_overlay``，200ms 一拍）就在跑，搭车判断不必另开定时器。
+
+        判据是控制条的 ``interactiveRect`` —— 它**已经把面板自己算进去了**
+        （见 ``PresentationDock.interactiveRect`` / ``SidePager.interactiveRect``），
+        所以光标落在面板上时仍算「里面」，不会自己把自己关掉。四边各放
+        ``_JUMP_DISMISS_SLACK`` 的余量：面板贴边时，光标压在边缘上抖一帧就收
+        会很烦。"""
+        if self._suppressed:
+            # 临时隐去期间内容本来就看不见（容器淡成 0），不必管；
+            # 恢复显示时会重新判一次
+            return
+        if self.overlay is None or not self.overlay.isVisible():
+            return
+        cursor = QCursor.pos()
+        for dock in self._docks.values():
+            try:
+                opened = bool(dock.property("jumpPanelOpened"))
+            except (RuntimeError, TypeError):  # pragma: no cover - 组件已释放 / 没这个属性
+                continue
+            if not opened:
+                continue
+            rect = self._dock_global_rect(dock).adjusted(
+                -JUMP_DISMISS_SLACK, -JUMP_DISMISS_SLACK,
+                JUMP_DISMISS_SLACK, JUMP_DISMISS_SLACK)
+            if not rect.contains(cursor):
+                self._close_jump_panel(dock)
+
+    def _close_jump_panel(self, dock: QQuickItem) -> None:
+        """调 QML 侧 ``closeJumpPanel()`` 收起面板。
+
+        包 try：QML 侧函数缺失 / 组件已释放只记日志 —— 这个调用点在看护定时器
+        里，抛出去会把事件循环带崩。"""
+        try:
+            QMetaObject.invokeMethod(dock, "closeJumpPanel")
+        except Exception:  # pragma: no cover - QML 侧没实现 / 对象已销毁
+            log.debug("控制条缺 closeJumpPanel()", exc_info=True)
+
+    def _set_overlay_suppressed(self, suppressed: bool) -> None:
+        """临时隐去 / 恢复遮罩（放映窗口不在前台时）。
+
+        走 QML 侧的 ``suppressed``（容器淡出）+ **整窗穿透**，而不是 ``hide()``：
+        把一只全屏分层窗口藏起来再显示会闪一帧，而这里只是「先让开」，
+        淡出更合这套 Fluent 2 的动效语言。淡出期间显式打开整窗穿透 ——
+        内容看不见了，但那几块命中区还在，不穿透的话会继续吃掉点击
+        （点别处的窗口「没反应」就是这么来的）。
+        """
+        if self.overlay is None or suppressed == self._suppressed:
+            return
+        self._suppressed = suppressed
+        try:
+            self.overlay.setProperty("suppressed", bool(suppressed))
+        except (RuntimeError, TypeError):  # pragma: no cover - 老组件没这个属性
+            log.debug("顶层窗口缺 suppressed 属性", exc_info=True)
+        if suppressed:
+            self._apply_overlay_base_styles(transparent=True)
+            self._click_through = True
+        else:
+            self._apply_overlay_base_styles(transparent=False)
+            self._last_region_rects = None
+            self._sync_input_mode()
+        log.info(
+            "顶层窗口已%s（放映窗口%s前台）",
+            "临时隐去" if suppressed else "恢复显示",
+            "不在" if suppressed else "在",
+        )
+
     def _position_dock(self, corner: str) -> None:
-        """把控制条摆到顶层窗口容器内的对应角落。
+        """把控制条摆到遮罩容器内的对应角落。
 
-        坐标是**顶层窗口局部**坐标（顶层窗口整屏铺在放映所在显示器，
-        原点 = screen geometry 左上角）。
+        坐标是**遮罩局部**坐标 —— 遮罩铺在放映窗口上（``_overlay_rect``），
+        全屏放映时它就是整屏矩形。
 
-        ⚠️ 基准必须是**整屏几何** ``screen.geometry()``，不能用
+        ⚠️ 基准必须是 ``_overlay_rect``（= 放映窗口 / 整屏矩形），不能用
         ``availableGeometry()``（避开任务栏的工作区）—— 放映时任务栏被放映窗口
         整个盖住，用户眼里的基准就是屏幕边缘，而 Windows 的「工作区」在任务栏
         被盖住时**照样把它算掉**：本机实测下边比屏幕下边高 48px，于是
         「左右 20px 正常、纵向变成 68px」。Luminalium 1 也是按整屏算的
         （overlay 窗口铺满整屏 + ``bottom: 20px``）。
+
+        窗口化放映时基准自然变成那个窗口的矩形 —— ``margin_*`` 也就成了
+        「距放映窗口边缘」的距离，这正是「遮罩跟着放映窗口走」该有的样子。
 
         控制条 Item 自带投影余量（shadowMargin），而 ``margin_x`` / ``margin_y``
         的语义是**视觉距离** —— 屏幕底板边缘到屏幕边缘的距离（对齐 Luminalium 1
@@ -1744,11 +2035,13 @@ class WindowManager(QObject):
         except TypeError:  # pragma: no cover - 属性尚未就绪
             shadow = 0
 
-        screen = self._presentation_screen()
-        if screen is None:
-            return
-        geom = screen.geometry()
-        width, height = geom.width(), geom.height()
+        base = self._overlay_rect
+        if base is None or base.width() <= 0 or base.height() <= 0:
+            screen = self._presentation_screen()
+            if screen is None:
+                return
+            base = screen.geometry()
+        width, height = base.width(), base.height()
 
         if horizontal == "left":
             x = margin_x - shadow
@@ -1946,6 +2239,10 @@ class WindowManager(QObject):
             return
         if self.overlay is None or not self.overlay.isVisible():
             return
+        # 临时隐去期间保持整窗穿透：控制条只是**淡成 0**，``isVisible()`` 仍是
+        # True、命中矩形也都还在 —— 这里一放行，那块看不见的条又开始吃点击
+        if self._suppressed:
+            return
         cursor = pos if pos is not None else QCursor.pos()
         hit = False
         for dock in self._docks.values():
@@ -2072,6 +2369,11 @@ class WindowManager(QObject):
         """选择穿透方案：区域塑形优先，失败才退回轮询改样式。"""
         if self.overlay is None or not self.overlay.isVisible():
             return
+        if self._suppressed:
+            # 临时隐去期间只保证「整窗穿透」，不碰区域：``_assert_topmost``
+            # 每 800ms 会走到这里一次，不设这道闸它会把穿透位收回去
+            self._apply_overlay_base_styles(transparent=True)
+            return
         scale = self._update_overlay_region()
         if scale is not None:
             if not self._region_mode:
@@ -2120,7 +2422,9 @@ class WindowManager(QObject):
             f"cloaked={cloaked} region={region} 区域塑形={self._region_mode} "
             f"above_slideshow={above} (slideshow=0x{slideshow:08X}) "
             f"上方TOPMOST={self._visible_topmost_above() or '无'} "
-            f"显示过={self._overlay_ever_shown} 手动={self._manual_shown}"
+            f"显示过={self._overlay_ever_shown} 手动={self._manual_shown} "
+            f"遮罩={self._overlay_rect} 临时隐去={self._suppressed} "
+            f"放映窗口前台={self._slideshow_in_foreground()}"
         )
 
     def overlay_hint(self) -> str:
@@ -2132,6 +2436,9 @@ class WindowManager(QObject):
                 return ("顶层窗口从未显示过（Win32 矩形仍是 Qt 默认 160x160）——"
                         "探测没有进入放映态，先看上面有没有「放映开始」")
             return "顶层窗口当前处于隐藏状态（未检测到放映）"
+        if self._suppressed:
+            return ("顶层窗口因**放映窗口不在前台**而临时隐去（这是设计行为，"
+                    "切回放映窗口即自动恢复；想关掉就把 presentation.follow_foreground 设为 false）")
         if self._below_slideshow >= 3:
             return "顶层窗口被放映窗口压住了，且重申置顶无效（见上面的 z 序告警）"
         cloaked = _dwm_cloaked(int(self.overlay.winId()))
@@ -2140,6 +2447,22 @@ class WindowManager(QObject):
         return "顶层窗口已显示且未被压住；若屏幕上看不到，属于该屏/演示程序的呈现限制"
 
     def _expected_native_rect(self) -> Optional[tuple[int, int, int, int]]:
+        """遮罩**应该**落在的物理矩形（对照实际窗口用）。
+
+        基准是**放映窗口**而不是显示器 —— 窗口化放映时两者本来就不是一回事，
+        拿显示器当期望值会判成「位置不对」再纠正回去。
+
+        ⚠️ 每次**现读**放映窗口，不要用 ``_overlay_rect`` 那份最多 200ms 前的
+        缓存：``_verify_overlay`` 一旦发现不符就 ``SetWindowPos`` 硬纠正，用缓存
+        的话用户拖放映窗口时会被 800ms 一拍的纠正**拽回旧位置**、再由看护拉回来，
+        一路抖。
+        """
+        if self._config.get("presentation.follow_window_rect", True):
+            native = self._slideshow_native_rect()
+            if native is not None:
+                return native
+        if self._overlay_rect is not None and self._overlay_screen is not None:
+            return _native_rect_from_logical(self._overlay_screen, self._overlay_rect)
         screen = self._presentation_screen()
         return _native_window_rect_for(screen) if screen is not None else None
 

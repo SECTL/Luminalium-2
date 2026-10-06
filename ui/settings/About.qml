@@ -84,6 +84,10 @@ import Luminalium
       ⚠️ L1 的 ``backdrop-filter`` 是**空转**的（CSS 的 Backdrop Root 规则，
       已实测只有 3/255 的差别），所以这里没有采背景那一层，细节见组件头注释。
 
+    同一套「混色」还被复用到右下角的 YUNOFACTORY 字标上（2026-10-05 用户指令，
+    见 ``aboutCredits``）—— ``GlassLogo`` 与「Logo」其实无关，它做的就是「一堆
+    半透明白渐变按单色剪影蒙形」，换成字标素材、关掉光晕与投影就是一份落款。
+
     ⚠️ 英雄区**没有**走 ``FluentPage.contentHeader``。那个槽名义上是「页面级
     全宽」的，但实测（2026-10-01，``page_About`` 用红底试色）Item 会被塞进内容
     列 ``container``，宽度受 ``horizontalPadding`` 夹到 846 并居中 —— 与普通
@@ -183,6 +187,39 @@ Rin.FluentPage {
             height: Lumi.aboutLogoSize
             maskUrl: Backend.resourceFile("logo_grayscale.svg")
         }
+
+        /*! 右下角的 YUNOFACTORY 署名字标（2026-10-05 用户指令）。
+
+            **同一套「混色」**：还是 ``GlassLogo`` —— 两层半透明白渐变按剪影蒙出
+            字标、叠在流光上（不是拿 ``Image`` 直接画一份实色 SVG，那样在深色底
+            上就是一块死白）。区别只有两点：
+
+            * ``glowEnabled`` / ``shadowEnabled`` 都关掉。那两层的模糊半径
+              （22 / 28）是给 248 的 Logo 配的，压在 150×23 的字标上只会糊成一
+              团；更要紧的是它们的容器四周要外撑 3σ（≈ 42px），而英雄区底部只留
+              20 的边距 —— 辉光会**越过卡片的圆角**洒到页面上，卡片的边就没了。
+            * ``layerPrefix`` 换成 ``aboutCredits``：两个实例内部的 ``objectName``
+              本来一模一样，重名之后自检按名字找「Logo 四层」会翻到字标那四层上
+              去 —— 找得到，但量的是别人。
+
+            素材直接用原文件 ``design_by_yunofactory.svg``（「DESIGN BY + 大字标」
+            的完整锁定版式），**不裁**：2026-10-05 第一版为了让它可读，把顶上那行
+            DESIGN BY 裁掉了，用户明确要求保留 —— 落款就该是完整的那一份，那行小字
+            在那个尺寸下本来也只是道细纹。 */
+
+        /*! 尺寸见 ``Lumi.aboutCreditsWidth`` 上方的说明（150 宽 ≈ 英雄区的 19%）。 */
+        GlassLogo {
+            objectName: "aboutCredits"
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: Lumi.aboutCreditsMargin
+            width: Lumi.aboutCreditsWidth
+            height: width / Lumi.aboutCreditsAspect
+            layerPrefix: "aboutCredits"
+            glowEnabled: false
+            shadowEnabled: false
+            maskUrl: Backend.resourceFile("design_by_yunofactory.svg")
+        }
     }
 
     /*! 分组小标题：与「通用」「主界面」等页同一层级（``BodyStrong``）。
@@ -210,7 +247,7 @@ Rin.FluentPage {
         icon.size: 28
 
         title: Backend.appName
-        description: qsTr("© 2025-2026 Seirai Haraguchi / @SECTL Studio")
+        description: qsTr("© 2025-2026 Seirai Haraguchi, YUNOFACTORY & SECTL Studio")
                      + "\n" + qsTr("本程序基于 MIT License 获得许可")
 
         /*! 头部右栏：渠道徽章 + 版本行（对应 CW2 的渠道徽章 + 版本）。

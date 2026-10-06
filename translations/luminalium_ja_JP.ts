@@ -4,133 +4,137 @@
 <context>
     <name>About</name>
     <message>
-        <location filename="../ui/settings/About.qml" line="193"/>
+        <location filename="../ui/settings/About.qml" line="230"/>
         <source>关于</source>
         <translation>バージョン情報</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="213"/>
         <source>© 2025-2026 Seirai Haraguchi / @SECTL Studio</source>
-        <translation>© 2025-2026 Seirai Haraguchi / @SECTL Studio</translation>
+        <translation type="vanished">© 2025-2026 Seirai Haraguchi / @SECTL Studio</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="214"/>
+        <location filename="../ui/settings/About.qml" line="251"/>
         <source>本程序基于 MIT License 获得许可</source>
         <translation>本ソフトウェアは MIT License の下で提供されています</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="231"/>
+        <location filename="../ui/settings/About.qml" line="268"/>
         <source>（Codename %1）</source>
         <translation>（コードネーム %1）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="240"/>
+        <location filename="../ui/settings/About.qml" line="277"/>
         <source>查看本仓库</source>
         <translation>リポジトリを表示</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="258"/>
+        <location filename="../ui/settings/About.qml" line="295"/>
         <source>反馈问题或功能建议</source>
         <translation>問題の報告・機能の提案</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="259"/>
+        <location filename="../ui/settings/About.qml" line="296"/>
         <source>在 GitHub 上提交 Issue</source>
         <translation>GitHub で Issue を作成</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="284"/>
+        <location filename="../ui/settings/About.qml" line="321"/>
         <source>依赖与参考</source>
         <translation>依存ライブラリと参考</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="293"/>
+        <location filename="../ui/settings/About.qml" line="330"/>
         <source>Qt &amp; Qt Quick</source>
         <translation>Qt &amp; Qt Quick</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="298"/>
+        <location filename="../ui/settings/About.qml" line="335"/>
         <source>Qt for Python（PySide6）</source>
         <translation>Qt for Python（PySide6）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="303"/>
+        <location filename="../ui/settings/About.qml" line="340"/>
         <source>Fluent Design System</source>
         <translation>Fluent Design System</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="308"/>
+        <location filename="../ui/settings/About.qml" line="345"/>
         <source>RinUI</source>
         <translation>RinUI</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="313"/>
+        <location filename="../ui/settings/About.qml" line="350"/>
         <source>pywin32</source>
         <translation>pywin32</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="553"/>
+        <location filename="../ui/settings/About.qml" line="590"/>
         <source>诊断信息</source>
         <translation>診断情報</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="343"/>
+        <location filename="../ui/settings/About.qml" line="380"/>
         <source>查看诊断信息</source>
         <translation>診断情報を表示</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="344"/>
+        <location filename="../ui/settings/About.qml" line="250"/>
+        <source>© 2025-2026 Seirai Haraguchi, YUNOFACTORY &amp; SECTL Studio</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/About.qml" line="381"/>
         <source>用于排查问题；分享前请检查其中包含的路径等信息</source>
         <translation>問題の調査用です。共有する前に、含まれているパスなどの情報を確認してください</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="403"/>
+        <location filename="../ui/settings/About.qml" line="440"/>
         <source>点击卡片获取回声洞句子</source>
         <translation>カードをクリックしてエコーケイブの一文を取得</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="405"/>
+        <location filename="../ui/settings/About.qml" line="442"/>
         <source>获取中...</source>
         <translation>取得中...</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="407"/>
+        <location filename="../ui/settings/About.qml" line="444"/>
         <source>暂无回声洞</source>
         <translation>エコーケイブはありません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="409"/>
+        <location filename="../ui/settings/About.qml" line="446"/>
         <source>获取失败，请稍后重试</source>
         <translation>取得に失敗しました。しばらくしてから再試行してください</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="458"/>
+        <location filename="../ui/settings/About.qml" line="495"/>
         <source>回声洞</source>
         <translation>エコーケイブ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="487"/>
-        <location filename="../ui/settings/About.qml" line="719"/>
+        <location filename="../ui/settings/About.qml" line="524"/>
+        <location filename="../ui/settings/About.qml" line="756"/>
         <source>已复制</source>
         <translation>コピーしました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="487"/>
+        <location filename="../ui/settings/About.qml" line="524"/>
         <source>复制</source>
         <translation>コピー</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="666"/>
+        <location filename="../ui/settings/About.qml" line="703"/>
         <source>加载中...</source>
         <translation>読み込み中...</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="710"/>
+        <location filename="../ui/settings/About.qml" line="747"/>
         <source>关闭</source>
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="719"/>
+        <location filename="../ui/settings/About.qml" line="756"/>
         <source>复制全部</source>
         <translation>すべてコピー</translation>
     </message>
@@ -329,73 +333,103 @@
     <message>
         <location filename="../ui/settings/Home.qml" line="128"/>
         <source>警告</source>
-        <translation type="unfinished"></translation>
+        <translation>警告</translation>
     </message>
     <message>
         <location filename="../ui/settings/Home.qml" line="129"/>
         <source>当前版本仍在测试中，可能包含错误或未完成的功能。欢迎到 &lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; 上提交 Issue。</source>
-        <translation type="unfinished"></translation>
+        <translation>現在のバージョンはまだテスト中のため、不具合や未実装の機能が含まれる可能性があります。&lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; への Issue 報告を歓迎します。</translation>
     </message>
     <message>
         <location filename="../ui/settings/Home.qml" line="143"/>
         <source>GitHub</source>
-        <translation type="unfinished"></translation>
+        <translation>GitHub</translation>
     </message>
     <message>
         <location filename="../ui/settings/Home.qml" line="148"/>
         <source>反馈问题或功能建议</source>
-        <translation type="unfinished">問題の報告・機能の提案</translation>
+        <translation>問題の報告・機能の提案</translation>
     </message>
 </context>
 <context>
     <name>Index</name>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="39"/>
+        <location filename="../ui/settings/General/Index.qml" line="44"/>
         <source>通用</source>
         <translation>全般</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="49"/>
+        <location filename="../ui/settings/General/Index.qml" line="54"/>
         <source>启动</source>
         <translation>スタートアップ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="56"/>
+        <location filename="../ui/settings/General/Index.qml" line="61"/>
         <source>开机自启</source>
         <translation>スタートアップ時に起動</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="57"/>
+        <location filename="../ui/settings/General/Index.qml" line="62"/>
         <source>登录系统后自动启动 Luminalium</source>
         <translation>サインイン後に Luminalium を自動的に起動します</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="86"/>
+        <location filename="../ui/settings/General/Index.qml" line="97"/>
+        <source>外观</source>
+        <translation type="unfinished">外観</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="104"/>
+        <source>应用主题</source>
+        <translation type="unfinished">アプリのテーマ</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="105"/>
+        <source>影响所有窗口与控件的取色</source>
+        <translation type="unfinished">すべてのウィンドウとコントロールの配色に影響します</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="110"/>
+        <source>跟随系统</source>
+        <translation type="unfinished">システムに従う</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="110"/>
+        <source>浅色</source>
+        <translation type="unfinished">ライト</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="110"/>
+        <source>深色</source>
+        <translation type="unfinished">ダーク</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="125"/>
         <source>快捷面板</source>
         <translation>クイックパネル</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="91"/>
+        <location filename="../ui/settings/General/Index.qml" line="130"/>
         <source>快捷方式锁定</source>
         <translation>ショートカットのロック</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="92"/>
+        <location filename="../ui/settings/General/Index.qml" line="131"/>
         <source>锁定后面板上的「编辑」按钮消失，防止误改</source>
         <translation>ロックするとパネルの「編集」ボタンが消え、誤操作を防げます</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="111"/>
+        <location filename="../ui/settings/General/Index.qml" line="153"/>
         <source>语言</source>
         <translation>言語</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="117"/>
+        <location filename="../ui/settings/General/Index.qml" line="159"/>
         <source>界面语言</source>
         <translation>UI 言語</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="118"/>
+        <location filename="../ui/settings/General/Index.qml" line="160"/>
         <source>切换后需要重新加载应用</source>
         <translation>変更後、アプリの再起動が必要です</translation>
     </message>
@@ -450,62 +484,62 @@
         <translation>水平マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="164"/>
-        <source>控制条距屏幕左右边缘的距离</source>
-        <translation>コントロールバーと画面の左右の端との距離</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="167"/>
+        <source>控制条距放映窗口左右边缘的距离（全屏放映时即屏幕边缘）</source>
+        <translation>コントロールバーとスライドショーウィンドウの左右の端との距離（全画面表示のときは画面の端）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="185"/>
+        <location filename="../ui/settings/MainInterface.qml" line="188"/>
         <source>垂直边距</source>
         <translation>垂直マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="186"/>
-        <source>控制条距屏幕上下边缘的距离，以整屏边缘为准</source>
-        <translation>コントロールバーと画面の上下の端との距離（画面全体の端が基準）</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="190"/>
+        <source>控制条距放映窗口上下边缘的距离（全屏放映时即屏幕边缘）</source>
+        <translation>コントロールバーとスライドショーウィンドウの上下の端との距離（全画面表示のときは画面の端）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="205"/>
+        <location filename="../ui/settings/MainInterface.qml" line="209"/>
         <source>目标显示器</source>
         <translation>対象ディスプレイ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="206"/>
+        <location filename="../ui/settings/MainInterface.qml" line="210"/>
         <source>控制条跟着放映窗口走，还是固定在主显示器上</source>
         <translation>コントロールバーをスライドショーウィンドウに追従させるか、メインディスプレイに固定するか</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="211"/>
+        <location filename="../ui/settings/MainInterface.qml" line="215"/>
         <source>跟随放映窗口</source>
         <translation>スライドショーに追従</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="211"/>
+        <location filename="../ui/settings/MainInterface.qml" line="215"/>
         <source>主显示器</source>
         <translation>メインディスプレイ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="222"/>
+        <location filename="../ui/settings/MainInterface.qml" line="226"/>
         <source>外观</source>
         <translation>外観</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="229"/>
+        <location filename="../ui/settings/MainInterface.qml" line="233"/>
         <source>底板不透明度</source>
         <translation>パネルの不透明度</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="230"/>
+        <location filename="../ui/settings/MainInterface.qml" line="234"/>
         <source>越透明，放映画面透出来越多，边缘高光也越明显</source>
         <translation>透明度が高いほどスライドショーが透けて見え、縁のハイライトも際立ちます</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="250"/>
+        <location filename="../ui/settings/MainInterface.qml" line="254"/>
         <source>阴影</source>
         <translation>影</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="251"/>
+        <location filename="../ui/settings/MainInterface.qml" line="255"/>
         <source>底板下方的柔和投影；纯色背景下关掉更清爽</source>
         <translation>パネルの下に柔らかい影を落とします。無地の背景ではオフのほうがすっきりします</translation>
     </message>
@@ -627,47 +661,42 @@
 <context>
     <name>Personalization</name>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="30"/>
+        <location filename="../ui/settings/Personalization.qml" line="36"/>
         <source>个性化</source>
         <translation>パーソナライズ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="36"/>
+        <location filename="../ui/settings/Personalization.qml" line="45"/>
         <source>外观</source>
         <translation>外観</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="43"/>
         <source>应用主题</source>
-        <translation>アプリのテーマ</translation>
+        <translation type="vanished">アプリのテーマ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="44"/>
         <source>影响所有窗口与控件的取色</source>
-        <translation>すべてのウィンドウとコントロールの配色に影響します</translation>
+        <translation type="vanished">すべてのウィンドウとコントロールの配色に影響します</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="49"/>
         <source>跟随系统</source>
-        <translation>システムに従う</translation>
+        <translation type="vanished">システムに従う</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="49"/>
         <source>浅色</source>
-        <translation>ライト</translation>
+        <translation type="vanished">ライト</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="49"/>
         <source>深色</source>
-        <translation>ダーク</translation>
+        <translation type="vanished">ダーク</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="64"/>
+        <location filename="../ui/settings/Personalization.qml" line="52"/>
         <source>强调色</source>
         <translation>アクセントカラー</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Personalization.qml" line="65"/>
+        <location filename="../ui/settings/Personalization.qml" line="53"/>
         <source>按钮、开关、选中态统一使用这个颜色</source>
         <translation>ボタン・スイッチ・選択状態に共通で使われる色です</translation>
     </message>
@@ -723,22 +752,22 @@
 <context>
     <name>PresentationDock</name>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="174"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="189"/>
         <source>更多操作</source>
         <translation>その他の操作</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="182"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="197"/>
         <source>退出放映</source>
         <translation>スライドショーの終了</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="469"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="543"/>
         <source>上一页</source>
         <translation>前のスライド</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="492"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="601"/>
         <source>下一页</source>
         <translation>次のスライド</translation>
     </message>
@@ -792,7 +821,13 @@
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../ui/Settings.qml" line="61"/>
+        <location filename="../ui/Settings.qml" line="257"/>
+        <location filename="../ui/Settings.qml" line="309"/>
+        <source>需要重启</source>
+        <translation>再起動が必要</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="62"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
@@ -820,16 +855,36 @@
         <source>更新</source>
         <translation type="vanished">更新</translation>
     </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="262"/>
+        <source>部分设置需要重启才能生效，点击以重启应用。</source>
+        <translation>一部の設定は反映に再起動が必要です。クリックしてアプリを再起動します。</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="317"/>
+        <source>部分设置需要重启以应用</source>
+        <translation>一部の設定は適用に再起動が必要です。</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="327"/>
+        <source>取消</source>
+        <translation>キャンセル</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="336"/>
+        <source>重启</source>
+        <translation>再起動</translation>
+    </message>
 </context>
 <context>
     <name>SidePager</name>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="172"/>
+        <location filename="../ui/presentation/SidePager.qml" line="246"/>
         <source>上一页</source>
         <translation>前のスライド</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="214"/>
+        <location filename="../ui/presentation/SidePager.qml" line="321"/>
         <source>下一页</source>
         <translation>次のスライド</translation>
     </message>
@@ -868,7 +923,7 @@
 <context>
     <name>TopWindow</name>
     <message>
-        <location filename="../ui/presentation/TopWindow.qml" line="36"/>
+        <location filename="../ui/presentation/TopWindow.qml" line="46"/>
         <source>顶层窗口</source>
         <translation>トップレベルウィンドウ</translation>
     </message>
@@ -899,9 +954,219 @@
 <context>
     <name>Update</name>
     <message>
-        <location filename="../ui/settings/Update.qml" line="14"/>
+        <location filename="../ui/settings/Update.qml" line="75"/>
+        <location filename="../ui/settings/Update.qml" line="266"/>
+        <location filename="../ui/settings/Update.qml" line="288"/>
         <source>检查更新</source>
         <translation>更新プログラムの確認</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="100"/>
+        <source>检测到更新。</source>
+        <translation>更新があります。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="101"/>
+        <source>您已更新到最新版本。</source>
+        <translation>最新バージョンです。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="102"/>
+        <source>检查更新失败。</source>
+        <translation>更新の確認に失敗しました。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="103"/>
+        <source>尚未检查更新。</source>
+        <translation>まだ更新を確認していません。</translation>
+    </message>
+    <message>
+        <source>稳定版</source>
+        <translation type="vanished">安定版</translation>
+    </message>
+    <message>
+        <source>正式发布的版本，经过完整测试。</source>
+        <translation type="vanished">十分にテストされた、正式リリースのバージョンです。</translation>
+    </message>
+    <message>
+        <source>预览版</source>
+        <translation type="vanished">プレビュー版</translation>
+    </message>
+    <message>
+        <source>包含最新的功能与修复，但可能不稳定。</source>
+        <translation type="vanished">最新の機能と修正を含みますが、不安定な場合があります。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="150"/>
+        <source>关闭</source>
+        <translation>閉じる</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="237"/>
+        <source>发现新版本：%1</source>
+        <translation>新しいバージョン：%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="238"/>
+        <source>上次检查更新时间：%1</source>
+        <translation>前回の更新確認：%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="240"/>
+        <source>从未</source>
+        <translation>なし</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="317"/>
+        <source>更新部署尚未实现</source>
+        <translation>更新の適用は未実装です</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="318"/>
+        <source>下载与安装更新的环节还没有接入，目前只能检查更新。可以前往 &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; 手动下载新版本。</source>
+        <translation>更新のダウンロードとインストールはまだ実装されていないため、現在は更新の確認のみ可能です。新しいバージョンは &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; から手動でダウンロードできます。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="342"/>
+        <source>正在检查更新…</source>
+        <translation>更新を確認しています…</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="376"/>
+        <source>更新日志</source>
+        <translation>更新履歴</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="377"/>
+        <source>更新设置</source>
+        <translation>更新設定</translation>
+    </message>
+    <message>
+        <source>检查没能完成，稍后再试一次吧。</source>
+        <translation type="vanished">確認を完了できませんでした。しばらくしてからもう一度お試しください。</translation>
+    </message>
+    <message>
+        <source>更新模式</source>
+        <translation type="vanished">更新モード</translation>
+    </message>
+    <message>
+        <source>设置应用的更新模式。</source>
+        <translation type="vanished">アプリの更新方法を設定します。</translation>
+    </message>
+    <message>
+        <source>从不自动更新</source>
+        <translation type="vanished">自動更新しない</translation>
+    </message>
+    <message>
+        <source>自动检查更新并通知</source>
+        <translation type="vanished">自動で確認して通知</translation>
+    </message>
+    <message>
+        <source>自动检查更新并下载</source>
+        <translation type="vanished">自動で確認してダウンロード</translation>
+    </message>
+    <message>
+        <source>自动检查更新并安装</source>
+        <translation type="vanished">自動で確認してインストール</translation>
+    </message>
+    <message>
+        <source>更新通道</source>
+        <translation type="vanished">更新チャネル</translation>
+    </message>
+    <message>
+        <source>控制应用的更新目标版本。版本的发行节奏和稳定程度因更新通道而异，部分通道可能包含不稳定的功能，请谨慎使用。</source>
+        <translation type="vanished">アプリが更新先とするバージョンを選択します。チャネルによってリリースの頻度や安定性が異なり、不安定な機能が含まれる場合があります。注意してご使用ください。</translation>
+    </message>
+    <message>
+        <source>强制检查更新</source>
+        <translation type="vanished">更新の強制確認</translation>
+    </message>
+    <message>
+        <source>强制将应用更新到当前通道上的最新版本，即使此版本比应用当前版本更旧。</source>
+        <translation type="vanished">現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="306"/>
+        <source>出错了</source>
+        <translation>エラーが発生しました</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="307"/>
+        <source>更新时发生网络错误，请检查您的网络连接。</source>
+        <translation>更新中にネットワークエラーが発生しました。ネットワーク接続を確認してください。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="281"/>
+        <source>下载更新</source>
+        <translation>更新をダウンロード</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="452"/>
+        <source>已经是最新版啦，真棒，夸夸你哦♪</source>
+        <translation>すでに最新バージョンです。すごい！</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="451"/>
+        <source>还没有检查过更新。</source>
+        <translation>まだ更新を確認していません。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Update.qml" line="449"/>
+        <source>检查没能完成，请检查网络后重试。</source>
+        <translation>確認を完了できませんでした。ネットワークを確認して、もう一度お試しください。</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateSettingsTab</name>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="89"/>
+        <source>更新模式</source>
+        <translation type="unfinished">更新モード</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="90"/>
+        <source>设置应用的更新模式。</source>
+        <translation type="unfinished">アプリの更新方法を設定します。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="95"/>
+        <source>从不自动更新</source>
+        <translation type="unfinished">自動更新しない</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="96"/>
+        <source>自动检查更新并通知</source>
+        <translation type="unfinished">自動で確認して通知</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="97"/>
+        <source>自动检查更新并下载</source>
+        <translation type="unfinished">自動で確認してダウンロード</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="98"/>
+        <source>自动检查更新并安装</source>
+        <translation type="unfinished">自動で確認してインストール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="117"/>
+        <source>更新通道</source>
+        <translation type="unfinished">更新チャネル</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="118"/>
+        <source>控制应用的更新目标版本。版本的发行节奏和稳定程度因更新通道而异，部分通道可能包含不稳定的功能，请谨慎使用。</source>
+        <translation type="unfinished">アプリが更新先とするバージョンを選択します。チャネルによってリリースの頻度や安定性が異なり、不安定な機能が含まれる場合があります。注意してご使用ください。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="158"/>
+        <source>强制检查更新</source>
+        <translation type="unfinished">更新の強制確認</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/UpdateSettingsTab.qml" line="159"/>
+        <source>强制将应用更新到当前通道上的最新版本，即使此版本比应用当前版本更旧。</source>
+        <translation type="unfinished">現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
     </message>
 </context>
 </TS>

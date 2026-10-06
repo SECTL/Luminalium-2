@@ -161,7 +161,10 @@ Rin.FluentPage {
 
         Layout.fillWidth: true
         title: qsTr("水平边距")
-        description: qsTr("控制条距屏幕左右边缘的距离")
+        // ⚠️ 基准是**遮罩**（2026-10-06「智能跟随」后遮罩贴着放映窗口走，见
+        // ``windows.py::_position_dock`` 用 ``_overlay_rect`` 而非 ``screen.geometry()``）。
+        // 别再写回「屏幕边缘」—— 窗口化放映时那是错的，全屏时才恰好等价。
+        description: qsTr("控制条距放映窗口左右边缘的距离（全屏放映时即屏幕边缘）")
         icon.name: "ic_fluent_arrow_bidirectional_left_right_20_regular"
 
         // 默认 20 = Luminalium 1 的贴边内边距（``presentation.margin_x``）。
@@ -183,7 +186,8 @@ Rin.FluentPage {
 
         Layout.fillWidth: true
         title: qsTr("垂直边距")
-        description: qsTr("控制条距屏幕上下边缘的距离，以整屏边缘为准")
+        // 同「水平边距」：基准是遮罩（= 放映窗口），不是整屏。
+        description: qsTr("控制条距放映窗口上下边缘的距离（全屏放映时即屏幕边缘）")
         icon.name: "ic_fluent_arrow_bidirectional_up_down_20_regular"
 
         SettingSlider {

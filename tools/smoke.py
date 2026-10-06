@@ -5,7 +5,8 @@
 1. 托盘可用
 2. 快捷面板能显示，且按**光标位置**摆放并夹取在屏幕内
 3. 放映控制条能按角落显示 / 隐藏，且位置贴角（工具栏下中；翻页栏
-   按配置在屏幕两侧垂直居中（竖版）或左下 / 右下（横版））
+   按配置在屏幕两侧垂直居中（竖版）或左下 / 右下（横版））；遮罩的几何
+   跟着**放映窗口**走、放映窗口不在前台时**临时隐去**（2026-10-06 用户指令）
 4. 设置窗口（懒创建）能打开、**默认尺寸够大且更宽**（0.64 / 0.68，按真机屏幕
    复算公式）、居中且在屏幕内；调试窗口（隐藏入口 = 设置标题
    连点 10 次）的热区盖得住标题文本、点够次数能开、与设置窗口并排不重叠
@@ -14,8 +15,10 @@
    逻辑和代码一块删掉」/「失焦收起作为默认行为」），且覆盖 UI / ``SETTING_PATHS`` /
    默认配置 / 源码残留四层守卫
 5b. 设置页**增减**（2026-10-01 第四轮用户指令：「把外观那一块除了界面语言改到新的
-   个性化 / 删除放映设置页面」）：新建「个性化」页承接「应用主题 + 强调色」
-   （含卡内控件：下拉与 8 个色板圆点 + 当前色标记），「通用」页只剩 2 张卡；
+   个性化 / 删除放映设置页面」；2026-10-06 又一轮：「把应用是跟随系统还是亮色
+   暗色移到通用，个性化先只留强调色」）：「应用主题」最终落在**「通用」页**
+   （含卡内下拉、选中项跟着配置走），「个性化」页只剩「强调色」一张卡
+   （含 8 个色板圆点 + 当前色标记）；「通用」页共 4 张卡；
    「放映」页**整页删除** —— 导航层 / 页面层 / 文件层 / 源码残留四层守卫；
    快捷方式目录里的 ``presentation`` 项随页面一起删（否则成了死链）
 5c. 「通用 → 启动 → 开机自启」（2026-10-04 用户指令：「打开之后程序会随操作系统
@@ -151,6 +154,8 @@ import app.config as app_config  # noqa: E402
 import app.paths as app_paths  # noqa: E402
 from app import ppt_controller  # noqa: E402
 from app import autostart  # noqa: E402
+# 模块本身也要（遮罩「智能跟随」自检要临时替换模块里的 ``_foreground_window``）
+from app import windows as win_mod  # noqa: E402
 from app.application import LuminaliumApplication  # noqa: E402
 from app.bridge import SETTING_PATHS  # noqa: E402
 from app.paths import DEFAULT_CONFIG_FILE  # noqa: E402
@@ -2983,10 +2988,13 @@ def main() -> int:
                 """
                 def there() -> bool:
                     v = palette.property("reveal")
-                    # 容差要小到与 ``visible`` 的判据（>0.001 在画）相容：
-                    # 松了会在淡出半路（reveal≈0.017）就放行，紧跟着的
-                    # ``isVisible() is False`` 当场红。
-                    return v is not None and abs(float(v) - target) <= 0.004
+                    # ⚠️ 容差必须 **≤** ``visible`` 的阈值（``reveal > 0.001`` 才在画），
+                    # 否则淡出半路就放行、紧跟着的 ``isVisible() is False`` 当场红。
+                    # 原值 0.004 仍然比 0.001 松 —— 2026-10-06 实测在
+                    # ``reveal=0.00119`` 处被放行，断言假红（「再点一下『笔』→
+                    # 选单收起」）。动画的终点值是**精确的** 0 / 1（``Behavior``
+                    # 直接落到目标值），所以贴到阈值上等没有风险。
+                    return v is not None and abs(float(v) - target) <= 0.001
 
                 waited = 0
                 nudged = False
@@ -3411,6 +3419,67 @@ def main() -> int:
                 covered = any(wr.intersects(_QRect(*r)) for r in rects)
             check("开发水印在窗口区域内（区域塑形下可见）", covered,
                   f"wm={wm_local} rects={len(rects)}")
+
+        # ---- 遮罩「智能跟随」两件套（2026-10-06 用户指令）----
+        # ① 几何跟着放映窗口走；② 放映窗口不在前台时临时隐去。
+        # 上面注入的状态没有放映窗口（window_handle=0）→ 遮罩恒整屏、从不隐去，
+        # 前面那些整屏贴角断言正是建立在这个前提上。这里用 ``Progman``
+        # （铺满桌面的 explorer 桌面窗口、**跨进程**）演一次「全屏放映」。
+        progman = int(user32.FindWindowW("Progman", None) or 0)
+        check("Progman 窗口可用（跟随 / 前台自检的前置条件）", bool(progman))
+        if progman:
+            base_rect = app.windows._overlay_rect
+            check("无放映窗口时遮罩恒整屏（旧行为不变）", base_rect == geom,
+                  f"{base_rect} vs {geom}")
+            app.ppt.inject_state(
+                PresentationState(active=True, slide_index=26, slide_total=41,
+                                  window_handle=progman)
+            )
+            QTest.qWait(700)
+            check(
+                "遮罩跟随放映窗口：铺满显示器 → 吸附成整屏矩形",
+                app.windows._overlay_rect == geom,
+                f"{app.windows._overlay_rect} vs {geom}",
+            )
+            ex_style = user32.GetWindowLongW(hwnd, -20) & 0xFFFFFFFF
+            check(
+                "放映窗口不在前台 → 临时隐去（淡出 + 整窗穿透，不是 hide）",
+                app.windows._suppressed is True
+                and overlay.property("suppressed") is True
+                and overlay.isVisible() and bool(ex_style & 0x20),
+                f"suppressed={app.windows._suppressed} "
+                f"QML={overlay.property('suppressed')} "
+                f"visible={overlay.isVisible()} exstyle=0x{ex_style:08X}",
+            )
+            # 把「前台」指到放映窗口自己 → 必须立刻恢复。用判据本身而不是去抢
+            # 真前台（``requestActivate`` 在本环境抢不到，会变成假失败）。
+            _fg_hook = win_mod._foreground_window
+            try:
+                win_mod._foreground_window = lambda: progman
+                app.windows._watch_overlay()
+                QTest.qWait(200)
+                ex_style = user32.GetWindowLongW(hwnd, -20) & 0xFFFFFFFF
+                check(
+                    "放映窗口回到前台 → 自动恢复（穿透位收回）",
+                    app.windows._suppressed is False
+                    and overlay.property("suppressed") is False
+                    and not (ex_style & 0x20),
+                    f"suppressed={app.windows._suppressed} "
+                    f"QML={overlay.property('suppressed')} exstyle=0x{ex_style:08X}",
+                )
+            finally:
+                win_mod._foreground_window = _fg_hook
+            app.ppt.inject_state(
+                PresentationState(active=True, slide_index=26, slide_total=41)
+            )
+            QTest.qWait(700)
+            check(
+                "跟随 / 前台自检已还原（状态与几何回到无窗口形态）",
+                app.windows._suppressed is False
+                and app.windows._overlay_rect == base_rect,
+                f"suppressed={app.windows._suppressed} "
+                f"rect={app.windows._overlay_rect} 期望={base_rect}",
+            )
 
         # ---- 工具栏恒横向（下中部）+ 翻页栏独立在两侧（默认：竖版）----
         corners_cfg = app.config.get("presentation.corners", {}) or {}
@@ -4079,6 +4148,59 @@ def main() -> int:
             not missing_st,
             f"缺 {missing_st}",
         )
+        # 英雄区**右下角**的 YUNOFACTORY 署名字标（2026-10-05 用户指令）。
+        # 与 Logo 同一套「混色」（``GlassLogo`` 的两层白渐变按剪影蒙形），钉四件事：
+        #   ① 混色那两层在（``::before`` / ``::after``）；
+        #   ② 光晕与整体投影**刻意关掉** —— 模糊半径按 248 的 Logo 配的，压在
+        #      150×23 的字标上糊成一团，且容器外撑的 3σ 会越过英雄区的圆角；
+        #   ③ ``layerPrefix`` 分开了。两个实例内部的 ``objectName`` 本来一模一样，
+        #      重名之后上面那条「Logo 四层」按名字找会翻到字标那几层上 ——
+        #      **找得到**，只是量错了东西，所以这条得钉住前缀本身；
+        #   ④ 真的贴右下角（量坐标，不能只看 ``visible``）。
+        credit_st = _find_named(page_st, "aboutCredits")
+        check(
+            "关于页英雄区右下角有署名字标（YUNOFACTORY）",
+            credit_st is not None,
+            "" if credit_st is not None else "未找到 aboutCredits",
+        )
+        if credit_st is not None:
+            c_layers = [n for n in ("aboutCreditsMask", "aboutCreditsBefore",
+                                    "aboutCreditsSheen")
+                        if _find_named(page_st, n) is None]
+            c_plain = (credit_st.property("glowEnabled") is False
+                       and credit_st.property("shadowEnabled") is False)
+            c_prefix = (credit_st.property("layerPrefix") == "aboutCredits"
+                        and logo_st is not None
+                        and logo_st.property("layerPrefix") == "aboutLogo")
+            check(
+                "字标：混色两层在 / 光晕与投影关掉 / objectName 前缀与 Logo 分开",
+                not c_layers and c_plain and c_prefix,
+                "" if (not c_layers and c_plain and c_prefix) else (
+                    f"缺层={c_layers} 光晕开启={not c_plain} 前缀={c_prefix}"
+                ),
+            )
+            # 贴角：右下各留 ``Lumi.aboutCreditsMargin``。两处都从**页面**坐标系
+            # 量（hero 与字标各自 mapToItem 到 page），免得被各自的父级偏置换算；
+            # 转场期间整页平移，两个点同进同出，差值不受影响。
+            c_br = credit_st.mapToItem(page_st, QPointF(float(credit_st.width()),
+                                                        float(credit_st.height())))
+            h_br = hero_st.mapToItem(page_st, QPointF(float(hero_st.width()),
+                                                      float(hero_st.height())))
+            gap_r, gap_b = h_br.x() - c_br.x(), h_br.y() - c_br.y()
+            want_gap = 20  # Lumi.aboutCreditsMargin
+            # 顺带钉住宽高比（素材 4687:734）—— 拉变形在预览图上看着也「对」。
+            want_ratio = 4687 / 734
+            got_ratio = credit_st.width() / max(1e-6, credit_st.height())
+            ok_gap = abs(gap_r - want_gap) <= 1.5 and abs(gap_b - want_gap) <= 1.5
+            ok_ratio = abs(got_ratio - want_ratio) <= 0.02
+            check(
+                "字标贴在英雄区右下角（右边距 = 下边距 = 20，且不拉变形）",
+                ok_gap and ok_ratio,
+                "" if (ok_gap and ok_ratio) else (
+                    f"右边距={gap_r:.1f} 下边距={gap_b:.1f}（期望 {want_gap}）"
+                    f" 宽高比={got_ratio:.3f}（期望 {want_ratio:.3f}）"
+                ),
+            )
         # 等页面滑入转场收尾：转场期间 ``mapToItem`` 的坐标还在动，
         # 后面按星心坐标取像素会取到隔壁。
         QTest.qWait(300)
@@ -5266,30 +5388,49 @@ def main() -> int:
                     "通用页已无「托盘」分组标题",
                     _find_text(general, "托盘") is None,
                 )
+                # ---- 2026-10-06 用户指令：主题模式搬回「通用」----
+                # 「个性化」只剩强调色，本页因此变回 4 张卡。
                 cards = _collect_type(general, "SettingCard")
                 keep = [
-                    title for title in ("开机自启", "快捷方式锁定", "界面语言")
+                    title for title in (
+                        "开机自启", "应用主题", "快捷方式锁定", "界面语言",
+                    )
                     if _find_text(general, title) is not None
                 ]
                 check(
-                    "通用页 3 张卡（开机自启 + 快捷方式锁定 + 界面语言）",
-                    len(cards) == 3 and len(keep) == 3,
+                    "通用页 4 张卡（开机自启 + 应用主题 + 快捷方式锁定 + 界面语言）",
+                    len(cards) == 4 and len(keep) == 4,
                     f"卡数={len(cards)} 找到={keep}",
                 )
-                moved_away = [
-                    title for title in ("应用主题", "强调色")
-                    if _find_text(general, title) is not None
-                ]
                 check(
-                    "通用页已无「应用主题 / 强调色」（第四轮搬去「个性化」）",
-                    not moved_away,
-                    f"还找到 {moved_away}",
+                    "「强调色」没被一起搬回通用页（留在「个性化」）",
+                    _find_text(general, "强调色") is None,
                 )
                 check(
                     "本页两只开关都在（开机自启 + 快捷方式锁定）",
                     len(_collect_type(general, "Switch")) == 2,
                     f"Switch={len(_collect_type(general, 'Switch'))}",
                 )
+                # 搬整块时最容易漏的是**控件**（卡片搬走了、里面的下拉没搬 →
+                # 有这一项但点不动），所以按 objectName 找到卡后再往里数控件。
+                theme_card = _find_named(general, "generalTheme")
+                check(
+                    "通用页有「应用主题」卡（objectName=generalTheme）",
+                    theme_card is not None,
+                    "卡片没找到（可能只是 push 还没跑完）" if theme_card is None else "",
+                )
+                if theme_card is not None:
+                    combos = _collect_type(theme_card, "ComboBox")
+                    check(
+                        "「应用主题」带下拉，且选中项跟着配置走",
+                        len(combos) == 1
+                        and int(combos[0].property("currentIndex"))
+                        == {"auto": 0, "light": 1, "dark": 2}.get(
+                            str(app.config.get("app.theme")), 0),
+                        f"ComboBox={len(combos)} "
+                        f"currentIndex={combos[0].property('currentIndex') if combos else None}"
+                        f" theme={app.config.get('app.theme')!r}",
+                    )
 
                 # ---- 开机自启（2026-10-04 用户指令）----
                 # 「打开之后程序会随操作系统启动而启动，关闭也必须有效无误」。
@@ -5399,9 +5540,7 @@ def main() -> int:
                         f"{_run_value()!r} 期望 {prev_entry!r}",
                     )
 
-            # ---- 个性化页：承接「应用主题 / 强调色」（第四轮新建）----
-            # 搬整块时最容易漏的是**控件**（卡片搬走了、里面的下拉 / 色板没搬 →
-            # 有这一项但点不动），所以按 objectName 找到卡后再往里数控件。
+            # ---- 个性化页：只剩「强调色」（2026-10-06 主题模式搬回「通用」）----
             app.windows.show_settings("settings/Personalization.qml")
             fancy = _wait_named(settings.contentItem(), "Personalization")
             check(
@@ -5410,29 +5549,23 @@ def main() -> int:
                 "页面没落地（可能只是 push 还没跑完）" if fancy is None else "",
             )
             if fancy is not None:
-                theme_card = _find_named(fancy, "personalizationTheme")
                 accent_card = _find_named(fancy, "personalizationAccent")
                 check(
-                    "个性化页有「应用主题」「强调色」两张卡",
-                    theme_card is not None and accent_card is not None,
-                    f"theme={theme_card is not None} accent={accent_card is not None}",
+                    "个性化页只剩「强调色」一张卡",
+                    accent_card is not None
+                    and len(_collect_type(fancy, "SettingCard")) == 1,
+                    f"accent={accent_card is not None} "
+                    f"卡数={len(_collect_type(fancy, 'SettingCard'))}",
+                )
+                check(
+                    "「应用主题」已搬去通用页、本页不再有它",
+                    _find_text(fancy, "应用主题") is None
+                    and _find_named(fancy, "personalizationTheme") is None,
                 )
                 check(
                     "「界面语言」留在通用页、没被一起搬过来",
                     _find_text(fancy, "界面语言") is None,
                 )
-                if theme_card is not None:
-                    combos = _collect_type(theme_card, "ComboBox")
-                    check(
-                        "「应用主题」带下拉，且选中项跟着配置走",
-                        len(combos) == 1
-                        and int(combos[0].property("currentIndex"))
-                        == {"auto": 0, "light": 1, "dark": 2}.get(
-                            str(app.config.get("app.theme")), 0),
-                        f"ComboBox={len(combos)} "
-                        f"currentIndex={combos[0].property('currentIndex') if combos else None}"
-                        f" theme={app.config.get('app.theme')!r}",
-                    )
                 if accent_card is not None:
                     swatches = _collect_type(accent_card, "Clip")
                     # 当前色由「勾 + 描边」标记：勾是色块里的 ``Rin.Icon``，

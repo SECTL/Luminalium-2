@@ -75,11 +75,22 @@
   报告展开这些**对照档**不补跑 —— 插件接缝不受那些开关影响，跑了也是同样的图）。
 - ``LUMI_PREVIEW_PLUGIN_RUN=1`` —— 内部标记：本进程即插件接缝子进程，
   只渲染三件套。不要手动用（缺了主进程那套前置就是张空配置）。
+- ``LUMI_PREVIEW_JUMP=1`` —— 把**快速切页面板**（点页码展开的那块）摊开，输出
+  ``top_window_jump.png``。页码用 ``main()`` 里注入的那份假状态（第 26 页 / 共 41
+  页），所以什么都不用给。这一档会顺手关掉左下角的开发水印 —— 它就画在左翻页条
+  那一侧、会盖住面板底行的数字，出图看着像「面板被裁了一行」（2026-10-06 在这上面
+  白绕了很久）。配 ``LUMI_PREVIEW_PAGER=side|bottom`` 可以分别看竖版 / 横版两种落点。
+- ``LUMI_PREVIEW_THUMBS=0`` —— 关掉快速切页面板的**假缩略图**（默认开）。
+  面板上那几十张画面在真机上要走 COM ``Slides(i).Export``，预览进程里没有
+  PowerPoint；这里不是塞几张假 URL 糊弄过去，而是拿**真的**
+  ``app.slide_thumbs.SlideThumbCache`` 配一个假导出器 —— 队列、代次号、节流、
+  Pillow 烤圆角、``file://`` 转换全走真代码，只有「谁来画那张 PNG」换成了本地
+  合成图。所以这一档也能证明「QML 那条 Image 路是通的」。
 
 ⚠️ 历史坑（2026-10-06 修）：浅色档（``ONLY_SPLASH``）曾在抓完启动画面后
 直接 ``return``，既不调 ``qt_app.quit()`` 也不还原主题 —— 进程挂住、
-``RinUI/config/rin_ui.json`` 被留在 Light。现在所有档位都走统一的
-「还原主题 → 还原一次性配置 → quit」收尾。
+``RinUI/config/rin_ui.json`` 被留在 Light。现在所有档位的还原统一由
+``_restore_preview_state`` 在 ``finally`` 里做（见该函数头注释）。
 """
 
 from __future__ import annotations
@@ -90,14 +101,17 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TOOLS = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TOOLS)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 os.chdir(ROOT)
 
-from PySide6.QtCore import QCoreApplication, QTimer, QUrl  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QObject, QTimer, QUrl  # noqa: E402
 from PySide6.QtQml import QQmlComponent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from RinUI import BackdropEffect, RinUIWindow, Theme  # noqa: E402
+from RinUI.core.config import RinConfig  # noqa: E402
 
 from app.bridge import Backend  # noqa: E402
 from app.config import Config  # noqa: E402
@@ -105,7 +119,9 @@ from app.error_handler import ErrorHandler  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
 from app.plugins import loader  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
+from app.slide_thumbs import SlideThumbCache  # noqa: E402
 from app.windows import WindowManager  # noqa: E402
+from fake_slides import FakeSlideExporter  # noqa: E402
 
 OFFSCREEN_X = -6000
 OFFSCREEN_Y = -6000
@@ -188,6 +204,30 @@ PLUGIN_RUN = os.environ.get("LUMI_PREVIEW_PLUGIN_RUN", "") not in ("", "0")
 PEN_LIGHT = IS_LIGHT and PREVIEW_PEN
 if PEN_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 见上：把「浅色只出启动画面」让开
+#: 快速切页面板（PageJumpPanel，点页码展开的那块）预览：展开面板，输出
+#: ``top_window_jump.png``。
+#:
+#: 页码数据不用管：``main()`` 开头的 ``backend.apply_state`` 已经把
+#: ``slideIndex`` / ``slideTotal`` 摆成「第 26 页 / 共 41 页」，面板读的就是它。
+#:
+#: ⚠️ 展开时会顺手把面板的 ``animate`` 关掉 —— 预览在**屏幕外**建窗口抓帧，
+#: ``Behavior`` 的时间轴在那种环境下推进不可靠（面板会停在 ``reveal`` 0、整块
+#: 不显示；同一份面板在可见窗口 / 离屏窗口 / TopWindow 宿主里都实测正常，见
+#: ``tools/jump_probe.py``）。抓图要的是稳定终态，不是动画中间态。
+PREVIEW_JUMP = os.environ.get("LUMI_PREVIEW_JUMP", "") not in ("", "0")
+#: 给快速切页面板喂**假缩略图**（默认开，``LUMI_PREVIEW_THUMBS=0`` 关）。
+#:
+#: ⚠️ 真假要说清楚：绕过去的只有「谁来画那张 PNG」（真机是 COM
+#: ``Slides(i).Export``，这里是在本地现画一张合成图）。队列 / 代次号 / 节流 /
+#: Pillow 烤圆角 / ``file://`` 转换全走 ``app.slide_thumbs`` 的真代码，
+#: 所以这一档同时是那条链路的**端到端验证**。
+PREVIEW_THUMBS = PREVIEW_JUMP and os.environ.get(
+    "LUMI_PREVIEW_THUMBS", "") not in ("0", "false", "False")
+#: 浅色主题 **+** 切页面板 = 只出那一张（``top_window_jump_light.png``）。
+#: 理由同 ``PEN_LIGHT``：当前页那块描边是 accent，浅色下读不读得出来只有这张图能核验。
+JUMP_LIGHT = IS_LIGHT and PREVIEW_JUMP
+if JUMP_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 同上
 #: 翻页组件位置 → 该形态下**启用**的角落（与 bridge.py 的常量同一份口径）
 PAGER_POSITION_CORNERS = {
     "side": ("middle_left", "middle_right"),
@@ -217,6 +257,155 @@ def _find_by_name(item, name: str):
         if found is not None:
             return found
     return None
+
+
+def _restore_preview_state(rinui, config, backend, previous_theme: str,
+                           previous_effect, labels_previous, pager_previous) -> None:
+    """把预览期间的**全局副作用**全部还原。
+
+    ⚠️⚠️ ``setTheme`` / ``setBackdropEffect`` / ``set_theme_color`` 都会**持久化到
+    ``RinUI/config/rin_ui.json``**，也就是真机下次启动读的那份。三件事必须还原：
+
+    *主题* —— 浅色那档跑完要切回原值，否则开发机上整个应用的下次启动变成浅色；
+    *背景特效* —— 预览要实色底板（``grabWindow`` 拿不到 DWM 合成层）才关成
+      ``None_``，跑完必须还原成用户原来选的那档；
+    *配置* —— ``show_labels`` / ``pager.position`` 是 ``persist=False`` 的内存改动，
+      这里再从source重载一次。
+
+    **必须在 ``finally`` 里调**，不能只放在 ``capture()`` 末尾：``capture()`` 里有
+    好几条提前 ``return``（浅色只出启动画面 / 只出设置页 / 编辑器浅色 / 笔选单），
+    历史上还原代码就写在最后一条return 之后，于是那些档位**一个都没还原**——
+    实测一次跑完 ``LUMI_PREVIEW_THEME=light LUMI_PREVIEW_PAGE_ONLY=1`` 之后，
+    ``RinUI/config/rin_ui.json`` 里``current_theme`` 留下了 ``"Light"``
+    （项目 ``app.theme`` 是 ``auto``），背景特效也永久变成 ``None``。
+    进程被打断（Ctrl+C / 超时被杀）同样会留下这份脏数据。
+    """
+    if rinui.theme_manager.get_theme_name() != previous_theme:
+        rinui.theme_manager.toggle_theme(previous_theme)
+        # ⚠️⚠️ 必须显式落盘。``toggle_theme`` 只改内存里的 ``RinConfig``，
+        #    真正写文件的是 ``theme_manager.clean_up()`` —— 而它在**进程退出时**
+        #    才跑。只调 toggle 的话屏幕上会打印「主题已还原为 Auto」而
+        #    ``rin_ui.json`` 里仍是 ``"Light"``：下一轮跑页面预览就会把 Light
+        #    当成「原值」还原，深浅两套图的主题就此串味。
+        RinConfig.save_config()
+        print(f"[OK] 主题已还原并落盘为 {previous_theme}")
+    if rinui.theme_manager.get_backdrop_effect() != previous_effect:
+        # ⚠️ 走``apply_backdrop_effect``（收str）而不是 ``setBackdropEffect``
+        #    （收 ``BackdropEffect`` 枚举）：``get_backdrop_effect()`` 返回的是
+        #    **字符串**（直接读 ``RinConfig["backdrop_effect"]``），把它喂给
+        #    ``setBackdropEffect`` 会在``.value`` 上抛 AttributeError。
+        rinui.theme_manager.apply_backdrop_effect(previous_effect)
+        print(f"[OK] 背景特效已还原为 {previous_effect}")
+    if PREVIEW_LABELS:
+        config.set("presentation.buttons.show_labels", labels_previous,
+                   persist=False)
+    if PREVIEW_PAGER:
+        config.set("presentation.pager.position", pager_previous, persist=False)
+        enabled = PAGER_POSITION_CORNERS.get(pager_previous, ())
+        for corners in PAGER_POSITION_CORNERS.values():
+            for corner in corners:
+                config.set(f"presentation.corners.{corner}.enabled",
+                           corner in enabled, persist=False)
+    if PREVIEW_LABELS or PREVIEW_PAGER:
+        backend.reload_from_config()
+        print(f"[OK] 预览用的一次性改动已还原"
+              f"（show_labels={labels_previous}, pager.position={pager_previous}）")
+
+
+def _grab_pair(window, name: str):
+    """抓两帧、留第二帧，返回 ``(路径, 宽高)`` 或 ``None``。
+
+    ⚠️ ``grabWindow()`` 是同步渲染，但**待处理的场景图更新**（刚被 QML 创建出来
+    的项、刚跑完动画写进去的属性）要等下一次同步才会落进画面 —— 于是第一次抓到
+    的可能是「还差几块」的那一帧。2026-10-01 实测：第一次跑出来的图里右侧面板、
+    面板贴边、暗罩都在，**预览区里那条控制条与底部的悬浮缩放缓整块不见**；
+    同一份代码再跑一次就全了。先抓一帧丢掉等于手动把待处理的更新推完。
+    """
+    try:
+        window.grabWindow()
+        image = window.grabWindow()
+    except RuntimeError as exc:  # 窗口已被 QML 引擎回收
+        print(f"[FAIL] {name}: {exc}")
+        return None
+    if image.isNull():
+        print(f"[FAIL] {name}: grabWindow() 返回空图")
+        return None
+    path = OUT_DIR / name
+    image.save(str(path))
+    print(f"[OK] {name} -> {path} ({image.width()}x{image.height()})")
+    return path
+
+
+def _apply_page_overrides(hosts) -> set:
+    """``LUMI_PREVIEW_SET="objectName,prop,value[;…]"`` —— 抓图前把页面摆到某个状态。
+
+    有些版式只在一个状态里看得到（最典型：「更新设置」那个 Tab 的内容，
+    默认选中的是「更新日志」，不切过去就永远抓不到）。页面宿主的底板是登记过的，
+    所以这里出的图**可信** —— 比拿未登记宿主的探针截图看配色靠谱。
+
+    ⚠️ 值只做「整数 / 其余当字符串」两档猜测，够用就行；要传别的类型再加。
+
+    返回**被改到**的那些窗口的集合：只有它们才需要加``LUMI_PREVIEW_TAG`` 后缀，
+    免得把一个「切了 Tab」的状态名贴到所有页面头上。
+    """
+    specs = [s.strip() for s in os.environ.get("LUMI_PREVIEW_SET", "").split(";")
+             if s.strip()]
+    touched: set = set()
+    if not specs:
+        return touched
+    for _name, window in hosts:
+        root = window.contentItem()
+        for spec in specs:
+            parts = [p.strip() for p in spec.split(",")]
+            if len(parts) != 3:
+                print(f"[WARN] LUMI_PREVIEW_SET 只认 objectName,prop,value，收到 {spec!r}")
+                continue
+            target_name, prop, raw = parts
+            target = _find_by_name(root, target_name)
+            if target is None:      # 这个页面里没有该项，正常，跳过
+                continue
+            value: object = int(raw) if raw.lstrip("-").isdigit() else raw
+            target.setProperty(prop, value)
+            touched.add(id(window))
+            print(f"[SET] {target_name}.{prop} = {value!r}")
+    return touched
+
+
+def _run_page_only(rinui, qt_app, config, backend, previous_theme: str,
+                   previous_effect, labels_previous, pager_previous) -> int:
+    """``LUMI_PREVIEW_PAGE_ONLY=1`` 的专用短路：只建页面宿主，立刻抓图收工。
+
+    ⚠️ 为什么要单独开一条路：原先这一档只是把 ``capture()`` 的``targets``
+    缩到 ``page_*.png``，**前面那一大段建窗口的代码照跑** —— 顶层窗口 + 五个
+    角落停靠 + 设置窗 + 启动画面 + 调试窗 + **主界面编辑器** + 报告窗，一个都不
+    少。主界面编辑器是整套 UI 里最重的一个（相机动画 + 大量贴图），实测这一档
+    单跑要二十多分钟还没出图，最后是被手动杀掉的。
+
+    现在这一档只留必需的：``QuickPanel``（``rinui.load`` 的宿主，主题/Backdrop
+    都靠它生效）+ 页面宿主。跑完立刻 ``quit()``，不再等 1.8s 的动画停稳。
+    """
+    OUT_DIR.mkdir(exist_ok=True)
+    hosts = _build_page_hosts(rinui.engine)
+    if not hosts:
+        print("[FAIL] 一个页面宿主都没建起来")
+        return 1
+
+    # 先把页面摆到目标状态（Loader 是同步的，树已经在了），再等它铺完
+    touched = _apply_page_overrides(hosts)
+    tag = os.environ.get("LUMI_PREVIEW_TAG", "").strip()
+    suffix = f"_{tag}" if (tag and touched) else ""
+
+    def shoot() -> None:
+        for name, window in hosts:
+            extra = suffix if id(window) in touched else ""
+            _grab_pair(window, name.replace(".png", f"{extra}_{THEME_TAG}.png"))
+        qt_app.quit()
+
+    # 页面都是静态版式，没有级联动画，给 0.6s 让 Loader 把页面铺完即可
+    # （比常态那档的 1.8s 短；这里等的不是动画而是首帧合成）。
+    # 切过状态的那一档要更久：Tab 内容那个 ``Loader`` 是切过去才构造的。
+    QTimer.singleShot(1200 if touched else 600, shoot)
+    return qt_app.exec()
 
 
 def main() -> int:
@@ -252,6 +441,18 @@ def main() -> int:
     backend.apply_state(
         PresentationState(active=True, slide_index=26, slide_total=41)
     )
+    # ---- 快速切页面板的缩略图（真 cache + 假导出器，见 PREVIEW_THUMBS）----
+    # 必须在 ``apply_state`` **之后**接：真应用里 ``set_show`` 是跟着状态快照走的
+    # （见 bridge.apply_state），这里状态刚置好，手动补一次开场。
+    if PREVIEW_THUMBS:
+        thumbs = SlideThumbCache(FakeSlideExporter(), backend)
+        backend.attach_slide_thumbs(thumbs)
+        thumbs.set_show(True, 41)
+        # burst 拉满：真机上那个 500ms 节流是给 COM 省的，这里的假导出器没有 COM
+        # 开销，所以一次投满 —— 抓图前必须全部就位，否则抓到的是「加载中」的样子
+        thumbs.request(1, 41, burst=41)
+        ready = sum(1 for url in thumbs.urls if url)
+        print(f"[THUMBS] 假缩略图 {ready}/{len(thumbs.urls)} -> {thumbs.directory}")
     backend.setSplashStage(*DESIGN_STAGE)
     # 报告窗的数据源。⚠️ 这里**不**调 ``install()`` —— 预览工具不该去接管
     # ``sys.excepthook``（本进程里没有真实异常要报告，接管只会让真报错被吞）。
@@ -274,6 +475,16 @@ def main() -> int:
     panel = rinui.root_window
     panel.setPosition(OFFSCREEN_X, OFFSCREEN_Y)
     panel.show()
+
+    # 「只出设置页」档：就地短路走 _run_page_only，别再往下建主界面编辑器等
+    # 一堆这一档根本不会截图的窗口（实测能拖到二十多分钟出不来图）。
+    if PAGE_ONLY:
+        try:
+            return _run_page_only(rinui, qt_app, config, backend, previous_theme,
+                                  previous_effect, labels_previous, pager_previous)
+        finally:
+            _restore_preview_state(rinui, config, backend, previous_theme,
+                                   previous_effect, labels_previous, pager_previous)
 
     # ---- 顶层窗口（全屏叠加层）+ 内嵌控制条 ----
     # 预览用紧凑尺寸（1100x640）代替真实全屏；定位逻辑与 app/windows.py 一致。
@@ -353,6 +564,70 @@ def main() -> int:
             center_dock.setProperty("opened", True)
         else:
             print("[WARN] 没找到 penPalette（底中工具栏没启用工具组？）")
+
+    # 快速切页面板预览：点页码展开的那块。横版（``pageJumpPanel``）与竖版
+    # （``sidePageJumpPanel``）各有一个实例，**两个都展开** —— 它们的落点不一样
+    # （横版往上长、竖版往屏幕内侧长），一张图看不全两种形态。
+    #
+    # ⚠️ 页码**不注入假数据**：``main()`` 开头的 ``backend.apply_state`` 已经把
+    #    ``slideIndex`` / ``slideTotal`` 摆成了「第 26 页 / 共 41 页」，面板读的
+    #    就是它。注入反而会打断 QML 侧的绑定，看到的不是真链路。
+    #
+    # ⚠️ ``animate: false`` 是必须的：预览在屏幕外建窗口抓帧，``Behavior`` 的
+    #    时间轴在这种环境下推进不可靠（面板会停在 ``reveal`` 0、整块不显示）。
+    #    组件在可见窗口 / 离屏窗口 / TopWindow 宿主里都实测正常 —— 见
+    #    ``tools/jump_probe.py``；抓图要的是稳定终态，不是动画中间态。
+    if PREVIEW_JUMP and container is not None:
+        # ⚠️ 先关掉左下角的**开发水印**：它正好画在左翻页条那一侧的下面，会盖住
+        #    面板最底下一行的数字 —— 出图时看起来活像「面板被裁了一行」，而
+        #    右侧那块（没被遮）又是完整的，对比之下非常像一个真 bug（2026-10-06
+        #    在这上面绕了很久）。这一档要的是干净的面板版式，水印另开一档看。
+        watermark = top_window.property("watermarkItem") if top_window is not None else None
+        if watermark is not None:
+            watermark.setVisible(False)
+
+        expanded = []
+        # ⚠️ 逐个 dock 展开，**不能**在 container 上找名字：``_find_by_name`` 只返回
+        #    第一个匹配 —— 两个竖条各有一块面板，那样只会展开左边那条。
+        for dock_item in container.childItems():
+            corner = str(dock_item.property("corner") or "")
+            # 底中那条是**工具栏**（groups 里没有 pager）：那个角落没有页码区，
+            # 面板实例只是跟着组件建出来的，`total` 是 0 —— 展开只会多出一块空卡片
+            if corner.startswith("bottom_center"):
+                continue
+            for panel_name in ("pageJumpPanel", "sidePageJumpPanel"):
+                panel_item = _find_by_name(dock_item, panel_name)
+                if panel_item is None:
+                    continue
+                panel_item.setProperty("animate", False)
+                panel_item.setProperty("opened", True)
+                expanded.append(f"{corner}:{panel_name}")
+
+                # 抓图前打一行几何：这块面板的坑**全在这一行数字里** ——
+                # 卡片高被钳到一张卡（可用高度算错）、面板没贴到窗口边（x/y 算错）、
+                # 明明放得下却有滚动条（``viewport`` < ``content``）。
+                # 出图之后先看这一行，能省掉「盯着 PNG 猜哪里错了」那一步。
+                def _report(it=panel_item, tag=f"{corner}:{panel_name}") -> None:
+                    flick_item = _find_by_name(it, "pageJumpFlickable")
+                    print(f"[JUMP] {tag} side={it.property('side')} "
+                          f"card={it.property('cardWidth'):.0f}x"
+                          f"{it.property('cardHeight'):.0f} "
+                          f"item={it.property('itemWidth'):.0f}x"
+                          f"{it.property('itemHeight'):.0f} "
+                          f"content={it.property('contentHeight'):.0f} "
+                          f"viewport={it.property('viewportHeight'):.0f} "
+                          f"maxW={it.property('maxWidth'):.0f} "
+                          f"maxH={it.property('maxHeight'):.0f} "
+                          f"rect=({it.property('x'):.0f},"
+                          f"{it.property('y'):.0f}) "
+                          f"scroll={it.property('scrollable')} "
+                          f"thumbs={it.property('readyCount')}/"
+                          f"{it.property('total')} "
+                          f"contentY="
+                          f"{flick_item.property('contentY') if flick_item else '?'}")
+
+                QTimer.singleShot(300, _report)
+        print(f"[JUMP] 已展开: {expanded or '（一个都没找到）'}")
 
     # 设置窗口：默认页由 NavigationView 在 Component.onCompleted 里推入
     settings = None
@@ -494,16 +769,19 @@ def main() -> int:
             # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
             targets = ([] if editor is None
                        else [("main_editor_edit_light.png", editor)])
-        elif PEN_LIGHT:
-            # 浅色主题 + 笔选单：只出顶层窗口那一张（见 ``PEN_LIGHT``）
-            targets = ([] if top_window is None
-                       else [("top_window_pen_light.png", top_window)])
+        elif PEN_LIGHT or JUMP_LIGHT:
+            # 浅色主题 + 某一个浮出层（笔选单 / 快速切页面板）：只出顶层窗口那一张
+            #（见 ``PEN_LIGHT`` / ``JUMP_LIGHT``）
+            targets = ([] if top_window is None else [(
+                "top_window_jump_light.png" if JUMP_LIGHT
+                else "top_window_pen_light.png", top_window)])
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
                 # 笔选单那一档单独一个文件名：常态那张（选单收起）要留着对照
                 targets.append((
-                    preview_name("top_window_pen.png" if PREVIEW_PEN
+                    preview_name("top_window_jump.png" if PREVIEW_JUMP
+                                 else "top_window_pen.png" if PREVIEW_PEN
                                  else "top_window.png"),
                     top_window,
                 ))
@@ -528,96 +806,54 @@ def main() -> int:
                       f"{window.property('height')})")
 
         for name, window in targets:
-            try:
-                # ⚠️ 抓**两帧、留第二帧**。
-                #
-                # ``grabWindow()`` 是同步渲染，但**待处理的场景图更新**（刚被 QML
-                # 创建出来的项、刚跑完动画写进去的属性）要等下一次同步才会落进画面 ——
-                # 于是第一次抓到的可能是「还差几块」的那一帧。
-                #
-                # 2026-10-01 实测（浅色编辑态那一档，编辑器是唯一的目标窗口）：
-                # 第一次跑出来的图里右侧面板、面板贴边、暗罩都在，**预览区里那条
-                # 控制条与底部的悬浮缩放缓整块不见**；同一份代码再跑一次就全了 ——
-                # 典型的「抓早了」，与 ``PREVIEW_EDIT`` 那个 ``raise_()`` 补丁同源。
-                # 先抓一帧丢掉，等于手动把待处理的更新推完，第二帧才是当前状态。
-                window.grabWindow()
-                image = window.grabWindow()
-            except RuntimeError as exc:  # 窗口已被 QML 引擎回收
-                print(f"[FAIL] {name}: {exc}")
-                continue
-            path = OUT_DIR / name
-            if image.isNull():
-                print(f"[FAIL] {name}: grabWindow() 返回空图")
-                continue
-            image.save(str(path))
-            print(f"[OK] {name} -> {path} ({image.width()}x{image.height()})")
+            _grab_pair(window, name)
 
         # 报告窗两档对照图。放在最后：它要**改** ``ErrorHandler`` 的状态（切换
         # 崩溃 / 错误），放在别的窗口抓图之前会把中途状态漏出去。
         # 其余档位（只出启动画面 / 只出设置页 / 浅色）不出这两张，免得覆盖常态图。
-        # ⚠️ 不出的档位**不能**在这里 return —— 下面的「还原主题 → 还原一次性
-        # 配置 → quit」是所有档位共同的收尾（2026-10-06 前这里直接 return，
-        # 浅色档跑完进程挂死、主题也不还原，见模块 docstring 末尾）。
-        if error_report is not None and not (
-            ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT or PEN_LIGHT
+        # ⚠️ 提前 return 是安全的：主题 / 背景特效 / 配置的还原统一交给
+        # ``_restore_preview_state``（外层 finally），不会重演 2026-10-06 前
+        # 「浅色档 return 掉还原代码、进程挂死、主题留在 Light」那个坑。
+        if (error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT
+                or PEN_LIGHT or JUMP_LIGHT):
+            return
+        # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
+        # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，
+        # 所以文件名带 ``_details`` 后缀，不与常态那两张互相覆盖。
+        _suffix = "_details" if PREVIEW_DETAILS else ""
+        if PREVIEW_DETAILS:
+            error_report.setProperty("detailsExpanded", True)
+        for name, kind in (
+            (f"error_report_crash{_suffix}.png", "crash"),
+            (f"error_report_error{_suffix}.png", "error"),
         ):
-            # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
-            # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，
-            # 所以文件名带 ``_details`` 后缀，不与常态那两张互相覆盖。
-            _suffix = "_details" if PREVIEW_DETAILS else ""
+            error_handler._capture(
+                kind=kind, summary="TimeoutError: timed out",
+                traceback_text=REPORT_TRACEBACK,
+            )
+            # ⚠️ 换报告会把 ``detailsExpanded`` 复位（QML 侧的 Connections），
+            # 所以「强制展开」必须在每次 ``_capture`` **之后**再设一次。
             if PREVIEW_DETAILS:
                 error_report.setProperty("detailsExpanded", True)
-            for name, kind in (
-                (f"error_report_crash{_suffix}.png", "crash"),
-                (f"error_report_error{_suffix}.png", "error"),
-            ):
-                error_handler._capture(
-                    kind=kind, summary="TimeoutError: timed out",
-                    traceback_text=REPORT_TRACEBACK,
-                )
-                # ⚠️ 换报告会把 ``detailsExpanded`` 复位（QML 侧的 Connections），
-                # 所以「强制展开」必须在每次 ``_capture`` **之后**再设一次。
-                if PREVIEW_DETAILS:
-                    error_report.setProperty("detailsExpanded", True)
-                # 属性是**绑定**在 ``ErrorHandler`` 上的，改完要让事件循环跑一拍，
-                # QML 才把新文案 / 新表情 / 新主按钮取回来。
-                QCoreApplication.processEvents()
-                try:
-                    error_report.grabWindow()
-                    image = error_report.grabWindow()
-                except RuntimeError as exc:
-                    print(f"[FAIL] {name}: {exc}")
-                    continue
-                if image.isNull():
-                    print(f"[FAIL] {name}: grabWindow() 返回空图")
-                    continue
-                image.save(str(OUT_DIR / name))
-                print(f"[OK] {name} -> {OUT_DIR / name} ({image.width()}x{image.height()})")
-        # 主题要等所有窗口都截完才切回去（切主题会触发窗口重绘/重建）
-        if rinui.theme_manager.get_theme_name() != previous_theme:
-            rinui.theme_manager.toggle_theme(previous_theme)
-            print(f"[OK] 主题已还原为 {previous_theme}")
-        # 同理，「显示按钮文本」也只是预览用的一次性改动 —— 别留在内存里
-        if PREVIEW_LABELS:
-            config.set("presentation.buttons.show_labels", labels_previous,
-                       persist=False)
-        if PREVIEW_PAGER:
-            config.set("presentation.pager.position", pager_previous, persist=False)
-            enabled = PAGER_POSITION_CORNERS.get(pager_previous, ())
-            for corners in PAGER_POSITION_CORNERS.values():
-                for corner in corners:
-                    config.set(f"presentation.corners.{corner}.enabled",
-                               corner in enabled, persist=False)
-        if PREVIEW_LABELS or PREVIEW_PAGER:
-            backend.reload_from_config()
-            print(f"[OK] 预览用的一次性改动已还原"
-                  f"（show_labels={labels_previous}, pager.position={pager_previous}）")
+            # 属性是**绑定**在 ``ErrorHandler`` 上的，改完要让事件循环跑一拍，
+            # QML 才把新文案 / 新表情 / 新主按钮取回来。
+            QCoreApplication.processEvents()
+            if _grab_pair(error_report, name) is None:
+                continue
+
+        # 主题 / 背景特效 / 配置的还原统一交给 _restore_preview_state（外层 finally），
+        # 别在这里再抄一份 —— 历史上就是因为还原代码写在 capture() 的最后一条
+        # return 之后，上面那几条提前 return 的档位一个都没还原过。
         qt_app.quit()
 
     QTimer.singleShot(1800, capture)
-    code = qt_app.exec()
+    try:
+        code = qt_app.exec()
+    finally:
+        _restore_preview_state(rinui, config, backend, previous_theme,
+                               previous_effect, labels_previous, pager_previous)
     # 插件接缝三件套由子进程补渲染（不同进程的理由见 ``_run_plugin_seams``
-    # 头注释）。放在主渲染**之后**：此刻主题与一次性配置改动都已还原，
+    # 头注释）。放在主渲染与状态还原**之后**：此刻主题与一次性配置改动都已还原，
     # 子进程自己再切主题互不干扰。
     if _should_render_plugin_seams():
         child_env = dict(os.environ)
@@ -651,12 +887,31 @@ Rin.Window {
     flags: Qt.Tool | Qt.FramelessWindowHint
 
     Loader {
+        id: pageLoader
+        objectName: "pageLoader"
         anchors.fill: parent
         anchors.margins: 16
         source: host.pageUrl
     }
 }
 """
+
+
+def _is_page(item) -> bool:
+    """这个 QML 根是不是一个「页面」（``Rin.FluentPage`` → ``Page``）。
+
+    ⚠️ 为什么必须挑一挑 ``ui/settings`` 下的 ``*.qml``：那目录里除了整页，还住着
+    **Tab 内容**这类片段（``UpdateSettingsTab.qml``），它是要挂在某个页面里的，
+    单独塞进 ``Loader`` 时拿不到页面上下文。实测被当整页渲染时，
+    ``column`` 的 ``anchors.fill`` 与根 ``implicitHeight`` 之间的环会解出另一个
+    值 —— 第一张卡片被撑到 387px（真身 72），两张卡片之间凭空多出 320px 空档，
+    图看着像版式坏了，其实页面本身没问题。
+
+    判据用「有没有 ``title`` 属性」：``Page`` 自带 ``title``，普通 ``Item`` 没有。
+    """
+    meta = item.metaObject()
+    return any(meta.property(i).name() == "title"
+               for i in range(meta.propertyCount()))
 
 
 def _build_page_hosts(engine) -> list[tuple[str, object]]:
@@ -693,6 +948,17 @@ def _build_page_hosts(engine) -> list[tuple[str, object]]:
             continue
         # 持有 component 引用：PySide 中 create() 出来的对象生命周期与组件绑定
         window._host_component = component
+
+        # 挑掉 Tab 内容这类片段（见 ``_is_page`` 的说明）。放在 ``show()`` 之前：
+        # 它们本来就不该被暴露，省一次窗口创建/合成。
+        loader = window.findChild(QObject, "pageLoader")
+        loaded = loader.property("item") if loader is not None else None
+        if loaded is None or not _is_page(loaded):
+            print(f"[SKIP] {page.name}: 不是整页（Tab 内容/片段），不单独渲染")
+            window.close()
+            window.deleteLater()
+            continue
+
         window.setPosition(OFFSCREEN_X - index * 900, OFFSCREEN_Y - 1800)
         window.show()
         hosts.append((f"page_{page.stem}.png", window))

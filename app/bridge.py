@@ -38,6 +38,17 @@ PresentationDock 的 Repeater 本就遍历这两个数组，插件贡献自动�
 ``settingsNavItems`` 属性喂给 QML。搬到 Python 的原因：QML 的静态列表属性
 拼不了运行时数据，且动态条目的标题 ``qsTr`` 翻译不了（``qsTr`` 只认字面量），
 必须走 ``app.i18n.tr``。条目形状、顺序、「关于 / 更新」钉底部的语义全部照旧。
+
+2026-10-05（插件系统 Wave 3 任务 17）：设置窗口新增内建「插件」管理页 ——
+``pluginItems`` 属性把 ``app.plugins.loader.loaded_plugins()`` 的加载清单
+合成成 QML 可消费的列表（id / 标题 / 版本 / 启用态 / 调试标记 / 加载结果 /
+跳过原因），``setPluginEnabled`` 槽写 ``plugins.<id>.enabled`` 配置（与
+``setSetting`` 同一条「改内存 + 防抖落盘」路径）。**只改配置、不做任何
+动态增删**：启用 / 禁用重启后生效是唯一语义 —— 注册表在加载期末冻结
+（``registry.freeze()`` 后任何 ``add_*`` 抛 RuntimeError），窗口又全是
+懒创建只藏不销毁，实时反注册与这两个架构前提直接打架，所以本进程内
+永不触碰已加载的插件。架构原因同步写在 ``ui/settings/Plugins.qml``
+头注释里。
 """
 
 from __future__ import annotations
@@ -55,7 +66,7 @@ from . import autostart
 from . import i18n
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
-from .plugins import registry
+from .plugins import loader, registry
 from .ppt_controller import PresentationState
 
 log = logging.getLogger(__name__)
@@ -175,6 +186,11 @@ _BUILTIN_SETTINGS_NAV: Tuple[Tuple[str, str, str, Optional[int]], ...] = (
         None,
     ),
     ("settings/MainInterface.qml", "主界面", "ic_fluent_window_20_regular", None),
+    # 「插件」：2026-10-05（插件系统 Wave 3 任务 17）新增的管理页（启用 / 禁用
+    # 开关，重启生效）。内建页而非插件贡献 —— 管理插件的界面本身不能依赖
+    # 插件系统注册（禁用全部插件后管理入口不能跟着消失）。排在「主界面」之后、
+    # 钉底部的「关于 / 更新」之前，属普通区。
+    ("settings/Plugins.qml", "插件", "ic_fluent_puzzle_piece_20_regular", None),
     ("settings/About.qml", "关于", "ic_fluent_info_20_regular", _RIN_POSITION_BOTTOM),
     (
         "settings/Update.qml",
@@ -212,6 +228,10 @@ class Backend(QObject):
     #: 注册时机固定在加载期（冻结前），早于任何 QML 窗口创建，属性现算现读即可；
     #: 若将来出现运行期注册，由注册方负责发这个信号。
     settingsNavItemsChanged = Signal()
+    #: 插件管理页列表变了（``setPluginEnabled`` 改完 ``plugins.<id>.enabled``
+    #: 之后发）。加载清单本身只在加载期产生一次，运行期唯一会变的就是
+    #: 各项的 ``enabled``，所以只有这个槽会发它。
+    pluginItemsChanged = Signal()
     statusChanged = Signal()
     #: 启动画面的进度 / 阶段文字变了
     splashChanged = Signal()
@@ -899,6 +919,71 @@ class Backend(QObject):
         _get_settings_nav_items,
         notify=settingsNavItemsChanged,
     )
+
+    def _get_plugin_items(self) -> List[Dict[str, Any]]:
+        """「插件」管理页的列表数据源（2026-10-05 插件系统 Wave 3 任务 17）。
+
+        = ``loader.loaded_plugins()`` 的加载清单逐项合成 QML 消费的形状：
+
+        * ``id`` / ``debug`` / ``loaded`` / ``reason``：照清单原样透传
+          （``reason`` 为跳过原因，未跳过是 None）；
+        * ``title``：``META.name``，插件没声明就回落 id（管理页总得有个
+          能给人看的名字）；``version``：``META.version``，可空；
+        * ``enabled``：**从正式 Config 现读** ``plugins.<id>.enabled``
+          （默认 true），不照抄清单里那份 —— 清单是加载时刻的快照，而
+          这个属性在 ``setPluginEnabled`` 之后还要被重读，读快照就永远
+          看不到新值。
+
+        清单为空（未跑加载 / 无插件）时返回空列表，QML 侧显示空态。
+        """
+        items: List[Dict[str, Any]] = []
+        for entry in loader.loaded_plugins():
+            pid = str(entry.get("id", ""))
+            meta = entry.get("meta") or {}
+            items.append(
+                {
+                    "id": pid,
+                    "title": str(meta.get("name") or pid),
+                    "version": meta.get("version"),
+                    "enabled": bool(
+                        self._config.get(f"plugins.{pid}.enabled", True)
+                    ),
+                    "debug": bool(entry.get("debug", False)),
+                    "loaded": bool(entry.get("loaded", False)),
+                    "reason": entry.get("reason"),
+                }
+            )
+        return items
+
+    pluginItems = Property(
+        "QVariantList",
+        _get_plugin_items,
+        notify=pluginItemsChanged,
+    )
+
+    @Slot(str, bool)
+    def setPluginEnabled(self, plugin_id: str, enabled: bool) -> None:
+        """改一个插件的启用开关（``plugins.<id>.enabled``），**重启后生效**。
+
+        与 ``setSetting`` 同一条「改内存 + 防抖落盘」路径（配置落盘语义：
+        与默认层不同才写进 ``config.json``，恢复默认 true 后该键消失；
+        注意调试插件的默认值不走阶段一注入，其 ``enabled=true`` 恢复后
+        仍会落一条 ``true``，属预期）。本进程内**不做任何动态增删** ——
+        注册表冻结 + 窗口懒创建只藏不销毁，实时反注册与这两个架构前提
+        冲突（详见文件头注释与 ``ui/settings/Plugins.qml`` 头注释）。
+        """
+        plugin_id = str(plugin_id).strip()
+        if not plugin_id:
+            log.warning("setPluginEnabled 被拒绝（插件 id 为空）")
+            return
+        enabled = bool(enabled)
+        path = f"plugins.{plugin_id}.enabled"
+        if bool(self._config.get(path, True)) == enabled:
+            return
+        self._config.set(path, enabled, persist=False)
+        self._save_timer.start()
+        log.info("插件 %s 启用开关改为 %s（重启后生效）", plugin_id, enabled)
+        self.pluginItemsChanged.emit()
 
     @Slot(str, "QVariant")
     def setSetting(self, key: str, value: Any) -> None:

@@ -215,6 +215,37 @@
     </message>
 </context>
 <context>
+    <name>DemoSettings</name>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoSettings.qml" line="22"/>
+        <source>演示插件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoSettings.qml" line="29"/>
+        <source>演示开关</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoSettings.qml" line="30"/>
+        <source>验收夹具占位：只验证插件设置键的读写链路，无实际功能</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DemoWindow</name>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="26"/>
+        <source>演示插件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="41"/>
+        <source>插件系统验收夹具：本窗口无任何实际功能</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DevWatermark</name>
     <message>
         <location filename="../ui/DevWatermark.qml" line="40"/>
@@ -482,111 +513,102 @@
 <context>
     <name>MainInterfaceEditor</name>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="103"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="120"/>
         <source>主界面编辑器</source>
         <translation>メイン画面エディター</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="260"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="277"/>
         <source>屏幕左下角</source>
         <translation>画面左下</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="261"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="278"/>
         <source>屏幕底边居中</source>
         <translation>画面下中央</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="262"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="279"/>
         <source>屏幕右下角</source>
         <translation>画面右下</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="263"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="280"/>
         <source>屏幕左上角</source>
         <translation>画面左上</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="264"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="281"/>
         <source>屏幕顶边居中</source>
         <translation>画面上中央</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="265"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="282"/>
         <source>屏幕右上角</source>
         <translation>画面右上</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="266"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="283"/>
         <source>屏幕左侧垂直居中</source>
         <translation>画面左・垂直中央</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="267"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="284"/>
         <source>屏幕右侧垂直居中</source>
         <translation>画面右・垂直中央</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="339"/>
-        <location filename="../ui/MainInterfaceEditor.qml" line="345"/>
-        <location filename="../ui/MainInterfaceEditor.qml" line="351"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="411"/>
         <source>翻页组件</source>
         <translation>スライド送り</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="343"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="409"/>
         <source>工具栏</source>
         <translation>ツールバー</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="346"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="405"/>
         <source>控制条</source>
         <translation>コントロールバー</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1283"/>
         <source>显示按钮文本</source>
-        <translation>ボタンテキストを表示</translation>
+        <translation type="vanished">ボタンテキストを表示</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1288"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1427"/>
         <source>开</source>
         <translation>オン</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1289"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1428"/>
         <source>关</source>
         <translation>オフ</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1311"/>
         <source>退出键样式</source>
-        <translation>終了ボタンのスタイル</translation>
+        <translation type="vanished">終了ボタンのスタイル</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1316"/>
         <source>白色</source>
-        <translation>白</translation>
+        <translation type="vanished">白</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1316"/>
         <source>红色（Luminalium 1）</source>
-        <translation>赤（Luminalium 1）</translation>
+        <translation type="vanished">赤（Luminalium 1）</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1349"/>
         <source>翻页组件位置</source>
-        <translation>スライド送りの位置</translation>
+        <translation type="vanished">スライド送りの位置</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1354"/>
         <source>竖版两侧中间</source>
-        <translation>画面左右・垂直中央</translation>
+        <translation type="vanished">画面左右・垂直中央</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1363"/>
         <source>横版两侧下部</source>
-        <translation>画面左右・下部</translation>
+        <translation type="vanished">画面左右・下部</translation>
     </message>
 </context>
 <context>
@@ -648,6 +670,54 @@
         <location filename="../ui/settings/Personalization.qml" line="65"/>
         <source>按钮、开关、选中态统一使用这个颜色</source>
         <translation>ボタン・スイッチ・選択状態に共通で使われる色です</translation>
+    </message>
+</context>
+<context>
+    <name>Plugins</name>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="39"/>
+        <source>插件</source>
+        <translation>プラグイン</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="49"/>
+        <source>调试插件</source>
+        <translation>デバッグプラグイン</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="52"/>
+        <source>已加载</source>
+        <translation>読み込み済み</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="54"/>
+        <source>未加载：%1</source>
+        <translation>未読み込み：%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="56"/>
+        <source>未加载</source>
+        <translation>未読み込み</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="59"/>
+        <source>已禁用</source>
+        <translation>無効</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="70"/>
+        <source>更改将在重启应用后生效</source>
+        <translation>変更はアプリの再起動後に有効になります</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="71"/>
+        <source>插件的启用状态只在启动时读取，本进程内不会动态加载或卸载</source>
+        <translation>プラグインの有効状態は起動時にのみ読み込まれ、実行中に動的な読み込み・解除は行われません</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="97"/>
+        <source>没有已安装的插件</source>
+        <translation>インストール済みのプラグインはありません</translation>
     </message>
 </context>
 <context>
@@ -722,39 +792,33 @@
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../ui/Settings.qml" line="52"/>
+        <location filename="../ui/Settings.qml" line="61"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="105"/>
         <source>主页</source>
-        <translation>ホーム</translation>
+        <translation type="vanished">ホーム</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="114"/>
         <source>通用</source>
-        <translation>全般</translation>
+        <translation type="vanished">全般</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="123"/>
         <source>个性化</source>
-        <translation>パーソナライズ</translation>
+        <translation type="vanished">パーソナライズ</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="132"/>
         <source>主界面</source>
-        <translation>メイン画面</translation>
+        <translation type="vanished">メイン画面</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="137"/>
         <source>关于</source>
-        <translation>バージョン情報</translation>
+        <translation type="vanished">バージョン情報</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="143"/>
         <source>更新</source>
-        <translation>更新</translation>
+        <translation type="vanished">更新</translation>
     </message>
 </context>
 <context>

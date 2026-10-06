@@ -215,6 +215,37 @@
     </message>
 </context>
 <context>
+    <name>DemoSettings</name>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoSettings.qml" line="22"/>
+        <source>演示插件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoSettings.qml" line="29"/>
+        <source>演示开关</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoSettings.qml" line="30"/>
+        <source>验收夹具占位：只验证插件设置键的读写链路，无实际功能</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>DemoWindow</name>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="26"/>
+        <source>演示插件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="41"/>
+        <source>插件系统验收夹具：本窗口无任何实际功能</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>DevWatermark</name>
     <message>
         <location filename="../ui/DevWatermark.qml" line="40"/>
@@ -482,111 +513,102 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
 <context>
     <name>MainInterfaceEditor</name>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="103"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="120"/>
         <source>主界面编辑器</source>
         <translation>Main Interface Editor</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="260"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="277"/>
         <source>屏幕左下角</source>
         <translation>Bottom-left of screen</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="261"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="278"/>
         <source>屏幕底边居中</source>
         <translation>Bottom-center of screen</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="262"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="279"/>
         <source>屏幕右下角</source>
         <translation>Bottom-right of screen</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="263"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="280"/>
         <source>屏幕左上角</source>
         <translation>Top-left of screen</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="264"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="281"/>
         <source>屏幕顶边居中</source>
         <translation>Top-center of screen</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="265"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="282"/>
         <source>屏幕右上角</source>
         <translation>Top-right of screen</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="266"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="283"/>
         <source>屏幕左侧垂直居中</source>
         <translation>Left side, vertically centered</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="267"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="284"/>
         <source>屏幕右侧垂直居中</source>
         <translation>Right side, vertically centered</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="339"/>
-        <location filename="../ui/MainInterfaceEditor.qml" line="345"/>
-        <location filename="../ui/MainInterfaceEditor.qml" line="351"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="411"/>
         <source>翻页组件</source>
         <translation>Pager component</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="343"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="409"/>
         <source>工具栏</source>
         <translation>Toolbar</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="346"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="405"/>
         <source>控制条</source>
         <translation>Control bar</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1283"/>
         <source>显示按钮文本</source>
-        <translation>Show button text</translation>
+        <translation type="vanished">Show button text</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1288"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1427"/>
         <source>开</source>
         <translation>On</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1289"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1428"/>
         <source>关</source>
         <translation>Off</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1311"/>
         <source>退出键样式</source>
-        <translation>Exit button style</translation>
+        <translation type="vanished">Exit button style</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1316"/>
         <source>白色</source>
-        <translation>White</translation>
+        <translation type="vanished">White</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1316"/>
         <source>红色（Luminalium 1）</source>
-        <translation>Red (Luminalium 1)</translation>
+        <translation type="vanished">Red (Luminalium 1)</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1349"/>
         <source>翻页组件位置</source>
-        <translation>Pager position</translation>
+        <translation type="vanished">Pager position</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1354"/>
         <source>竖版两侧中间</source>
-        <translation>Middle of both sides (portrait)</translation>
+        <translation type="vanished">Middle of both sides (portrait)</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1363"/>
         <source>横版两侧下部</source>
-        <translation>Lower sides (landscape)</translation>
+        <translation type="vanished">Lower sides (landscape)</translation>
     </message>
 </context>
 <context>
@@ -648,6 +670,54 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <location filename="../ui/settings/Personalization.qml" line="65"/>
         <source>按钮、开关、选中态统一使用这个颜色</source>
         <translation>Buttons, switches, and selected states all use this color</translation>
+    </message>
+</context>
+<context>
+    <name>Plugins</name>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="39"/>
+        <source>插件</source>
+        <translation>Plugins</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="49"/>
+        <source>调试插件</source>
+        <translation>Debug plugin</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="52"/>
+        <source>已加载</source>
+        <translation>Loaded</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="54"/>
+        <source>未加载：%1</source>
+        <translation>Not loaded: %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="56"/>
+        <source>未加载</source>
+        <translation>Not loaded</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="59"/>
+        <source>已禁用</source>
+        <translation>Disabled</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="70"/>
+        <source>更改将在重启应用后生效</source>
+        <translation>Changes will take effect after restarting the app</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="71"/>
+        <source>插件的启用状态只在启动时读取，本进程内不会动态加载或卸载</source>
+        <translation>Plugin enabled states are only read at startup; nothing is loaded or unloaded at runtime</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="97"/>
+        <source>没有已安装的插件</source>
+        <translation>No plugins installed</translation>
     </message>
 </context>
 <context>
@@ -722,39 +792,33 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../ui/Settings.qml" line="52"/>
+        <location filename="../ui/Settings.qml" line="61"/>
         <source>设置</source>
         <translation>Settings</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="105"/>
         <source>主页</source>
-        <translation>Home</translation>
+        <translation type="vanished">Home</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="114"/>
         <source>通用</source>
-        <translation>General</translation>
+        <translation type="vanished">General</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="123"/>
         <source>个性化</source>
-        <translation>Personalization</translation>
+        <translation type="vanished">Personalization</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="132"/>
         <source>主界面</source>
-        <translation>Main interface</translation>
+        <translation type="vanished">Main interface</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="137"/>
         <source>关于</source>
-        <translation>About</translation>
+        <translation type="vanished">About</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="143"/>
         <source>更新</source>
-        <translation>Update</translation>
+        <translation type="vanished">Update</translation>
     </message>
 </context>
 <context>

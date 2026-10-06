@@ -204,6 +204,11 @@ Purpose: check the layout, emoji, and primary button (&quot;Ignore&quot;) of the
         <translation>Main interface</translation>
     </message>
     <message>
+        <!-- 任务 17（2026-10-05）：内建「插件」管理页加入 _BUILTIN_SETTINGS_NAV。 -->
+        <source>插件</source>
+        <translation>Plugins</translation>
+    </message>
+    <message>
         <source>关于</source>
         <translation>About</translation>
     </message>

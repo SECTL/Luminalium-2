@@ -195,6 +195,11 @@
         <translation>メイン画面</translation>
     </message>
     <message>
+        <!-- 任务 17（2026-10-05）：内建「插件」管理页加入 _BUILTIN_SETTINGS_NAV。 -->
+        <source>插件</source>
+        <translation>プラグイン</translation>
+    </message>
+    <message>
         <source>关于</source>
         <translation>バージョン情報</translation>
     </message>

@@ -16,6 +16,16 @@
 ⚠️ 注册时机约束（2026-10-05）：内建动词的注册在装配段、``WindowManager``
 就绪后立即进行，**必须先于 Wave 3 任务 11 插入的 ``load_plugins``** ——
 loader 末尾会 ``registry.freeze()``，冻结后注册直接抛 RuntimeError。
+
+2026-10-05（插件系统 Wave 2 任务 6）：控制条动作分发（``_on_action``）
+增加 ``plugin:`` 前缀特权通道 —— 与 ``tool:`` / ``pen_color:`` 同级，
+在 ``state.active`` 门控**之前**路由到动词注册表（复用任务 5 的
+``_dispatch_shortcut_action``，最长前缀匹配 ``registry.action_handlers()``）。
+动机：聚焦这类插件**非放映时也要能触发**（用户「两处工具栏入口」诉求的
+技术前提），被放映门控挡住就永远到不了处理器。``plugin:`` 动作不进
+``ppt_controller``（与 COM / 按键注入零接触），动作后的 ``refresh_now``
+补刷对它也不强制（插件自理）。内建动作的硬编码 if/elif 同步改为分发表，
+行为逐字不变；``state.active`` 门控对非 ``plugin:`` 动作不放宽。
 """
 
 from __future__ import annotations
@@ -468,6 +478,11 @@ class LuminaliumApplication:
     # ============================================================ 放映控制
 
     def _on_action(self, action: str) -> None:
+        """控制条动作分发。
+
+        三个特权前缀（``tool:`` / ``pen_color:`` / ``plugin:``）都先于
+        「在放映中吗」门控；其余动作查内建分发表，且要求 ``state.active``。
+        """
         state = self.ppt.state
         hwnd = state.window_handle
 
@@ -491,22 +506,35 @@ class LuminaliumApplication:
             log.info("切换墨迹颜色: #%s", code.upper())
             return
 
+        if action.startswith("plugin:"):
+            # 2026-10-05（插件系统 Wave 2 任务 6）：``plugin:`` 前缀动作在
+            # ``state.active`` 门控**之前**路由 —— 与 ``tool:`` / ``pen_color:``
+            # 同级的特权前缀。动机：聚焦这类插件在非放映时也要能从面板 /
+            # 控制条触发（见文件头注释）。分发复用任务 5 建好的模块级函数
+            # （最长前缀匹配 ``registry.action_handlers()``），插件与 COM /
+            # 按键注入零接触；动作后的 ``refresh_now`` 补刷对 ``plugin:``
+            # 动作不强制（插件自理），所以这里直接 return。
+            _dispatch_shortcut_action(action)
+            return
+
         if not state.active:
             log.info("当前没有放映，忽略动作: %s", action)
             return
 
-        if action == "exit_presentation":
-            self.ppt.exit_slideshow(hwnd)
-        elif action == "pager:next":
-            self.ppt.next_slide(hwnd)
-        elif action == "pager:previous":
-            self.ppt.previous_slide(hwnd)
-        elif action == "clear_screen":
-            self.ppt.clear_screen(hwnd)
-        elif action == "overflow":
-            self._show_overflow_menu()
-        else:
+        # 内建动作分发表（2026-10-05 任务 6 由硬编码 if/elif 改表驱动，
+        # 行为逐字不变）。统一成无参 callable：ppt 方法都要 hwnd，溢出菜单不要。
+        handlers: Dict[str, Callable[[], Any]] = {
+            "exit_presentation": lambda: self.ppt.exit_slideshow(hwnd),
+            "pager:next": lambda: self.ppt.next_slide(hwnd),
+            "pager:previous": lambda: self.ppt.previous_slide(hwnd),
+            "clear_screen": lambda: self.ppt.clear_screen(hwnd),
+            "overflow": self._show_overflow_menu,
+        }
+        handler = handlers.get(action)
+        if handler is None:
             log.info("未处理的放映动作: %s", action)
+        else:
+            handler()
 
         # 翻页后页码要立刻跟上：COM 命令是异步投递的，先等一小会儿让它执行完
         # （命令结束会自己轻量刷一次快照），再 poke 两条线程把新页码送出去。

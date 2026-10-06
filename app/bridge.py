@@ -18,10 +18,23 @@ config 的 ``quick_panel.shortcut_catalog`` 内建条目 ∪ ``app.plugins.regis
 用户启用 / 排序的 id 列表（``quick_panel.shortcuts``），目录内容不落盘是
 铁律 —— 列表若走 config 默认层会被用户层的旧列表整体顶掉（详见
 ``app/plugins/registry.py`` 头注释第 3 条）。
+
+2026-10-05（插件系统 Wave 2 任务 6）：控制条 tools/actions 同样双来源 ——
+``presentationConfig`` 返回**深拷贝**后的合并结果（内建数组在前，
+``registry.dock_tools()`` / ``dock_actions()`` 的插件条目追加在后，id 冲突
+内建胜出）。必须深拷贝的为什么：``Config.get("presentation")`` 返回的是配置
+对象的**内部引用**，直接往里 append 会把插件贡献写进 config 内存态 —— 这既
+违反「插件贡献不落盘也不进 config 内存态」的铁律，还会让每次读取重复追加
+同一条目。拷贝后合并，配置层永远干净、每次读取都是全量重算。QML 零改动：
+PresentationDock 的 Repeater 本就遍历这两个数组，插件贡献自动出现。
+``selectTool`` 对 ``plugin:`` 前缀的工具 id 不进白名单、不调 ``ppt.set_tool``，
+改按动作处理（emit ``actionTriggered``），由应用层的 ``plugin:`` 特权通道
+分发给插件处理器 —— 插件工具与 COM / 按键注入零接触。
 """
 
 from __future__ import annotations
 
+import copy
 import logging
 import threading
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -489,7 +502,32 @@ class Backend(QObject):
     # ================================================================== 配置块
 
     def _get_presentation_config(self) -> Dict[str, Any]:
-        return self._config.get("presentation", {}) or {}
+        """``presentation`` 配置的**深拷贝** + 插件控制条贡献的读取侧合并。
+
+        合并规则（2026-10-05 插件系统 Wave 2 任务 6，理由见文件头注释）：
+
+        * ``tools`` / ``actions`` = config 内建数组在前，registry 的
+          ``dock_tools()`` / ``dock_actions()`` 插件条目追加在后；
+        * id 冲突时**内建胜出**并记 warning（与磁贴目录同款让位规则）；
+        * 先 ``deepcopy`` 再合并 —— ``Config.get`` 返回的是内部引用，直接
+          append 会污染配置内存态（铁律：插件贡献不落盘也不进 config
+          内存态）；每次读取重新合并，天然不会重复追加。
+        """
+        merged = copy.deepcopy(self._config.get("presentation", {}) or {})
+        for key, extra in (
+            ("tools", registry.dock_tools()),
+            ("actions", registry.dock_actions()),
+        ):
+            entries = list(merged.get(key, []) or [])
+            builtin_ids = {str(item.get("id")) for item in entries}
+            for entry in extra.values():
+                entry_id = str(entry.get("id"))
+                if entry_id in builtin_ids:
+                    log.warning("插件控制条贡献 id 与内建冲突，内建胜出: %s", entry_id)
+                    continue
+                entries.append(dict(entry))
+            merged[key] = entries
+        return merged
 
     presentationConfig = Property(
         "QVariantMap",
@@ -876,7 +914,14 @@ class Backend(QObject):
 
     @Slot(str)
     def selectTool(self, tool: str) -> None:
-        """切换放映指针：``pen`` / ``eraser`` / ``arrow``。"""
+        """切换放映指针：``pen`` / ``eraser`` / ``arrow``；``plugin:`` 前缀走动作通道。"""
+        # ``plugin:`` 前缀的工具 id 来自插件（registry.add_dock_tool，2026-10-05
+        # 任务 6）：不进白名单校验、不调 ``ppt.set_tool``（与 COM 零接触），改按
+        # 动作处理 —— 经 ``actionTriggered`` 走应用层 ``_on_action`` 的 ``plugin:``
+        # 特权通道，由动词注册表分发给插件处理器。
+        if tool.startswith("plugin:"):
+            self.actionTriggered.emit(tool)
+            return
         if tool not in ("pen", "eraser", "arrow"):
             return
         if tool != self._active_tool:

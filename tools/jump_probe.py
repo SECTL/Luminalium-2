@@ -32,8 +32,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TOOLS = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TOOLS)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 os.chdir(ROOT)
 
 from PySide6.QtCore import (  # noqa: E402
@@ -54,6 +56,8 @@ from app.bridge import Backend  # noqa: E402
 from app.config import Config  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
+from app.slide_thumbs import SlideThumbCache, _corner_radius  # noqa: E402
+from fake_slides import FakeSlideExporter, write_fake_slide  # noqa: E402
 
 #: 预览用的紧凑尺寸（与 preview.py 同一个档位）
 PREVIEW_W, PREVIEW_H = 1100, 640
@@ -74,6 +78,73 @@ def _find_by_name(item, name: str):
     return None
 
 
+def _check_thumb_cache(cache) -> None:
+    """缩略图缓存自己的逻辑断言（纯 Python，与 QML 无关）。
+
+    这块以前只能靠「图上有画面」目检，而画面又只能靠真机 COM 才有 ——
+    变成一个「不接 PowerPoint 就没法验」的盲区。用假导出器把队列喂满之后，
+    目录管理 / 代次号保护 / 烤圆角这些纯逻辑就能在这里钉死。
+
+    ⚠️ 自己收尾：最后重新灌满 41 张 —— 后面还要抓图，面板上不能是空的。
+    """
+    from PIL import Image  # noqa: PLC0415
+
+    problems: list[str] = []
+
+    def check(ok: bool, what: str, detail: str = "") -> None:
+        print(f"[probe] {'PASS' if ok else 'FAIL'} {what}"
+              + (f" — {detail}" if detail else ""))
+        if not ok:
+            problems.append(what)
+
+    urls = cache.urls
+    check(len(urls) == 41, "缩略图表长度 = 总页数", f"{len(urls)}")
+    check(all(u.startswith("file:///") for u in urls), "每张都是 file:// URL")
+    files = [Path(QUrl(u).toLocalFile()) for u in urls]
+    check(all(f.exists() and f.stat().st_size > 0 for f in files), "文件真的都落盘了",
+          f"例: {files[0].name}")
+
+    # 烤圆角：角上透明、中心不透明（QML 侧没有蒙版，全靠这一步）
+    with Image.open(files[0]) as img:
+        check(img.mode == "RGBA", "PNG 带 alpha 通道（烤圆角的前提）", img.mode)
+        if img.mode == "RGBA":
+            w, h = img.size
+            corner = img.getpixel((1, 1))[3]
+            center = img.getpixel((w // 2, h // 2))[3]
+            check(corner == 0 and center == 255,
+                  "圆角已烤进 alpha（角透明 / 中心不透明）",
+                  f"corner={corner} center={center} r={_corner_radius()}")
+
+    # 同一场里状态快照每 400ms 来一次，重复 set_show 不能把已有的图冲掉
+    cache.set_show(True, 41)
+    check(len(cache.urls) == 41 and cache.urls[0] != "",
+          "同一场里重复 set_show 不冲掉缓存")
+
+    # 换一场 / 退出放映：表清空、目录清掉、上一场迟到的结果被丢
+    old_generation = cache._generation
+    cache.set_show(False, 0)
+    check(cache.urls == [], "退出放映后缩略图表清零")
+    cache.set_show(True, 41)
+    check(cache.urls == [""] * 41, "新一场从全空开始")
+    stale = cache.directory / f"{old_generation}-5-raw.png"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    write_fake_slide(str(stale), 5)
+    cache._on_ready(5, str(stale))
+    check(cache.urls[4] == "" and not stale.exists(),
+          "上一场迟到的缩略图被丢弃（代次号保护）")
+
+    # 收尾：重新灌满，后面抓图要有内容
+    cache.set_show(False, 0)
+    cache.set_show(True, 41)
+    cache.request(1, 41, burst=41)
+    check(sum(1 for u in cache.urls if u) == 41, "收尾重新灌满 41 张")
+
+    if problems:
+        print(f"[probe] 缩略图链路：失败项 {len(problems)} —— {problems}")
+    else:
+        print("[probe] 缩略图链路：失败项 0")
+
+
 def main() -> int:
     qInstallMessageHandler(_on_qml_message)
 
@@ -83,6 +154,15 @@ def main() -> int:
 
     backend = Backend(config, app)
     backend.apply_state(PresentationState(active=True, slide_index=26, slide_total=41))
+
+    # 缩略图：真 cache + 假导出器（见 tools/fake_slides.py 的说明）。
+    # 面板上「空卡片 + 页码」是 L1 的加载态、不是坏了，所以这块**必须**喂上，
+    # 否则探针出的图永远是加载态，看不出「像不像 L1」。
+    thumbs = SlideThumbCache(FakeSlideExporter(), backend)
+    backend.attach_slide_thumbs(thumbs)
+    thumbs.set_show(True, 41)
+    thumbs.request(1, 41, burst=41)  # 假导出器没有 COM 开销，一次投满
+    _check_thumb_cache(thumbs)
 
     rinui = RinUIWindow()
     rinui.engine.addImportPath(str(UI_DIR))
@@ -161,12 +241,13 @@ def main() -> int:
     def _report() -> None:
         for corner, panel in panels.items():
             flick = _find_by_name(panel, "pageJumpFlickable")
-            grid = _find_by_name(panel, "pageJumpGrid")
-            cells = grid.childItems() if grid is not None else []
+            list_item = _find_by_name(panel, "pageJumpList")
+            cells = list_item.childItems() if list_item is not None else []
             print(f"[probe] {corner} panel x={panel.x():.0f} y={panel.y():.0f} "
-                  f"card={panel.property('cardWidth'):.0f}x"
-                  f"{panel.property('cardHeight'):.0f} "
-                  f"rows={panel.property('rows')} cols={panel.property('effColumns')} "
+                  f"item={panel.property('itemWidth'):.0f}x"
+                  f"{panel.property('itemHeight'):.0f} "
+                  f"thumbs={panel.property('readyCount')}/"
+                  f"{panel.property('total')} "
                   f"scroll={panel.property('scrollable')}")
             if flick is not None:
                 print(f"[probe] {corner} flick h={flick.height():.0f} "
@@ -179,9 +260,9 @@ def main() -> int:
                       f"vis={card.isVisible()}")
             print(f"[probe] {corner} panelItem w={panel.width():.0f} "
                   f"h={panel.height():.0f} vis={panel.isVisible()}")
-            if grid is not None:
-                print(f"[probe] {corner} grid h={grid.height():.0f} "
-                      f"x={grid.x():.0f} y={grid.y():.0f} "
+            if list_item is not None:
+                print(f"[probe] {corner} list h={list_item.height():.0f} "
+                      f"x={list_item.x():.0f} y={list_item.y():.0f} "
                       f"cells={len(cells)}")
             # 逐格看最后几格：位置 / 尺寸 / 有效可见性（``Item.visible`` 是
             # 「有效可见性」，祖先不可见时读出来也是 False —— 图上不画的那一格
@@ -250,10 +331,28 @@ def main() -> int:
         _click(hit)
         opened = bool(panel.property("opened"))
 
-        target = 15
-        cell = _find_by_name(panel, f"pageJumpCell_{target}")
+        # ⚠️ 必须挑一张**真的在视口里**的卡：单列列表展开时会把当前页滚到正中
+        #    （L1 的 ``scrollIntoView(block: 'center')``），页码小的那些早被滚到
+        #    视口外了 —— 点它们等于点在窗口外，``actions`` 会是空的。
+        #    2026-10-06 从「5 列网格」返工成「单列」之后，这个坑当场复现过一次
+        #    （写死页码 15 的旧写法直接假失败）。
+        flick = _find_by_name(panel, "pageJumpFlickable")
+        rect = flick.mapToScene(QPointF(0, 0)) if flick is not None else QPointF(0, 0)
+        size = flick.size() if flick is not None else None
+        target, cell = None, None
+        for n in range(1, 42):
+            item = _find_by_name(panel, f"pageJumpCell_{n}")
+            if item is None:
+                continue
+            center = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+            if size is None or (
+                rect.x() <= center.x() <= rect.x() + size.width()
+                and rect.y() <= center.y() <= rect.y() + size.height()
+            ):
+                target, cell = n, item
+                break
         if cell is None:
-            print(f"[probe] {corner} 面板里找不到第 {target} 格")
+            print(f"[probe] {corner} 面板里找不到任何可见的卡")
             return
         actions.clear()
         _click(cell)

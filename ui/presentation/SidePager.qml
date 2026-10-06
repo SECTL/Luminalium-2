@@ -86,11 +86,11 @@ Item {
     // 去脉写在 ``PresentationDock.qml`` 与 ``PageJumpPanel.qml`` 的注释里。
     readonly property var jumpCfg: pagerCfg.jump !== undefined ? pagerCfg.jump : ({})
     readonly property bool jumpEnabled: jumpCfg.enabled !== false
-    readonly property int jumpColumns: jumpCfg.columns !== undefined
-        ? jumpCfg.columns : Lumi.dockJumpColumns
 
     /*! 快速切页面板展开着没有（``interactiveRect`` / 区域塑形 / Python 侧
-        「光标移出就收」都看它，与横版同名同义）。 */
+        「光标移出就收」都看它，与横版同名同义）。另外它还是**同侧 pill 的显隐
+        开关** —— 面板贴窗口边铺满整高，正好把 pill 整个盖住，留着它既多余又
+        会跟面板抢那一块命中区（L1 是 ``hidden-flipper`` 同款做法）。 */
     readonly property bool jumpPanelOpened: jumpPanel.opened
 
     /*! 可用空间（**屏幕逻辑像素**）= 所在**窗口**的尺寸 —— 遮罩层是铺满放映
@@ -225,6 +225,8 @@ Item {
         scale: pager.scaleFactor
         transformOrigin: Item.TopLeft
         vertical: true
+        // 面板展开时把自己让开（面板贴的是窗口边，与 pill 同一块地方）
+        visible: !pager.jumpPanelOpened
         // 横版的两个留白档原样转置：沿轴 4（横版的左右）、横向 9（横版的上下）
         paddingX: pager.crossPadding
         paddingY: pager.pillPadding
@@ -262,9 +264,9 @@ Item {
             Rectangle {
                 objectName: "sidePagerHitSurface"
                 anchors.fill: parent
-                radius: Lumi.dockJumpCellRadius
+                radius: Lumi.dockJumpItemRadius
                 color: pagerHitArea.containsMouse || pager.jumpPanelOpened
-                    ? Lumi.dockJumpCellHover : "transparent"
+                    ? Lumi.dockJumpItemHover : "transparent"
                 Behavior on color {
                     ColorAnimation {
                         duration: Lumi.dockJumpFadeDuration
@@ -326,6 +328,11 @@ Item {
     // ============================================ 快速切页面板（点页码展开）
     // 声明在 ``bar`` 之后 → 绘制、命中都在控制条之上。
     //
+    // ⚠️ **面板贴的是窗口边，不是控制条**。L1 的形态是 ``right: 16px; top: 24px;
+    //    bottom: 24px`` —— 一整条贴屏幕边的侧栏。第一版把它贴着条摆（往屏幕
+    //    内侧长），用户对着 L1 直说「不像」，所以整块定位重来了。既然它盖的正是
+    //    pill 那一块，pill 就得让开（见 ``bar.visible``）。
+    //
     // ⚠️ 与横版同一条约定：**不进**根 Item 的 ``implicitWidth/Height``（否则
     //    Python 摆位要重算，条会闪一帧），代价是 ``interactiveRect`` 必须自己
     //    把面板包进来（上面那段就是）。
@@ -333,66 +340,38 @@ Item {
         id: jumpPanel
         objectName: "sidePageJumpPanel"
 
-        // 翻页组被关掉（``pager.enabled``）时不铺格子 —— 那个角落没有页码区、
-        // 没有触发点，白建几十个格子纯属浪费（与横版同一条）。
+        // 翻页组被关掉（``pager.enabled``）时不铺卡片 —— 那个角落没有页码区、
+        // 没有触发点，白建几十张卡片纯属浪费（与横版同一条）。
         total: pager.pagerEnabled ? Backend.slideTotal : 0
         current: Backend.slideIndex
-        columns: pager.jumpColumns
         opened: false
-        // 条贴屏幕左右边 → 面板一律往**屏幕内侧**长：
-        // 左条（middle_left）往右、右条（middle_right）往左
-        enterFrom: pager.cornerIsRight ? "left" : "right"
+        // 条贴窗口左边 → 面板也贴窗口左边（L1 按点击位置选边，这里条的位置
+        // 已经说明了点击在哪一侧，同一个结论）
+        side: pager.cornerIsRight ? "right" : "left"
 
+        // ``scale`` 跟着倍率（与笔选单一致）：底板的字号 / 图形一起缩放，面板
+        // 不跟着走就成两个体量。⚠️ x/y 是**屏幕逻辑像素**，宽高是设计单位。
         scale: pager.scaleFactor
         transformOrigin: Item.TopLeft
 
-        // 横向：贴着条**内侧**那条边，再让开 ``Lumi.dockJumpGap``
-        // （卡片本体对齐，所以要各扣 / 加一次 shadowMargin）
-        x: {
-            var s = pager.scaleFactor
-            var gap = Lumi.dockJumpGap * s
-            var want
-            if (pager.cornerIsRight) {
-                // 卡片本体的**右**沿 = 底板左沿 - 间距
-                want = (bar.x + bar.margin) * s - gap
-                    - jumpPanel.width * s + jumpPanel.shadowMargin * s
-            } else {
-                // 卡片本体的**左**沿 = 底板右沿 + 间距
-                want = (bar.x + bar.implicitWidth - bar.margin) * s + gap
-                    - jumpPanel.shadowMargin * s
-            }
-            // 可用宽 = **从 dock 左沿到容器右沿**（``want`` 是 dock 内部坐标，
-            // 先扣 ``pager.x``）—— 与横版同一个口径。允许为负（面板比条宽时
-            // 本来就该往外溢出）。
-            var limit = pager.availableWidth - pager.x
-            if (limit > 0) {
-                want = Math.min(want, limit - jumpPanel.width * s)
-            }
-            return want
-        }
+        // 横向：贴窗口的左右边（``Lumi.dockJumpEdge``）。
+        // ⚠️ 面板 Item 的宽是**滑行路径的并集**（比卡片多出 ``enterDistance``，
+        //    见组件头注释），所以贴左边时要再往左让出一整条 ``enterDistance``。
+        //    ``want`` 是 dock 内部坐标 —— 先把 ``pager.x``（本条的窗口原点）扣掉。
+        x: (pager.cornerIsRight
+            ? pager.availableWidth
+              - (Lumi.dockJumpEdge + jumpPanel.cardWidth) * pager.scaleFactor
+            : (Lumi.dockJumpEdge - jumpPanel.enterDistance) * pager.scaleFactor)
+            - pager.x
 
-        // 纵向：与条**居中对齐**（条在屏幕里本来就是垂直居中的，面板跟着它走
-        // 视觉上最稳），再钳进窗口 —— 面板比条高时两头都不会顶出去。
-        y: {
-            var s = pager.scaleFactor
-            var want = (bar.y + bar.implicitHeight / 2) * s - jumpPanel.height * s / 2
-            var limit = pager.availableHeight
-            if (limit > 0) {
-                // ⚠️ 钳制在**窗口**坐标里做（``want`` 是 dock 内部坐标，先平移
-                //    ``pager.y``），否则竖条自己那点偏移会被算漏 —— 横版同位置
-                //    的算式也一样，见 PresentationDock 的 ``maxHeight`` 注释。
-                want = Math.max(-pager.y,
-                                Math.min(want, limit - jumpPanel.height * s - pager.y))
-            }
-            return want
-        }
+        // 纵向：L1 是 ``top: 24px`` —— 面板自己铺满整高，上下各让 24
+        y: Lumi.dockJumpInset * pager.scaleFactor - pager.y
 
-        // 可用高度 = 整个遮罩的高（竖条本来就是满高居中的）
-        maxHeight: pager.availableHeight / pager.scaleFactor
-        // 可用宽度 = 屏宽扣掉条本身与那条间距（面板往屏幕内侧长）
-        // ⚠️ 式子里**没有** jumpPanel 自己的尺寸，不会成环
-        maxWidth: Math.max(pager.availableWidth / pager.scaleFactor
-                           - bar.implicitWidth - Lumi.dockJumpGap, 0)
+        // 可用高度 = 窗口高减去上下那两条 24（L1 的面板高度由**窗口**决定，
+        // 与页数无关；页数少时由组件自己收短，见组件头注释）
+        maxHeight: Math.max(pager.availableHeight / pager.scaleFactor
+                            - Lumi.dockJumpInset * 2, 0)
+        maxWidth: Math.max(pager.availableWidth / pager.scaleFactor, 0)
 
         onPagePicked: function (page) {
             Backend.gotoSlide(page)

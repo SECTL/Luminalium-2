@@ -143,15 +143,14 @@ Item {
         ? pagerCfg.surface_padding_x : Lumi.dockPagerPaddingX
 
     // ---- 页码快速跳转（点页码展开的面板，``presentation/PageJumpPanel.qml``）----
-    // 2026-10-06 用户指令：「将 Luminalium 1 的点按翻页组件中的页码自动展开快速
-    // 切页面板的功能搬过来，并且 Fluent 风格 RinUI 化」。形态与取舍写在
-    // ``PageJumpPanel.qml`` 的头注释里。
+    // 出处是 Luminalium 1 的「点按翻页」扩展。⚠️ 形态在 2026-10-06 **返工过一遍**：
+    // 第一版做成「5 列页码网格 + 贴着控制条」，用户对着 L1 说「不像」，于是改成
+    // L1 的样子 —— **一整条贴窗口边的侧栏**（单列 16:9 缩略图、页码压右下角、
+    // 当前页 2px accent 描边）。取舍与 L1 原值列在 ``PageJumpPanel.qml`` 头注释里。
     readonly property var jumpCfg: pagerCfg.jump !== undefined ? pagerCfg.jump : ({})
     /*! 面板的总开关（``presentation.pager.jump.enabled``）。关掉后页码区不再
         可点、也不再给 hover 提示 —— 「点不动」和「看着能点但没反应」是两回事。 */
     readonly property bool jumpEnabled: jumpCfg.enabled !== false
-    readonly property int jumpColumns: jumpCfg.columns !== undefined
-        ? jumpCfg.columns : Lumi.dockJumpColumns
 
     // ---- 分段控件（工具组）----
     readonly property int segmentPaddingX: segmentCfg.padding_x !== undefined
@@ -318,6 +317,19 @@ Item {
             return win.width
         }
         return parent ? parent.width : 0
+    }
+
+    /*! 可用高度（**屏幕逻辑像素**）= 所在**窗口**的高。
+
+        与 ``availableWidth`` 同一个用途、同一条告诫（别改成 ``parent.height``）。
+        快速切页面板贴窗口边铺满整高之后，它取代了原来那条「从条往上还剩多少」
+        的算式 —— 面板高度现在由**窗口**决定，与条在哪、多高都无关。 */
+    readonly property real availableHeight: {
+        var win = Window.window
+        if (win) {
+            return win.height
+        }
+        return parent ? parent.height : 0
     }
 
     /*! 点页码区：开 / 关面板。总页数为 0（没读到页码）时不动 —— 空面板没有意义，
@@ -549,9 +561,9 @@ Item {
                 Rectangle {
                     objectName: "dockPagerHitSurface"
                     anchors.fill: parent
-                    radius: Lumi.dockJumpCellRadius
+                    radius: Lumi.dockJumpItemRadius
                     color: pagerHitArea.containsMouse || dock.jumpPanelOpened
-                        ? Lumi.dockJumpCellHover : "transparent"
+                        ? Lumi.dockJumpItemHover : "transparent"
                     Behavior on color {
                         ColorAnimation {
                             duration: Lumi.dockJumpFadeDuration
@@ -673,15 +685,17 @@ Item {
         id: jumpPanel
         objectName: "pageJumpPanel"
 
-        // 本角落**没有翻页组**时不铺格子：那个角落根本没有页码区（没有触发点），
-        // 面板实例只是跟着组件一起被建出来而已 —— 白建几十个格子纯属浪费。
+        // 本角落**没有翻页组**时不铺卡片：那个角落根本没有页码区（没有触发点），
+        // 面板实例只是跟着组件一起被建出来而已 —— 白建几十张卡片纯属浪费。
         // 底中那条工具栏就是这一档（它的 groups 是 tools/actions/exit）。
         total: dock.present("pager") ? Backend.slideTotal : 0
         current: Backend.slideIndex
-        columns: dock.jumpColumns
         opened: false
-        // 条在屏幕下部 → 面板往**上**长，滑入也从贴近条的位置向上浮
-        enterFrom: "up"
+        /*! 面板贴**窗口**的哪条边（L1 形态，见 ``PageJumpPanel.qml`` 头注释）。
+            横版条在屏幕下部：左下角的条 → 面板贴左边，右下角 → 贴右边；
+            底中的条取不到「哪一侧」，按左处理（L1 的判据是点击在屏幕左右哪半，
+            条居中时两边等价）。 */
+        side: dock.cornerIsRight ? "right" : "left"
 
         // 与底板同倍率缩放 —— 整块面板跟着组件一起放大 / 缩小。
         // ``transformOrigin: TopLeft``：下面算的 x/y 是**根 Item 坐标**（未缩放的
@@ -689,51 +703,27 @@ Item {
         scale: dock.scaleFactor
         transformOrigin: Item.TopLeft
 
-        // 底边贴条底板上沿往上摆：面板**卡片本体**（不含投影余量）的底边距底板上沿
-        // ``Lumi.dockJumpGap``。卡片自己的坐标含 shadowMargin，所以两边各扣一次。
-        // ⚠️ 整条式子乘 ``scaleFactor``：底板的可见上沿在 ``bar.margin * scaleFactor``
-        //    处（底板被缩放变换过），落点要跟着走。
-        y: ((bar.y + bar.margin) - Lumi.dockJumpGap
-            - jumpPanel.shadowMargin - jumpPanel.cardHeight) * dock.scaleFactor
+        /*! 横向：贴**窗口**的左右边（``Lumi.dockJumpEdge``）。
+            ⚠️ 面板 Item 的宽是**滑行路径的并集**（比卡片多一条 ``enterDistance``，
+                见组件头注释），所以贴左边时要再往左让出一整条。
+                式子是**屏幕逻辑像素**，而 ``want`` 要的是 dock 内部坐标 ——
+                先把 ``dock.x``（本 dock 在窗口里的原点）扣掉。 */
+        x: (dock.cornerIsRight
+            ? dock.availableWidth
+              - (Lumi.dockJumpEdge + jumpPanel.cardWidth) * dock.scaleFactor
+            : (Lumi.dockJumpEdge - jumpPanel.enterDistance) * dock.scaleFactor)
+            - dock.x
 
-        // 可用高度（**设计单位**）：条底板上沿一直往上到容器顶部，再减掉那条间距。
-        //
-        // ⚠️ 两项都不能少：
-        //    · ``dock.y / scaleFactor`` —— 面板的 x/y 是**dock 内部**坐标（它挂在
-        //      dock 上，dock 自己在容器里的位置是另一笔账），而「上面还有多少地方」
-        //      是**容器**尺度的事。漏掉它，屏幕底部的发布会说「上面只剩 24px」，
-        //      面板被压成一行高（2026-10-06 新增时当场踩到）；
-        //    · 这个式子里**没有** jumpPanel 自己的尺寸 —— 否则「高度上限依赖 y、
-        //      y 依赖高度」就成环了，QML 会直接报绑定循环。
-        maxHeight: Math.max(
-            dock.y / dock.scaleFactor + bar.y + bar.margin - Lumi.dockJumpGap,
-            Lumi.dockJumpCellSize)
-        // 可用宽度 = 遮罩整宽换算回设计单位（面板可以横跨屏幕，只需别顶出去）
+        /*! 纵向：L1 是 ``top: 24px`` —— 面板自己铺满整高，上下各让 24。
+            与条的位置**无关**（这正是这次返工的重点：面板不再从条旁边长出来）。 */
+        y: Lumi.dockJumpInset * dock.scaleFactor - dock.y
+
+        /*! 可用高度（**设计单位**）= 窗口高减去上下那两条 24。
+            与页数无关（L1 的面板高度由窗口决定），页数少时由组件自己收短。 */
+        maxHeight: Math.max(dock.availableHeight / dock.scaleFactor
+                            - Lumi.dockJumpInset * 2, 0)
+        // 可用宽度 = 遮罩整宽换算回设计单位（面板只需别顶出窗口）
         maxWidth: Math.max(dock.availableWidth / dock.scaleFactor, 0)
-
-        // 水平：贴着条的同侧边 —— 左下角的面板左对齐、右下角的右对齐，
-        // 「面板从条的哪一头长出来」在两侧保持一致。超出屏幕就往回收。
-        x: {
-            var s = dock.scaleFactor
-            var want
-            if (dock.cornerIsRight) {
-                // 卡片本体的**右**沿对齐底板右沿
-                want = (bar.x + bar.implicitWidth - bar.margin) * s
-                    - jumpPanel.width * s + jumpPanel.shadowMargin * s
-            } else {
-                // 卡片本体的**左**沿对齐底板左沿
-                want = (bar.x + bar.margin) * s - jumpPanel.shadowMargin * s
-            }
-            // 可用宽 = **从 dock 左沿到窗口右沿**（``want`` 是 dock 内部坐标，
-            // 所以先把 ``dock.x`` 扣掉）—— 与笔选单那条算式同一个口径。
-            // ⚠️ 别在这里 ``Math.max(0, …)``：面板比条宽时它本来就该往左溢出
-            //    （右下角的条贴着屏幕右边，面板只能往左长），钳到 0 就顶死了。
-            var limit = dock.availableWidth - dock.x
-            if (limit > 0) {
-                want = Math.min(want, limit - jumpPanel.width * s)
-            }
-            return want
-        }
 
         onPagePicked: function (page) {
             Backend.gotoSlide(page)

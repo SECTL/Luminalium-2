@@ -312,60 +312,73 @@ QtObject {
 
     // ---- 页码快速跳转面板（``presentation/PageJumpPanel.qml``）----
     // 出处是 **Luminalium 1** 的点按翻页组件：L1 里点页码那一块，会从屏幕侧边
-    // 滑出一列页面（``#page-selector``），点哪一页就跳哪一页。本档保留它的三件
-    // 事 —— **点页码展开 / 当前页高亮 / 点外部收起**，但内容**换成 Fluent 的
-    // 页码网格**，理由见组件头注释（L2 后端没有导出幻灯片缩略图这条通道）。
+    // 滑出一列页面（``#page-selector``），点哪一页就跳哪一页。
     //
-    // L1 的手感也照搬了两条：面板是**滑入**（不用 scale —— 缩放会让数字发虚），
-    // 曲线走 Fluent 2 的 decelerate（``OutQuint``），收起比展开干脆。
-    /*! 面板与控制条底板之间的间距（同 ``dockPaletteGap`` 一档）。 */
-    readonly property int dockJumpGap: 10
+    // ⚠️ 下面这一组是**照 L1 的 CSS 原值抄的**，不是估的。2026-10-06 之前这里
+    // 是另一套（5 列页码网格 + 贴控制条 + Fluent flyout 令牌），用户看了预览图
+    // 说「不像」—— 因为 L1 的形态是**一整条贴屏幕边的侧栏**：260 宽、上下各留
+    // 24 铺满整高、单列 16:9 卡片、卡间距 16、当前页 2px accent 描边、页码压在
+    // 卡片右下角。改动时**别**再往「密实的方格」方向收（那正是被否掉的一版）。
+    //
+    // L1 原值（``ui/overlay.html`` 的 ``#page-selector`` / ``.page-item``）：
+    //   width 260 / top+bottom 24 / left|right 16 / padding 12 / radius 16
+    //   border 1px var(--overlay-popup-border) / box-shadow none / z-index 200
+    //   .page-grid: 单列 flex column, gap 16
+    //   .page-item: width 100%, aspect-ratio 16/9, radius 8, overflow hidden
+    //   .page-item.active: border 2px solid var(--accent-color)
+    //   .page-num: 右下 4/8, font-size 2em, weight 700, rgba(255,255,255,.9),
+    //              text-shadow 0 1px 4px rgba(0,0,0,.5)
+    //   .visible: transform 0（进场前是 translateX(±(100% + 32px))），
+    //             transition .4s cubic-bezier(.19,1,.22,1)
+    /*! 面板宽度（设计单位）。 */
+    readonly property int dockJumpWidth: 260
+    /*! 面板贴**窗口**左右边的距离。 */
+    readonly property int dockJumpEdge: 16
+    /*! 面板上下各留多少（L1 是 top/bottom: 24 —— 面板铺满整高再各让 24）。 */
+    readonly property int dockJumpInset: 24
     /*! 面板内边距。 */
     readonly property int dockJumpPadding: 12
-    /*! 面板圆角。8 = Fluent 2 的 Overlay / Flyout corner radius（同
-        ``dockPaletteRadius``）—— 独立浮出的大表面用 8，胶囊圆语言只留给控制条本体。 */
-    readonly property int dockJumpRadius: 8
-    /*! 面板投影余量（同 ``dockPaletteShadowMargin`` 的用途：留出画阴影的地方）。 */
-    readonly property int dockJumpShadowMargin: 20
-    /*! 格子边长。**与 ``dockHitSize`` 同档（44）** —— 这是 Fluent 的最小可点
-        尺寸，触屏上点页码本来就比点按钮更容易点偏，不该比工具按钮还小。 */
-    readonly property int dockJumpCellSize: 44
-    /*! 格子间距。6 = 8px 网格上的「紧凑一档」：格子自己已经 44，再拉开会让
-        面板显得散，而跳跃列表应当是一块密实的砖。 */
-    readonly property int dockJumpCellSpacing: 6
-    /*! 格子圆角 —— 比面板（8）小一档，嵌套圆角同心（RinUI 的 smallRadius 同款）。 */
-    readonly property int dockJumpCellRadius: 5
-    /*! 每行几格的缺省值（真实值在 ``presentation.pager.jump.columns``）——
-        5 列 × 44 的格子 ≈ 244 宽，与 L1 那块面板的 260 是同一个体量。 */
-    readonly property int dockJumpColumns: 5
-    /*! 格子 hover 底色（Fluent 2 的 Subtle fill 一档）。 */
-    readonly property color dockJumpCellFill: fade(textPrimary, 0.04)
-    readonly property color dockJumpCellHover: fade(textPrimary, 0.09)
-    /*! 按下时轻微收缩的量感（不做位移动画：跳页类控件要「稳」）。 */
-    readonly property real dockJumpCellPressedScale: 0.94
-    /*! **当前页**格子的底色与文字色。L1 是「accent 描边」，这里改成 Fluent 的
-        实底强调（WinUI 的 SelectedBackground 同款）—— 描边在触屏上一晃而过，
-        实底才是一眼能找到「我现在在哪」。反色文字取主题的 ``textOnAccentColor``
-        （深色档白 / 浅色档黑），别写死白色：浅色主题的 accent 是亮蓝，白字压上
-        去几乎读不出来。 */
-    readonly property color dockJumpCurrentFill: accent
-    readonly property color dockJumpCurrentText: themeColors && themeColors.textOnAccentColor !== undefined
-        ? themeColors.textOnAccentColor : (isDark ? "#FFFFFF" : "#000000")
-    /*! 面板底色 —— 与笔选单同一档实底（92%）：页码要能看清，透出放映画面会糊。 */
-    readonly property color dockJumpBg: fade(surfaceBg, 0.92)
-    /*! 面板描边：``hairline`` 同源（深色下 ``cardBorderColor`` 是黑 10%，等于没有）。 */
+    /*! 面板圆角（L1 ``border-radius: 16px``）。 */
+    readonly property int dockJumpRadius: 16
+    /*! 卡片之间的间距（L1 ``.page-grid { gap: 16px }``）。 */
+    readonly property int dockJumpItemSpacing: 16
+    /*! 卡片圆角（L1 ``.page-item { border-radius: 8px }``）。
+        ⚠️ 缩略图**在 Python 侧就烤好圆角 alpha**（见 ``app/slide_thumbs.py``）——
+        QML 里不必再给每张图挂一层 ``OpacityMask``（41 张图 = 41 个 FBO）。
+        改了这里的数值要同步改那边的烤角半径。 */
+    readonly property int dockJumpItemRadius: 8
+    /*! 卡片缺省底色（L1 的 ``--overlay-control-bg`` = 主题的 ``card-bg``）。 */
+    readonly property color dockJumpItemFill: fade(textPrimary, 0.03)
+    /*! 卡片 hover（L1 ``.page-item:hover`` 是放大 + 投影；投影在 QML 里逐张挂
+        太贵，用 Fluent 的 hover 填充代替，观感差别在触屏上基本看不出来）。 */
+    readonly property color dockJumpItemHover: fade(textPrimary, 0.09)
+    /*! hover 时轻微放大（L1 ``transform: scale(1.02)``）。 */
+    readonly property real dockJumpItemHoverScale: 1.02
+    /*! **当前页**：L1 是「2px accent 描边」。
+        ⚠️ 2026-10-06 前一版把它改成了 Fluent 的 accent 实底（理由是描边在触屏上
+        不够显眼）—— 用户对着 L1 说不像，所以**回到描边**。别再改。 */
+    readonly property color dockJumpCurrentBorder: accent
+    readonly property int dockJumpCurrentBorderWidth: 2
+    /*! 页码字号（L1 ``font-size: 2em``，根字号 16 → 32）。 */
+    readonly property int dockJumpNumberSize: 32
+    readonly property color dockJumpNumberColor: "#FFFFFF"
+    /*! 页码的「文字阴影」：L1 用 text-shadow，QML 侧用同一串文字错位 1px 画一遍
+        （见组件）。这一档是那层影子的不透明度。 */
+    readonly property real dockJumpNumberShadowOpacity: 0.5
+    /*! 面板底色 —— L1 是**实底**（深色档 ``popup_bg: #202020``），不是半透明。
+        透出放映画面会让缩略图糊成一片，这里就按 L1 走实底。 */
+    readonly property color dockJumpBg: surfaceBg
+    /*! 面板描边：``hairline`` 同源（深色下 ``cardBorderColor`` 是黑 10%，等于没有）。
+        L1 深色档是 ``rgba(255,255,255,.18)`` —— ``hairline`` 是同一个量级。 */
     readonly property color dockJumpBorder: hairline
-    /*! 面板滚动区里那一条细滚动条的颜色（Flickable 自绘，见组件）。 */
-    readonly property color dockJumpScrollThumb: fade(textPrimary, 0.28)
-    /*! 进出场动画：滑入位移 12（同笔选单）+ 时长沿用 RinUI 的分工。 */
-    readonly property int dockJumpEnterOffset: 12
-    readonly property int dockJumpEnterDuration: Rin.Utils.animationSpeed
+    /*! 面板滚动区里那一条细滚动条的颜色（Flickable 自绘，见组件）。
+        L1 深色档的 ``--overlay-thumb-bg`` 直接就是 accent 色。 */
+    readonly property color dockJumpScrollThumb: accent
+    /*! 进场时长 / 曲线 —— L1 ``transition: transform .4s
+        cubic-bezier(0.19, 1, 0.22, 1)``。那条曲线就是 **OutExpo**（起步极快、
+        尾巴很长），QML 里有同名的 ``Easing.OutExpo``，直接用，别自己拟合贝塞尔。 */
+    readonly property int dockJumpEnterDuration: 400
     readonly property int dockJumpFadeDuration: durationFast
-    /*! 面板高度上限占可用空间的比例 —— 行数很多的演示（几百页）不该让面板顶到
-        屏幕另一头，超过就滚动。 */
-    readonly property real dockJumpMaxHeightRatio: 0.72
-    /*! 面板宽度上限占屏幕宽的比例（列数配得很大时兜底，别横着顶出屏幕）。 */
-    readonly property real dockJumpMaxWidthRatio: 0.32
 
     // ================================================================== 快捷面板
     //

@@ -134,6 +134,8 @@ class Backend(QObject):
     # ---- 通知类信号 ----
     presentationActiveChanged = Signal()
     slideChanged = Signal()
+    #: 幻灯片缩略图表变了（某几张就绪 / 整场复位，见 ``thumbUrls``）
+    slideThumbsChanged = Signal()
     activeToolChanged = Signal()
     #: 墨迹颜色变了（QML 侧的笔选单靠它回显选中的那一格）
     penColorChanged = Signal()
@@ -185,6 +187,10 @@ class Backend(QObject):
         self._presentation_active = False
         self._slide_index = 0
         self._slide_total = 0
+        #: 幻灯片缩略图缓存（``app/slide_thumbs.py``）。由 ``application.py`` 在
+        #: 播完 COM 控制器之后接上（``attach_slide_thumbs``）—— 预览 / 自检这类
+        #: 只造 Backend 的宿主没有它，此时 ``thumbUrls`` 是空表、请求静默忽略。
+        self._slide_thumbs = None
         #: 默认工具是**鼠标指针**（``arrow``）。
         #:
         #: ⚠️ 2026-10-01 用户指令「顶层窗口的工具栏的 Segmented 默认工具不应该
@@ -630,6 +636,39 @@ class Backend(QObject):
 
     slideTotal = Property(int, _get_slide_total, notify=slideChanged)
 
+    # ---------------------------------------------------------- 幻灯片缩略图
+    #: 页码快速跳转面板上那几十张「幻灯片画面」。**索引 = 页码 - 1**，空串 =
+    #: 还没就绪（卡片显示空底 + 页码，这是正常的加载态）。
+    #:
+    #: ⚠️ 走 ``QVariantList`` 而不是逐张发信号：QML 里 ``var`` 属性收 JS 数组会
+    #: 被包成空 QJSValue（见 memory 里那条），而列表整份重发只是几十个字符串，
+    #: 比「41 条信号各接一次」简单得多。真正的产出链路在 ``app/slide_thumbs.py``。
+    def _get_thumb_urls(self) -> List[str]:
+        cache = self._slide_thumbs
+        return list(cache.urls) if cache is not None else []
+
+    thumbUrls = Property("QVariantList", _get_thumb_urls, notify=slideThumbsChanged)
+
+    def attach_slide_thumbs(self, cache) -> None:
+        """接上缩略图缓存（由 ``application.py`` 装配，见 ``slide_thumbs.py``）。"""
+        self._slide_thumbs = cache
+        if cache is not None:
+            cache.urlsChanged.connect(self.slideThumbsChanged)
+            self.slideThumbsChanged.emit()
+
+    @Slot(int, int)
+    def requestThumbnails(self, start: int, end: int) -> None:
+        """要 ``[start, end]``（1-based 闭区间）这几页的缩略图。
+
+        由 ``PageJumpPanel`` 在**展开时**（当前页 ±5）与**滚动时**（可见范围 ±3）
+        调 —— 就是 Luminalium 1 的 ``requestThumbnailsForRange``，只换了个入口。
+        没在放映 / 缓存没接上时静默忽略。
+        """
+        cache = self._slide_thumbs
+        if cache is None:
+            return
+        cache.request(int(start), int(end))
+
     def _get_active_tool(self) -> str:
         return self._active_tool
 
@@ -663,6 +702,13 @@ class Backend(QObject):
             self._slide_index = state.slide_index
             self._slide_total = state.slide_total
             self.slideChanged.emit()
+
+        # 缩略图缓存跟着「放映开始 / 结束 / 页数变化」走。放在这里而不是
+        # ``windows.py``：每个状态快照都会经过这个方法，缓存的新场 / 清场
+        # 只需要一个入口（见 ``slide_thumbs.SlideThumbCache.set_show``）。
+        cache = self._slide_thumbs
+        if cache is not None:
+            cache.set_show(bool(state.active), int(state.slide_total))
 
     def set_status_text(self, text: str) -> None:
         if text != self._status_text:

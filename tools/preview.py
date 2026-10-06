@@ -66,6 +66,12 @@
   页），所以什么都不用给。这一档会顺手关掉左下角的开发水印 —— 它就画在左翻页条
   那一侧、会盖住面板底行的数字，出图看着像「面板被裁了一行」（2026-10-06 在这上面
   白绕了很久）。配 ``LUMI_PREVIEW_PAGER=side|bottom`` 可以分别看竖版 / 横版两种落点。
+- ``LUMI_PREVIEW_THUMBS=0`` —— 关掉快速切页面板的**假缩略图**（默认开）。
+  面板上那几十张画面在真机上要走 COM ``Slides(i).Export``，预览进程里没有
+  PowerPoint；这里不是塞几张假 URL 糊弄过去，而是拿**真的**
+  ``app.slide_thumbs.SlideThumbCache`` 配一个假导出器 —— 队列、代次号、节流、
+  Pillow 烤圆角、``file://`` 转换全走真代码，只有「谁来画那张 PNG」换成了本地
+  合成图。所以这一档也能证明「QML 那条 Image 路是通的」。
 """
 
 from __future__ import annotations
@@ -75,8 +81,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+TOOLS = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(TOOLS)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 os.chdir(ROOT)
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, QUrl  # noqa: E402
@@ -90,6 +98,8 @@ from app.config import Config  # noqa: E402
 from app.error_handler import ErrorHandler  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
+from app.slide_thumbs import SlideThumbCache  # noqa: E402
+from fake_slides import FakeSlideExporter  # noqa: E402
 
 OFFSCREEN_X = -6000
 OFFSCREEN_Y = -6000
@@ -181,9 +191,16 @@ if PEN_LIGHT:
 #: 不显示；同一份面板在可见窗口 / 离屏窗口 / TopWindow 宿主里都实测正常，见
 #: ``tools/jump_probe.py``）。抓图要的是稳定终态，不是动画中间态。
 PREVIEW_JUMP = os.environ.get("LUMI_PREVIEW_JUMP", "") not in ("", "0")
+#: 给快速切页面板喂**假缩略图**（默认开，``LUMI_PREVIEW_THUMBS=0`` 关）。
+#:
+#: ⚠️ 真假要说清楚：绕过去的只有「谁来画那张 PNG」（真机是 COM
+#: ``Slides(i).Export``，这里是在本地现画一张合成图）。队列 / 代次号 / 节流 /
+#: Pillow 烤圆角 / ``file://`` 转换全走 ``app.slide_thumbs`` 的真代码，
+#: 所以这一档同时是那条链路的**端到端验证**。
+PREVIEW_THUMBS = PREVIEW_JUMP and os.environ.get(
+    "LUMI_PREVIEW_THUMBS", "") not in ("0", "false", "False")
 #: 浅色主题 **+** 切页面板 = 只出那一张（``top_window_jump_light.png``）。
-#: 理由同 ``PEN_LIGHT``：当前页那块 accent 实底上的文字取
-#: ``textOnAccentColor``（深浅两档不一样），浅色下读不读得出来只有这张图能核验。
+#: 理由同 ``PEN_LIGHT``：当前页那块描边是 accent，浅色下读不读得出来只有这张图能核验。
 JUMP_LIGHT = IS_LIGHT and PREVIEW_JUMP
 if JUMP_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 同上
@@ -391,6 +408,18 @@ def main() -> int:
     backend.apply_state(
         PresentationState(active=True, slide_index=26, slide_total=41)
     )
+    # ---- 快速切页面板的缩略图（真 cache + 假导出器，见 PREVIEW_THUMBS）----
+    # 必须在 ``apply_state`` **之后**接：真应用里 ``set_show`` 是跟着状态快照走的
+    # （见 bridge.apply_state），这里状态刚置好，手动补一次开场。
+    if PREVIEW_THUMBS:
+        thumbs = SlideThumbCache(FakeSlideExporter(), backend)
+        backend.attach_slide_thumbs(thumbs)
+        thumbs.set_show(True, 41)
+        # burst 拉满：真机上那个 500ms 节流是给 COM 省的，这里的假导出器没有 COM
+        # 开销，所以一次投满 —— 抓图前必须全部就位，否则抓到的是「加载中」的样子
+        thumbs.request(1, 41, burst=41)
+        ready = sum(1 for url in thumbs.urls if url)
+        print(f"[THUMBS] 假缩略图 {ready}/{len(thumbs.urls)} -> {thumbs.directory}")
     backend.setSplashStage(*DESIGN_STAGE)
     # 报告窗的数据源。⚠️ 这里**不**调 ``install()`` —— 预览工具不该去接管
     # ``sys.excepthook``（本进程里没有真实异常要报告，接管只会让真报错被吞）。
@@ -542,21 +571,25 @@ def main() -> int:
                 expanded.append(f"{corner}:{panel_name}")
 
                 # 抓图前打一行几何：这块面板的坑**全在这一行数字里** ——
-                # 列数被压成 1（可用宽度算错）、卡片高被钳到一行（可用高度算错）、
-                # 明明放得下却有滚动条（``viewport`` < ``grid``）。
+                # 卡片高被钳到一张卡（可用高度算错）、面板没贴到窗口边（x/y 算错）、
+                # 明明放得下却有滚动条（``viewport`` < ``content``）。
                 # 出图之后先看这一行，能省掉「盯着 PNG 猜哪里错了」那一步。
                 def _report(it=panel_item, tag=f"{corner}:{panel_name}") -> None:
                     flick_item = _find_by_name(it, "pageJumpFlickable")
-                    print(f"[JUMP] {tag} card={it.property('cardWidth'):.0f}x"
+                    print(f"[JUMP] {tag} side={it.property('side')} "
+                          f"card={it.property('cardWidth'):.0f}x"
                           f"{it.property('cardHeight'):.0f} "
-                          f"grid={it.property('gridWidth'):.0f}x"
-                          f"{it.property('gridHeight'):.0f} "
+                          f"item={it.property('itemWidth'):.0f}x"
+                          f"{it.property('itemHeight'):.0f} "
+                          f"content={it.property('contentHeight'):.0f} "
                           f"viewport={it.property('viewportHeight'):.0f} "
                           f"maxW={it.property('maxWidth'):.0f} "
                           f"maxH={it.property('maxHeight'):.0f} "
-                          f"cols={it.property('effColumns')} "
-                          f"rows={it.property('rows')} "
+                          f"rect=({it.property('x'):.0f},"
+                          f"{it.property('y'):.0f}) "
                           f"scroll={it.property('scrollable')} "
+                          f"thumbs={it.property('readyCount')}/"
+                          f"{it.property('total')} "
                           f"contentY="
                           f"{flick_item.property('contentY') if flick_item else '?'}")
 

@@ -30,6 +30,7 @@ from .config import Config
 from .error_handler import ErrorHandler
 from .paths import APP_NAME, LOG_DIR, UI_DIR, ensure_runtime_dirs
 from .ppt_controller import COM_PROG_IDS, PptController
+from .slide_thumbs import SlideThumbCache
 from .tray import TrayIcon, build_app_icon
 from .windows import WindowManager
 
@@ -125,6 +126,12 @@ class LuminaliumApplication:
             interval_ms=int(self.config.get("presentation.poll_interval_ms", 400)),
             config=self.config,
         )
+        # 幻灯片缩略图缓存（页码快速跳转面板上那几十张画面）。它一头是
+        # PptController 的**消费者**（往 COM 线程投 ``Slides(i).Export``）、
+        # 一头是桥的**数据源**（``Backend.thumbUrls``），所以在这儿把两头接上。
+        # 见 app/slide_thumbs.py。
+        self.slide_thumbs = SlideThumbCache(self.ppt, self.backend)
+        self.backend.attach_slide_thumbs(self.slide_thumbs)
         # 「⋯」溢出菜单。必须持有引用，否则局部变量回收后菜单立即消失。
         self._overflow_menu: Optional[QMenu] = None
 
@@ -487,6 +494,9 @@ class LuminaliumApplication:
         log.info("退出应用")
         self.ppt.stop()
         self.ppt.shutdown()
+        # 缩略图缓存是纯临时物（下一次放映会重新导），退出时顺手清掉，
+        # 别在数据目录里留一堆没人认领的 PNG。
+        self.slide_thumbs.clear()
         self.windows.shutdown()
         self.tray.hide()
         self.config.save()

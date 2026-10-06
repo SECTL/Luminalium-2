@@ -81,6 +81,16 @@ import Luminalium
     * 翻页组件 → 「翻页组件位置」（``presentation.pager.position``：竖版两侧中间
       / 横版两侧下部，二选一 —— 后端顺带开关 ``corners`` 里那四个角）。
 
+    2026-10-05 插件系统 Wave 2 任务 10：三项设置**不再是硬编码的
+    InspectorSetting 块**，改为描述符驱动 —— 注册表条目的
+    ``inspector_items``（形状 ``{key, kind, title, description?, options?,
+    visible_when_group?}``，字段语义与注册侧校验见 ``registry.py`` 头注释
+    第 7 条）经 ``Backend.presentationGroups`` 进来，``inspectorRepeater``
+    取「选中角各组的并集」按 ``kind``（``switch`` / ``combo`` / ``radio``，
+    能力上限与原三项严格对齐）分发渲染，值读写走
+    ``Backend.settings.<key>`` / ``Backend.setSetting(...)``。这是插件往
+    编辑器暴露设置项的唯一通道（插件不需要碰本文件）。
+
     2026-10-05 插件系统 Wave 2 任务 9：「这条是什么组件」的判定（组件名 / 图标 /
     有无工具栏语义、翻页语义）**不再由组名硬编码 if 链推导**，唯一事实来源是
     插件注册表 —— QML 侧经 ``Backend.presentationGroups`` 读
@@ -422,24 +432,74 @@ Rin.FluentWindowBase {
         return cornerLabels[cornerName] !== undefined ? cornerLabels[cornerName] : cornerName
     }
 
-    /*! 选中的这条是否含**工具栏**语义 —— 决定面板里摆哪些设置项。
-        判别改为注册表驱动（2026-10-05 任务 9）：选中角的组里有带
-        ``traits.toolbar`` 的注册组即为真；插件组声明 ``toolbar`` 语义后
-        同样命中。 */
-    readonly property bool selectedHasToolbar: {
+    /*! 检查器列表 = 选中角**各组**的 ``inspector_items`` 并集（2026-10-05
+        插件系统 Wave 2 任务 10）：原先三个硬编码 InspectorSetting 已删，
+        改由注册表描述符驱动（``inspectorRepeater`` 的模型）。顺序 = 组在
+        corner groups 里的出现顺序、组内保持注册顺序；同一 ``key`` 去重
+        （同一描述符被同角多个组重复携带时只渲染一次）。描述符带
+        ``visible_when_group`` 时，仅当选中角的 groups 含该组才收录。
+
+        内建角落的 groups 配置下，与重构前的 trait 显隐（``selectedHasToolbar``
+        / ``selectedHasPager``，已随本任务移除）逐项一致：下中部角
+        （tools/actions/exit）→ 「显示按钮文本」+「退出键样式」；
+        翻页角（pager）→ 「翻页组件位置」。 */
+    readonly property var selectedInspectorItems: {
+        var result = []
         if (selectedCorner.length === 0)
-            return false
-        return cornerHasTrait(selectedCorner, "toolbar")
+            return result
+        var groups = groupsOf(selectedCorner)
+        var seen = ({})
+        for (var i = 0; i < groups.length; ++i) {
+            var entry = groupEntry(groups[i])
+            if (entry === undefined || entry.inspector_items === undefined)
+                continue
+            var items = entry.inspector_items
+            for (var j = 0; j < items.length; ++j) {
+                var item = items[j]
+                if (item === undefined || item.key === undefined || seen[item.key])
+                    continue
+                if (item.visible_when_group !== undefined
+                        && groups.indexOf(item.visible_when_group) < 0)
+                    continue
+                seen[item.key] = true
+                result.push(item)
+            }
+        }
+        return result
     }
 
-    /*! 选中的这条是否含**翻页**语义 —— 决定面板里摆哪些设置项。
-        判别与 ``selectedHasToolbar`` 同一套：组里有带 ``traits.pager``
-        的注册组即为真。竖版两侧（``middle_*``）的 groups 恒含 ``pager``
-        组，因此行为与旧的角名前缀判别一致。 */
-    readonly property bool selectedHasPager: {
-        if (selectedCorner.length === 0)
-            return false
-        return cornerHasTrait(selectedCorner, "pager")
+    /*! 描述符的**当前值**：默认读扁平设置键（``Backend.settings[key]``）。
+
+        ⚠️ 例外 ``presentation_pager_position``：显示要跟随**真实生效的
+        corners**（``pagerPositionIndex`` 由 corners 反推，配置里的
+        ``pager.position`` 只是它的影子 —— 理由见 ``pagerPositionIndex``
+        的注释）。这是重构前那两枚 RadioButton 的既有读法，描述符化不能
+        把它退回读影子值。 */
+    function inspectorCurrentValue(key) {
+        if (key === "presentation_pager_position")
+            return pagerPositionIndex === 1 ? "bottom" : "side"
+        return Backend.settings[key]
+    }
+
+    /*! ``combo`` 描述符的下拉文案列表（``options[].label``）。 */
+    function inspectorOptionLabels(descriptor) {
+        var labels = []
+        var options = descriptor.options !== undefined ? descriptor.options : []
+        for (var i = 0; i < options.length; ++i)
+            labels.push(options[i].label)
+        return labels
+    }
+
+    /*! ``combo`` 描述符的当前选中下标（按 ``options[].value`` 匹配当前值，
+        找不到回落 0 —— 注册侧校验保证 options 非空）。 */
+    function inspectorOptionIndex(descriptor) {
+        var value = inspectorCurrentValue(descriptor.key)
+        var options = descriptor.options !== undefined ? descriptor.options : []
+        for (var i = 0; i < options.length; ++i) {
+            if (options[i].value === value)
+                return i
+        }
+        return 0
     }
 
     /*! 翻页组件位置下拉的选中项（0 = 竖版两侧中间，1 = 横版两侧下部）。
@@ -1285,8 +1345,9 @@ Rin.FluentWindowBase {
         // ------------------------------------------------------------ 设置项区
         //
         // 面板顶端之下、下部常驻条之上，**整块**留给设置项（可滚动）。
-        // 每一项自己绑 ``visible``（比如工具栏的设置项只在选中工具栏时出现），
-        // 布局器会跳过不可见项。
+        // 设置项是**描述符驱动**的 Repeater（2026-10-05 任务 10）：模型是选中角
+        // 各组 ``inspector_items`` 的并集（``selectedInspectorItems``），
+        // 选中组件一变模型就跟着变，不再逐项绑 ``visible``。
         //
         // 2026-10-01（第六轮）：顶部导航条撤掉后，这里**顶到面板自己的上沿**
         // （``anchors.top: parent.top``）—— 面板之外就是标题栏，间距靠
@@ -1318,112 +1379,125 @@ Rin.FluentWindowBase {
                 width: parent.width - 32
                 spacing: 18
 
-                /*! 工具栏的「显示按钮文本」（2026-10-01 用户指令：「工具栏新增设置项
-                    『显示按钮文本』，打开后，将在按钮旁边显示按钮的名称文本」）。
-                    写进 ``presentation.buttons.show_labels``，控制条那一侧
-                    （``PresentationDock``）读配置，所以改完**预览与真机同时变**。
+                /*! 检查器项：**描述符驱动**（2026-10-05 插件系统 Wave 2 任务 10，
+                    取代原先三个硬编码 InspectorSetting）。模型 = 选中角各组
+                    ``inspector_items`` 的并集（``selectedInspectorItems``），
+                    ``kind`` 分发到三种控件 —— 与原三项的能力上限严格对齐：
 
-                    ⚠️ 只在选中的是**工具栏**时出现 —— 翻页 pill 不参与这个开关
-                    （见 ``Lumi`` / 配置里 ``show_labels`` 的说明）。
+                      ``switch`` —— 布尔开关（原「显示按钮文本」）；
+                      ``combo``  —— 下拉（原「退出键样式」）；
+                      ``radio``  —— 单选组（原「翻页组件位置」）。
 
-                    2026-10-01（第五轮）版式改**平铺**（用户指令 + Win11 截屏）：
-                    原先是一张 ``Rin.SettingCard``（左标题 / 右开关），现在是
-                    「名称一行、开关在下一行」。改用 ``InspectorSetting`` 的两条
-                    原因见那个组件自己的头注释。
+                    值读写统一走 ``Backend.settings.<key>`` /
+                    ``Backend.setSetting(...)``（读入口 ``inspectorCurrentValue``
+                    保留了「翻页组件位置跟随 corners 反推」的既有特例）。
 
-                    开关右边那枚「开 / 关」是照截屏加的，走的是 RinUI ``Switch``
-                    自带的 ``checkedText`` / ``uncheckedText``（``text`` 留空时它
-                    就显示这一对）—— ⚠️ **别自己再挂一枚 ``Rin.Text``**：默认那对
-                    是 ``qsTr("On") / qsTr("Off")``，本项目没有翻译文件，于是会
-                    出现「Off 关」两个状态字并排。 */
-                InspectorSetting {
-                    objectName: "editorSettingButtonLabels"
+                    ⚠️ 三种控件在用户交互后都用 ``Qt.binding`` **重装**被点击
+                    打断的绑定（坑与解法见 ``ui/settings/General/Index.qml``
+                    「开机自启」开关的注释：控件内部 setChecked 会摘掉 QML
+                    绑定）。动态创建的控件尤其需要 —— 配置被别的写入方改动、
+                    或写入被后端拒绝时，控件必须能跟着设置值回弹。 */
+                Repeater {
+                    id: inspectorRepeater
+                    objectName: "editorInspectorRepeater"
 
-                    visible: editorWindow.selectedHasToolbar
-                    title: qsTr("显示按钮文本")
+                    model: editorWindow.selectedInspectorItems
 
-                    Rin.Switch {
-                        objectName: "editorSettingButtonLabelsSwitch"
-                        primaryColor: Lumi.accent
-                        checkedText: qsTr("开")
-                        uncheckedText: qsTr("关")
-                        checked: Backend.settings.presentation_buttons_show_labels === true
-                        onToggled: Backend.setSetting(
-                            "presentation_buttons_show_labels", checked)
-                    }
-                }
+                    delegate: InspectorSetting {
+                        id: inspectorItem
+                        objectName: "editorInspectorItem_" + descriptor.key
 
-                /*! 工具栏的「退出键样式」（2026-10-01 用户指令：从设置 → 放映页搬来）。
-                    写进 ``presentation.exit.style``：``default`` = 与其他工具栏按钮
-                    同款的透明圆钮 + 主题色图标；``danger`` = Luminalium 1 的形态
-                    （透明圆钮 + **红色**电源图标）。改完预览与真机同时变。
+                        required property var modelData
+                        readonly property var descriptor: modelData
 
-                    ⚠️ 只在选中的是**工具栏**时出现 —— 退出键是工具栏上的一枚按钮，
-                    选中翻页组件时它没有意义。
-                    2026-10-01（第五轮）：改 ``InspectorSetting`` 平铺版式后，
-                    名称独占一行，下拉也就不必再为了挤进右栏而压到 148 —— 放到 200，
-                    两个选项的名字都能完整显示（不再需要靠「刻意不写 description」
-                    来腾地方）。 */
-                InspectorSetting {
-                    objectName: "editorSettingExitStyle"
+                        title: descriptor.title !== undefined
+                               ? String(descriptor.title) : ""
+                        description: descriptor.description !== undefined
+                                     ? String(descriptor.description) : ""
 
-                    visible: editorWindow.selectedHasToolbar
-                    title: qsTr("退出键样式")
+                        // kind == "switch"：布尔开关。
+                        Rin.Switch {
+                            objectName: "editorInspectorSwitch_"
+                                        + inspectorItem.descriptor.key
+                            visible: inspectorItem.descriptor.kind === "switch"
+                            primaryColor: Lumi.accent
+                            // 「开 / 关」状态字走 RinUI Switch 自带的 checkedText /
+                            // uncheckedText —— 别再挂 Rin.Text（会跟默认的
+                            // On/Off 并排出现）。
+                            checkedText: qsTr("开")
+                            uncheckedText: qsTr("关")
+                            checked: editorWindow.inspectorCurrentValue(
+                                         inspectorItem.descriptor.key) === true
+                            onToggled: {
+                                Backend.setSetting(
+                                    inspectorItem.descriptor.key, checked)
+                                checked = Qt.binding(function () {
+                                    return editorWindow.inspectorCurrentValue(
+                                        inspectorItem.descriptor.key) === true
+                                })
+                            }
+                        }
 
-                    Rin.ComboBox {
-                        objectName: "editorSettingExitStyleCombo"
-                        Layout.preferredWidth: 200
-                        model: [qsTr("白色"), qsTr("红色（Luminalium 1）")]
-                        currentIndex: Backend.settings.presentation_exit_style === "danger" ? 1 : 0
-                        onActivated: Backend.setSetting(
-                            "presentation_exit_style",
-                            currentIndex === 1 ? "danger" : "default")
-                    }
-                }
+                        // kind == "combo"：下拉。定宽 200（两个选项的名字都能
+                        // 完整显示，与重构前一致）。
+                        Rin.ComboBox {
+                            objectName: "editorInspectorCombo_"
+                                        + inspectorItem.descriptor.key
+                            visible: inspectorItem.descriptor.kind === "combo"
+                            Layout.preferredWidth: 200
+                            model: editorWindow.inspectorOptionLabels(
+                                       inspectorItem.descriptor)
+                            currentIndex: editorWindow.inspectorOptionIndex(
+                                              inspectorItem.descriptor)
+                            onActivated: {
+                                Backend.setSetting(
+                                    inspectorItem.descriptor.key,
+                                    inspectorItem.descriptor.options[currentIndex].value)
+                                currentIndex = Qt.binding(function () {
+                                    return editorWindow.inspectorOptionIndex(
+                                        inspectorItem.descriptor)
+                                })
+                            }
+                        }
 
-                /*! 翻页组件的「翻页组件位置」（2026-10-01 用户指令：「翻页组件新增
-                    设置项『翻页组件位置』，可选翻页组件是竖版两侧中间 还是横板两侧
-                    下部」）。写进 ``presentation.pager.position``，后端顺带开关
-                    ``corners`` 里那四个角 —— 两种形态**二选一**（同时开会变成四个
-                    翻页栏），所以这里是单选而不是两个独立开关。
+                        // kind == "radio"：单选组（每个选项一枚 RadioButton，
+                        // 「指示器 + 文字」一行一枚的平铺排法）。整组包进一只
+                        // Column —— 它只占 controlColumn 的一个布局格；内层
+                        // Repeater 直接进布局会多占一格间距。
+                        Column {
+                            visible: inspectorItem.descriptor.kind === "radio"
+                            spacing: 6
 
-                    ⚠️ 只在选中的是**翻页组件**时出现 —— 工具栏没有这个设置项。
-                    ⚠️ 换了形态，编辑对象还在（``refreshFromConfig`` 会把它挪到
-                    对应角落），面板不会收起来。
+                            Repeater {
+                                model: inspectorItem.descriptor.kind === "radio"
+                                       ? inspectorItem.descriptor.options : []
 
-                    2026-10-01（第五轮）版式与**控件形态**一起换（用户指令 +
-                    Win11 截屏）：原来是个 148 宽的下拉，现在改成**两条平铺选项**
-                    （单选）。理由有二：① 只有两个互斥选项，摊开比收进下拉少一次
-                    点击、当前形态一眼可见；② 用户给的截屏里「选项」就是这种
-                    「指示器 + 文字」一行一枚的排法。
+                                delegate: Rin.RadioButton {
+                                    id: inspectorRadio
+                                    objectName: "editorInspectorRadio_"
+                                                + inspectorItem.descriptor.key + "_"
+                                                + modelData.value
 
-                    ⚠️ ``checked`` 绑的是派生属性 ``pagerPositionIndex``（由配置算
-                    出来），用户点一下控件会内部给 ``checked`` 赋值、把绑定断掉 ——
-                    这是本项目所有「开关 / 下拉 / 分段」共用的既有写法，可接受的原因
-                    是：**这条设置唯一的写入方就是这个控件本身**，点完的界面状态与
-                    写进配置的值必然一致。别在别处再改 ``presentation.pager.position``。 */
-                InspectorSetting {
-                    objectName: "editorSettingPagerPosition"
+                                    required property var modelData
 
-                    visible: editorWindow.selectedHasPager
-                    title: qsTr("翻页组件位置")
-
-                    Rin.RadioButton {
-                        objectName: "editorSettingPagerPositionSide"
-                        primaryColor: Lumi.accent
-                        text: qsTr("竖版两侧中间")
-                        checked: editorWindow.pagerPositionIndex === 0
-                        onClicked: Backend.setSetting(
-                            "presentation_pager_position", "side")
-                    }
-
-                    Rin.RadioButton {
-                        objectName: "editorSettingPagerPositionBottom"
-                        primaryColor: Lumi.accent
-                        text: qsTr("横版两侧下部")
-                        checked: editorWindow.pagerPositionIndex === 1
-                        onClicked: Backend.setSetting(
-                            "presentation_pager_position", "bottom")
+                                    primaryColor: Lumi.accent
+                                    text: modelData.label
+                                    checked: editorWindow.inspectorCurrentValue(
+                                                 inspectorItem.descriptor.key)
+                                             === modelData.value
+                                    onClicked: {
+                                        Backend.setSetting(
+                                            inspectorItem.descriptor.key,
+                                            modelData.value)
+                                        checked = Qt.binding(function () {
+                                            return editorWindow.inspectorCurrentValue(
+                                                       inspectorItem.descriptor.key)
+                                                   === inspectorRadio.modelData.value
+                                        })
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -40,6 +40,35 @@
      ``translations/luminalium_py_*.ts``（lupdate 不碰 Python 侧，AGENTS.md
      明令）。``context`` 建议用插件 id，避免与内置 context 撞名。
    两侧 ts 由 lrelease 合并成同一个 ``luminalium_<lang>.qm`` 加载。
+
+7. **检查器描述符（2026-10-05 插件系统 Wave 2 任务 10）**：
+   ``editor_groups`` 条目的 ``inspector_items`` 是「主界面编辑器右侧
+   检查器」的设置项描述符列表，编辑器 QML 用 ``Repeater`` 按 ``kind``
+   分发渲染（插件由此无需碰编辑器 QML）。每项形状::
+
+       {key, kind, title, description?, options?, visible_when_group?}
+
+   - ``key``：扁平设置键（必填，非空 str）。读写全走
+     ``Backend.settings.<key>`` / ``Backend.setSetting(<key>, 值)``；
+     插件键须先经 ``add_setting_path`` 登记（``plugins_<id>_`` 前缀约定）。
+   - ``kind``：控件类型（必填），**只支持** ``"switch"``（布尔开关）/
+     ``"combo"``（下拉）/ ``"radio"``（单选组）—— 与内建三项既有
+     检查器设置的能力上限严格对齐，刻意不发明新控件类型。
+   - ``title``：设置项名称（必填，非空 str，独占一行）。
+   - ``description``：可选说明行（str），窄面板里多数设置不需要它。
+   - ``options``：``combo`` / ``radio`` **必填**，形状
+     ``[{value, label}, ...]`` —— ``value`` 是写进配置的值，``label``
+     是界面文案；``switch`` 不需要（给了也会被忽略）。
+   - ``visible_when_group``：可选组名（str）。缺省时「携带它的组在选中角
+     的 groups 里」即显示；给出时仅当选中角的 groups 含该组才显示 ——
+     用于「我的组与某组同角共存时这项才露面」的跟随场景。
+
+   **校验在注册侧（Python）**：缺 key / 未知 kind / combo·radio 缺合法
+   options / 未知 visible_when_group 的描述符在注册时拒绝并记日志
+   （实现见 ``windows.py::validate_inspector_items``，内建组登记链路
+   ``_register_builtin_groups`` 必过；插件加载链路在包装
+   ``add_editor_group`` 时同样要先过它）。QML 侧**不做**校验 UI ——
+   坏描述符根本不该流到检查器里。
 """
 
 from __future__ import annotations

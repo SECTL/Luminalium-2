@@ -104,13 +104,25 @@ CORNERS: Dict[str, tuple[str, str]] = {
 #   「有工具栏语义 / 有翻页语义」判定（Wave 2 任务 9 接管），
 #   ``section_order`` 与 ``divider_before`` 对齐 ``PresentationDock.qml`` 的
 #   ``sectionOrder`` / 分隔线规则，``orientation`` 标记 dock_qml 的朝向变体。
-# * ``inspector_items`` 本任务刻意留空：检查器条目是任务 10 的地盘，
-#   这里先把键位占好，任务 10 直接往里填、不用改登记结构。
+# * ``inspector_items``（2026-10-05 插件系统 Wave 2 任务 10 填入）：主界面
+#   编辑器右侧检查器的设置项描述符列表，每项形状
+#   ``{key, kind, title, description?, options?, visible_when_group?}``
+#   （字段语义与校验规则见 ``app/plugins/registry.py`` 头注释第 7 条）。
+#   归属按语义摆：「显示按钮文本」归 ``tools``（按钮是工具栏的主体）、
+#   「退出键样式」归 ``exit``（退出键是这枚组的按钮）、「翻页组件位置」归
+#   ``pager`` —— 编辑器取「选中角各组 inspector_items 的并集」渲染，
+#   内建角落的 groups 配置下与重构前的 trait 显隐逐项一致。
 _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
     "tools": {
         "display_name": "工具",
         "icon": "ic_fluent_pen_20_filled",
-        "inspector_items": [],
+        "inspector_items": [
+            {
+                "key": "presentation_buttons_show_labels",
+                "kind": "switch",
+                "title": "显示按钮文本",
+            },
+        ],
         "traits": {
             "toolbar": True,
             "section_order": 0,
@@ -130,7 +142,17 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
     "exit": {
         "display_name": "退出",
         "icon": "ic_fluent_power_20_filled",
-        "inspector_items": [],
+        "inspector_items": [
+            {
+                "key": "presentation_exit_style",
+                "kind": "combo",
+                "title": "退出键样式",
+                "options": [
+                    {"value": "default", "label": "白色"},
+                    {"value": "danger", "label": "红色（Luminalium 1）"},
+                ],
+            },
+        ],
         "traits": {
             "toolbar": True,
             "section_order": 3,
@@ -141,7 +163,17 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
         "display_name": "翻页",
         "icon": "ic_fluent_chevron_left_20_filled",
         "dock_qml": "presentation/SidePager.qml",
-        "inspector_items": [],
+        "inspector_items": [
+            {
+                "key": "presentation_pager_position",
+                "kind": "radio",
+                "title": "翻页组件位置",
+                "options": [
+                    {"value": "side", "label": "竖版两侧中间"},
+                    {"value": "bottom", "label": "横版两侧下部"},
+                ],
+            },
+        ],
         "traits": {
             "pager": True,
             "section_order": 2,
@@ -152,6 +184,75 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
         },
     },
 }
+
+#: 检查器描述符支持的控件类型（能力上限 = 内建三项既有设置，刻意不加新类型）。
+_INSPECTOR_KINDS = ("switch", "combo", "radio")
+
+
+def validate_inspector_items(group_name: str, items: Any) -> None:
+    """校验一组编辑器检查器描述符；非法即记日志并抛 ``ValueError``（拒绝注册）。
+
+    校验点：条目必须是 dict；``key`` / ``title`` 是非空 str；``kind`` 在
+    ``_INSPECTOR_KINDS`` 内；``combo`` / ``radio`` 必须带非空 ``options``
+    （每项 ``{value, label}``）；``visible_when_group`` 若给出必须指向
+    **已知的组名**（内建组 ∪ 注册表已登记组 —— 指向没注册的组名多半是
+    插件打错了字，静默放过会变成「设置项永远不出现」的悬案）。
+
+    QML 侧不做校验 UI：坏描述符在注册侧就被拦下，不该流进检查器渲染。
+    """
+    if not isinstance(items, list):
+        log.error(
+            "编辑器组 %r 的 inspector_items 必须是列表，实际: %r", group_name, items
+        )
+        raise ValueError(f"编辑器组 {group_name!r} 的 inspector_items 必须是列表")
+    known_groups = set(_BUILTIN_DOCK_GROUPS) | set(registry.editor_groups())
+    for index, item in enumerate(items):
+        where = f"编辑器组 {group_name!r} 的第 {index} 项检查器描述符"
+        if not isinstance(item, dict):
+            log.error("%s必须是 dict，实际: %r", where, item)
+            raise ValueError(f"{where}必须是 dict")
+        key = item.get("key")
+        if not isinstance(key, str) or not key:
+            log.error("%s缺合法的 key（扁平设置键）: %r", where, item)
+            raise ValueError(f"{where}缺合法的 key")
+        title = item.get("title")
+        if not isinstance(title, str) or not title:
+            log.error("%s（key=%r）缺合法的 title: %r", where, key, item)
+            raise ValueError(f"{where}（key={key!r}）缺合法的 title")
+        kind = item.get("kind")
+        if kind not in _INSPECTOR_KINDS:
+            log.error(
+                "%s（key=%r）的 kind 未知: %r（支持 %s）",
+                where, key, kind, "/".join(_INSPECTOR_KINDS),
+            )
+            raise ValueError(f"{where}（key={key!r}）的 kind 未知: {kind!r}")
+        if kind in ("combo", "radio"):
+            options = item.get("options")
+            ok = isinstance(options, list) and len(options) > 0 and all(
+                isinstance(opt, dict) and "value" in opt and "label" in opt
+                for opt in options
+            )
+            if not ok:
+                log.error(
+                    "%s（key=%r，kind=%r）缺合法的 options（[{value, label}, ...]）: %r",
+                    where, key, kind, options,
+                )
+                raise ValueError(
+                    f"{where}（key={key!r}，kind={kind!r}）缺合法的 options"
+                )
+        visible_when_group = item.get("visible_when_group")
+        if visible_when_group is not None and (
+            not isinstance(visible_when_group, str)
+            or visible_when_group not in known_groups
+        ):
+            log.error(
+                "%s（key=%r）的 visible_when_group 未知: %r（已知组: %s）",
+                where, key, visible_when_group, sorted(known_groups),
+            )
+            raise ValueError(
+                f"{where}（key={key!r}）的 visible_when_group 未知: "
+                f"{visible_when_group!r}"
+            )
 
 #: 亚克力在窗口**显示之后**要补打的那一拍（毫秒）。
 #: 实测：``show()`` 之后的 ~200ms 内系统会把 ``DWMWA_SYSTEMBACKDROP_TYPE``
@@ -1060,8 +1161,10 @@ class WindowManager(QObject):
         for name, entry in _BUILTIN_DOCK_GROUPS.items():
             if name in already:
                 continue
-            # 深拷一层再交出去：模块级字典是模板，注册表条目理论上可被
-            # 后续任务扩展（任务 10 填 inspector_items），不能共享引用。
+            # 深拷一层再交出去：模块级字典是模板，注册表条目不能共享引用。
+            # 登记前先过描述符校验（任务 10）：内建描述符写错属于编程错误，
+            # 让 ValueError 直接炸出来，比渲染出一个坏检查器好查。
+            validate_inspector_items(name, entry.get("inspector_items", []))
             registry.add_editor_group(name, copy.deepcopy(entry))
 
     def _register_builtin_windows(self) -> None:

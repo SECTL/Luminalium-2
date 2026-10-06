@@ -84,6 +84,7 @@ from app.config import Config  # noqa: E402
 from app.error_handler import ErrorHandler  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
+from app.windows import WindowManager  # noqa: E402
 
 OFFSCREEN_X = -6000
 OFFSCREEN_Y = -6000
@@ -216,6 +217,12 @@ def main() -> int:
     qt_app.setQuitOnLastWindowClosed(False)
 
     backend = Backend(config, qt_app)
+    # 编辑器分组注册表登记（2026-10-05 插件系统 Wave 2 任务 9）：编辑器的
+    # 组件名 / 图标 / 语义判定改从 ``Backend.presentationGroups`` 读注册表，
+    # 而预览不走 ``WindowManager.load_windows``，内建组必须在这里补登记，
+    # 否则编辑器会把内建角落当未知组、组件名回落「控制条」。函数体不读
+    # ``self`` 状态（幂等，先查再登记），直接以类方法形式调用。
+    WindowManager._register_builtin_groups(None)
     backend.apply_state(
         PresentationState(active=True, slide_index=26, slide_total=41)
     )

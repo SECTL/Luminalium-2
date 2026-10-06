@@ -146,6 +146,11 @@ class Backend(QObject):
     penColorChanged = Signal()
     shortcutsChanged = Signal()
     presentationConfigChanged = Signal()
+    #: 编辑器分组清单变了（注册表 ``editor_groups()`` 的列表视图）。
+    #: 注册时机固定在窗口加载期（``windows.py::_register_builtin_groups``），
+    #: 早于任何 QML 窗口创建，属性现算现读即可；Wave 3 loader 冻结后若出现
+    #: 运行期注册，再由任务 11 补发这个信号。
+    presentationGroupsChanged = Signal()
     presentationScreenChanged = Signal()
     quickPanelConfigChanged = Signal()
     settingsChanged = Signal()
@@ -533,6 +538,39 @@ class Backend(QObject):
         "QVariantMap",
         _get_presentation_config,
         notify=presentationConfigChanged,
+    )
+
+    def _get_presentation_groups(self) -> List[Dict[str, Any]]:
+        """编辑器分组注册表的 QML 列表视图（2026-10-05 插件系统 Wave 2 任务 9）。
+
+        把 ``registry.editor_groups()`` 的 ``{组名: 条目}`` 拍平成
+        ``[{name, display_name, icon, dock_qml?, traits, inspector_items}, ...]``，
+        主界面编辑器的组件名 / 图标 / 语义判定全部从这里读 —— 组名硬编码
+        if 链已随本任务移除，注册表是唯一事实来源。
+
+        每条深拷一层（traits / inspector_items 也拷）：注册表返回的只读视图
+        只是浅快照，直接递给 QML 等于共享引用；编辑器只读，但桥接侧不给
+        消费方留下「改列表项会污染注册表」的机会。
+        """
+        view: List[Dict[str, Any]] = []
+        for name, entry in registry.editor_groups().items():
+            item = {
+                "name": name,
+                "display_name": str(entry.get("display_name", name)),
+                "icon": str(entry.get("icon", "")),
+                "traits": copy.deepcopy(entry.get("traits") or {}),
+                "inspector_items": copy.deepcopy(entry.get("inspector_items") or []),
+            }
+            dock_qml = entry.get("dock_qml")
+            if dock_qml:
+                item["dock_qml"] = str(dock_qml)
+            view.append(item)
+        return view
+
+    presentationGroups = Property(
+        "QVariantList",
+        _get_presentation_groups,
+        notify=presentationGroupsChanged,
     )
 
     # ------------------------------------------------- 放映显示器几何（画布基准）

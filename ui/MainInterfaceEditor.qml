@@ -81,6 +81,13 @@ import Luminalium
     * 翻页组件 → 「翻页组件位置」（``presentation.pager.position``：竖版两侧中间
       / 横版两侧下部，二选一 —— 后端顺带开关 ``corners`` 里那四个角）。
 
+    2026-10-05 插件系统 Wave 2 任务 9：「这条是什么组件」的判定（组件名 / 图标 /
+    有无工具栏语义、翻页语义）**不再由组名硬编码 if 链推导**，唯一事实来源是
+    插件注册表 —— QML 侧经 ``Backend.presentationGroups`` 读
+    ``registry.editor_groups()``（内建组登记见
+    ``windows.py::_register_builtin_groups``）。组全都不认识的角落回落
+    「控制条」并 ``console.warn``，不崩（与真机侧孤儿容忍同款）。
+
     两项改完**预览与真机同时变**（配置广播 → 预览副本重建、真机侧重建控制条）。
 
     「编辑态压暗」盖的是**面板左边的整块区域**（见 ``dimMask``），不是只盖屏幕 ——
@@ -321,8 +328,16 @@ Rin.FluentWindowBase {
     //
     // 面板上要写人话（「工具栏」「翻页组件」），这些名字**从配置推**而不是按角落
     // 写死：同一个角落换了 ``groups`` 就换了身份。
+    //
+    // 2026-10-05 插件系统 Wave 2 任务 9：组件语义**不再由组名硬编码推导**
+    // （原来那串 ``groups.indexOf("tools")`` if 链已删），注册表是唯一事实来源
+    // —— 经 ``Backend.presentationGroups``（``registry.editor_groups()`` 的
+    // 列表视图，条目形状 ``{name, display_name, icon, dock_qml?, traits,
+    // inspector_items}``，注册时机见 ``windows.py::_register_builtin_groups``）。
+    // 插件注册的组由此能以「有名字的组件」出现在编辑器里。
 
-    /*! 某个角落启用了哪些区块（tools / actions / pager / exit）。 */
+    /*! 某个角落启用了哪些区块（组名列表，内建是 tools / actions / pager / exit，
+        插件组名由插件自定）。 */
     function groupsOf(cornerName) {
         var config = Backend.presentationConfig
         var corners = config && config.corners !== undefined ? config.corners : ({})
@@ -330,56 +345,101 @@ Rin.FluentWindowBase {
         return (entry !== undefined && entry.groups !== undefined) ? entry.groups : []
     }
 
-    /*! 组件名。竖版两侧翻页（``middle_*``）恒为翻页组件；横条里带工具/动作/退出的
-        是**工具栏**，只有翻页区块的是**翻页组件** —— 与用户的口径一致。 */
+    /*! 按组名查注册表条目；未登记返回 ``undefined``。 */
+    function groupEntry(groupName) {
+        var all = Backend.presentationGroups
+        for (var i = 0; i < all.length; ++i) {
+            if (all[i].name === groupName)
+                return all[i]
+        }
+        return undefined
+    }
+
+    /*! 角落 groups 中**首个**在注册表里有条目的组 —— 组件身份的解析入口。
+        顺序敏感：groups 数组里靠前的组优先，与 ``windows.py::_resolve_dock_qml``
+        的「首个匹配胜出」同一条思路。全部未知返回 ``undefined``。 */
+    function cornerGroupEntry(cornerName) {
+        var groups = groupsOf(cornerName)
+        for (var i = 0; i < groups.length; ++i) {
+            var entry = groupEntry(groups[i])
+            if (entry !== undefined)
+                return entry
+        }
+        return undefined
+    }
+
+    /*! 角落的组里有没有带指定语义标记（``traits`` 键）的注册组。 */
+    function cornerHasTrait(cornerName, traitName) {
+        var groups = groupsOf(cornerName)
+        for (var i = 0; i < groups.length; ++i) {
+            var entry = groupEntry(groups[i])
+            if (entry !== undefined && entry.traits !== undefined
+                    && entry.traits[traitName] === true)
+                return true
+        }
+        return false
+    }
+
+    /*! 组件名。首个注册组的 traits 含 ``toolbar`` → 「工具栏」；含 ``pager``
+        → 「翻页组件」；都不含（插件组）→ 注册表条目的 ``display_name``。
+        内建布局下与旧 if 链逐字一致（内建组没有混摆 toolbar / pager 的角落）；
+        groups 全部未登记（手改 config / 插件卸载残留）→ 回落「控制条」并警告，
+        与真机侧 ``_resolve_dock_qml`` 的孤儿容忍同款。 */
     function componentName(cornerName) {
         if (!cornerName || cornerName.length === 0)
             return ""
-        if (cornerName.indexOf("middle") === 0)
-            return qsTr("翻页组件")
-        var groups = groupsOf(cornerName)
-        if (groups.indexOf("tools") >= 0 || groups.indexOf("actions") >= 0
-                || groups.indexOf("exit") >= 0)
+        var entry = cornerGroupEntry(cornerName)
+        if (entry === undefined) {
+            console.warn("MainInterfaceEditor: 角落", cornerName,
+                         "的组全部未在注册表登记，组件名回落「控制条」")
+            return qsTr("控制条")
+        }
+        var traits = entry.traits !== undefined ? entry.traits : ({})
+        if (traits.toolbar === true)
             return qsTr("工具栏")
-        if (groups.indexOf("pager") >= 0)
+        if (traits.pager === true)
             return qsTr("翻页组件")
-        return qsTr("控制条")
+        return entry.display_name
     }
 
-    /*! 组件图标 —— 与 ``componentName`` 同一套判别。 */
+    /*! 组件图标 —— 与 ``componentName`` 同一套判别：toolbar / pager 沿用
+        内建图标；插件组用注册表条目自己的 ``icon``；未知组回落默认图标
+        （警告在 ``componentName`` 里打过了，这里不重复打）。 */
     function componentIcon(cornerName) {
-        return componentName(cornerName) === qsTr("翻页组件")
-                ? "ic_fluent_chevron_left_20_regular"
-                : "ic_fluent_options_20_regular"
+        var entry = (cornerName && cornerName.length > 0)
+                ? cornerGroupEntry(cornerName) : undefined
+        if (entry === undefined)
+            return "ic_fluent_options_20_regular"
+        var traits = entry.traits !== undefined ? entry.traits : ({})
+        if (traits.toolbar === true)
+            return "ic_fluent_options_20_regular"
+        if (traits.pager === true)
+            return "ic_fluent_chevron_left_20_regular"
+        return entry.icon
     }
 
     function cornerLabel(cornerName) {
         return cornerLabels[cornerName] !== undefined ? cornerLabels[cornerName] : cornerName
     }
 
-    /*! 选中的这条是否含**工具栏**区块 —— 决定面板里摆哪些设置项。
-        判别与 ``componentName`` 同一套：「工具栏」= 带 tools / actions / exit 的横条。
-        （翻页 pill 只有 pager，它的设置项另说。） */
+    /*! 选中的这条是否含**工具栏**语义 —— 决定面板里摆哪些设置项。
+        判别改为注册表驱动（2026-10-05 任务 9）：选中角的组里有带
+        ``traits.toolbar`` 的注册组即为真；插件组声明 ``toolbar`` 语义后
+        同样命中。 */
     readonly property bool selectedHasToolbar: {
         if (selectedCorner.length === 0)
             return false
-        var groups = groupsOf(selectedCorner)
-        return groups.indexOf("tools") >= 0 || groups.indexOf("actions") >= 0
-            || groups.indexOf("exit") >= 0
+        return cornerHasTrait(selectedCorner, "toolbar")
     }
 
-    /*! 选中的这条是否含**翻页**区块 —— 决定面板里摆哪些设置项。
-        判别与 ``componentName`` 同一套：竖版两侧（``middle_*``）恒是翻页组件，
-        横条里只有 ``pager`` 区块的也是。（工具栏那条带 tools/actions/exit，
-        两条互斥 —— 目前没有既带工具又带翻页的角落。） */
+    /*! 选中的这条是否含**翻页**语义 —— 决定面板里摆哪些设置项。
+        判别与 ``selectedHasToolbar`` 同一套：组里有带 ``traits.pager``
+        的注册组即为真。竖版两侧（``middle_*``）的 groups 恒含 ``pager``
+        组，因此行为与旧的角名前缀判别一致。 */
     readonly property bool selectedHasPager: {
         if (selectedCorner.length === 0)
             return false
-        if (selectedCorner.indexOf("middle") === 0)
-            return true
-        if (selectedHasToolbar)
-            return false
-        return groupsOf(selectedCorner).indexOf("pager") >= 0
+        return cornerHasTrait(selectedCorner, "pager")
     }
 
     /*! 翻页组件位置下拉的选中项（0 = 竖版两侧中间，1 = 横版两侧下部）。

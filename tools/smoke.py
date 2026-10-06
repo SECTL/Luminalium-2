@@ -223,6 +223,36 @@ def _wait_property(item, name: str, predicate, timeout_ms: int = 4000,
     return value
 
 
+def _wait_position_settled(read_value, timeout_ms: int = 3000, step_ms: int = 100,
+                           stable_ms: int = 300, eps: float = 2.0):
+    """轮询等一个几何量（如 y）停稳，返回 ``(最后一次值, 是否沉淀)``。
+
+    连续 ``stable_ms`` 内相邻采样 |Δ| < ``eps`` 即视为沉淀；超时返回最后一次
+    读到的值（调用方负责在输出里注明「沉淀等待超时」）。
+
+    ⚠️ 为什么需要它（2026-10-05 banner y 竞态）：``paintedWidth > 0`` 只说明
+    图画出来了，**不代表布局停稳** —— 页面入场转场还在跑时 y 一直在动，一等
+    paintedWidth 就量会拿到动画中间态（同代码同机四次量出 267/313/366/385）。
+    ``step_ms`` 保持 100：与 ``_wait_property`` 同理，``QTest.qWait`` 攥着
+    GIL，步长再大会饿死纯 Python 后台线程。
+    """
+    waited = 0
+    stable = 0
+    last = read_value()
+    while waited < timeout_ms:
+        QTest.qWait(step_ms)
+        waited += step_ms
+        value = read_value()
+        if abs(value - last) < eps:
+            stable += step_ms
+            if stable >= stable_ms:
+                return value, True
+        else:
+            stable = 0
+        last = value
+    return last, False
+
+
 def _wait_text(item, expected: str, timeout_ms: int = 1500, step_ms: int = 20) -> bool:
     """轮询等 ``text`` 属性等于 ``expected``（用于抓一闪而过的加载态）。"""
     waited = 0
@@ -3076,12 +3106,18 @@ def main() -> int:
             banner = _wait_named(settings.contentItem(), "homeBannerImage")
             banner_src = ""
             banner_y = -1
+            banner_settled = True
             painted_w = 0
             if banner is not None:
                 painted_w = _wait_property(banner, "paintedWidth",
                                            lambda value: value > 0, timeout_ms=6000)
                 banner_src = banner.property("source").toString()
-                banner_y = banner.mapToItem(settings.contentItem(), 0, 0).y()
+                # 2026-10-05 banner y 竞态修复：paintedWidth>0 只说明图画出来了，
+                # 页面入场转场可能还在跑，立刻量 y 会拿到动画中间态（四次运行量出
+                # 267/313/366/385）。先等位置沉淀（连续 300ms |Δy|<2）再读；
+                # 超时 3s 用最后一次值，并在下方输出里注明。
+                banner_y, banner_settled = _wait_position_settled(
+                    lambda: banner.mapToItem(settings.contentItem(), 0, 0).y())
             banner_ok = (
                 banner is not None
                 and banner.isVisible()
@@ -3090,18 +3126,23 @@ def main() -> int:
                 # 两个名字都认，语义不变（「横幅真的挂上并画出来了」）。
                 and banner_src.endswith(("banner.png", "banner-wide.png"))
                 and painted_w > 100
-                # 「横幅在内容区顶部」——具体像素不写死（会跟页面在窗口里的偏移
-                # 耦合；实测本机 y≈90），只拦「图没挂上」和「掉到卡片区去了」。
-                and 0 <= banner_y < 280
+                # 「横幅在内容区顶部」——只拦「图没挂上」和「掉到卡片区去了」
+                # （卡片区在 y≈510+）。⚠️ 2026-10-05：bound 由 280 放宽到 500，
+                # 依据探针实据（.omo/evidence/smoke-banner-probe.py）：窗口
+                # 2026-10-01 按用户指令放大（0.68 高比）后标题栏+页头开销变大，
+                # 真窗口沉淀值实测 y≈385（曝光+激活状态下 5s 零漂移），旧 280
+                # 是按旧小窗口写的（当时实测 y≈90）。断言语义不变：拦的是
+                # 「掉进卡片区」，500 仍紧贴在 510 之下。
+                and 0 <= banner_y < 500
             )
             check(
                 "设置首页挂了 banner.png 通栏横幅（且真的画出来了）",
                 banner_ok,
-                "" if banner_ok else (
+                ("" if banner_ok else (
                     f"banner={'无' if banner is None else '有'} "
                     f"visible={banner is not None and banner.isVisible()} "
                     f"src={banner_src!r} paintedWidth={painted_w:.0f} y={banner_y:.0f}"
-                ),
+                )) + ("" if banner_settled else "（沉淀等待超时，取最后一次值）"),
             )
 
             # 大标题在横幅上（CW2：Typography.Title 的「Home」，leftMargin 56 /

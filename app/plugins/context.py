@@ -137,18 +137,28 @@ class PluginContext:
     ) -> None:
         """注册动作动词前缀处理器。
 
-        动词必须 ``plugin:<本插件id>:`` 开头 —— 动词命名空间是全局的，
-        不拦的话一个插件可以抢注 ``open_settings`` 或别的插件的前缀，
-        把别人的动作静默劫走（越权）。这里直接 ``ValueError`` 硬拒绝。
+        动词必须 ``plugin:<本插件id>`` 命名空间内（``plugin:<id>`` 或
+        ``plugin:<id>:…``）—— 动词命名空间是全局的，不拦的话一个插件可以
+        抢注 ``open_settings`` 或别的插件的前缀，把别人的动作静默劫走
+        （越权）。这里直接 ``ValueError`` 硬拒绝。
         处理器签名 ``handler(action: str)``：拿到完整动作串自己解析后缀。
+
+        ⚠️ 注册前剥掉尾冒号（2026-10-06 任务 12 实锤的接缝缺陷）：注册表
+        动词的既定契约是「**不含分隔符**的裸动词」—— 分发侧
+        ``application.py::_match_verb_handler`` 按 ``动作 == 动词`` 或
+        ``动作.startswith(动词 + ":")`` 匹配；若把 ``plugin:<id>:`` 原样
+        存进去，``动作.startswith("plugin:<id>:" + ":")`` 永远为假，
+        插件的所有动作静默落空（任务 5/6 的 QA 直接往 registry 塞裸动词，
+        没经过本包装，所以直到任务 12 全链路验收才暴露）。
         """
-        required = f"plugin:{self._plugin_id}:"
-        if not verb_prefix.startswith(required):
+        bare = f"plugin:{self._plugin_id}"
+        if verb_prefix != bare and not verb_prefix.startswith(bare + ":"):
             raise ValueError(
-                f"插件 {self._plugin_id!r} 的动作动词必须 {required!r} 开头，"
+                f"插件 {self._plugin_id!r} 的动作动词必须在 {bare!r} 命名空间内，"
                 f"实际: {verb_prefix!r}（禁止抢注其它命名空间）"
             )
-        registry.add_action_handler(verb_prefix, handler)
+        verb = verb_prefix[:-1] if verb_prefix.endswith(":") else verb_prefix
+        registry.add_action_handler(verb, handler)
 
     # ---------------------------------------------------------- 放映控制条
 

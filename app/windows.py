@@ -124,6 +124,31 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
         "icon": "ic_fluent_pen_20_filled",
         "inspector_items": [
             {
+                "key": "presentation_toolbar_count",
+                "kind": "radio",
+                "title": "组数",
+                "options": [
+                    {"value": "single", "label": "单组"},
+                    {"value": "dual", "label": "双组"},
+                ],
+            },
+            {
+                "key": "presentation_toolbar_position",
+                "kind": "radio",
+                "title": "位置",
+                "options": [
+                    {"value": "bottom_center", "label": "底部居中"},
+                    {"value": "left", "label": "左侧"},
+                    {"value": "right", "label": "右侧"},
+                ],
+                # 双组时工具栏自己就是「左右两侧」，位置无处可选 —— 由编辑器
+                # 侧按 ``enabled_when`` 禁用（见 MainInterfaceEditor.qml）。
+                "enabled_when": {
+                    "key": "presentation_toolbar_count",
+                    "value": "single",
+                },
+            },
+            {
                 "key": "presentation_buttons_show_labels",
                 "kind": "switch",
                 "title": "显示按钮文本",
@@ -178,6 +203,12 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
                     {"value": "side", "label": "竖版两侧中间"},
                     {"value": "bottom", "label": "横版两侧下部"},
                 ],
+                # ⚠️ 这里**不能**加 enabled_when（2026-10-07 用户指令）。原先锁死
+                # 是因为「工具栏挪到左右后翻页已并进同一个 dock、位置改不动」；
+                # 现在合并角落的**朝向跟着翻页位置走**（side → middle_* 竖版合并、
+                # bottom → bottom_* 横版合并，见 bridge.py::_apply_corners_layout），
+                # 这一项在合并态下照样生效 —— 锁死就成了「点得动、点了没反应」。
+                # 工具栏侧的「位置」在双组时仍要锁（双组时它真的被忽略）。
             },
         ],
         "traits": {
@@ -902,7 +933,8 @@ class WindowManager(QObject):
 
     # ---------------------------------------------------------------- 控制条
 
-    def _resolve_dock_qml(self, name: str, groups: List[str]) -> Optional[Path]:
+    @staticmethod
+    def _resolve_dock_qml(name: str, groups: List[str]) -> Optional[Path]:
         """解析角落 ``name`` 该用哪个 QML 组件渲染（组 → 组件，注册表驱动）。
 
         规则（2026-10-05 插件系统 Wave 2 任务 8，替代 ``middle_*`` 字符串
@@ -926,6 +958,15 @@ class WindowManager(QObject):
                 name, groups,
             )
             return None
+        #: ⚠️ 合并角落（工具组 + pager 同时在场）必须**先于**下面的组匹配短路：
+        #  竖版合并角落（middle_*）的朝向是 vertical，pager 组的
+        #  ``orientation: vertical`` 正好命中，会在循环里被它抢走 →
+        #  渲染成只有翻页的 SidePager，工具组整个消失。
+        #  合并态一律给 PresentationDock（它支持 ``isVertical``，横竖都能渲染），
+        #  SidePager 只有翻页一组、塞不进工具组（见其头注释）。
+        #  （2026-10-07 用户指令：合并后也该能是竖的。）
+        if {"tools", "actions", "exit"} & set(groups):
+            return UI_DIR / "presentation" / "PresentationDock.qml"
         _, vertical = CORNERS.get(name, ("left", "bottom"))
         orientation = "vertical" if vertical == "middle" else "horizontal"
         for group in groups:

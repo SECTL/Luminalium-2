@@ -24,8 +24,16 @@
   ``Ctrl+A``，永中只发它认得的 ``Ctrl+E`` / ``Ctrl+A``（给它发 ``Ctrl+P`` 是无效动作）；
 * 墨迹调色板（``InkColorPicker``）与「退出时保留墨迹」是 **PowerPoint 专属**，
   对 WPS / 永中下发只会白等一轮。
+* **放大镜（缩放）走各家自己的快捷键**：``SlideShowView.Zoom`` 是**只读**的
+  （Microsoft Learn 明写 Read-only），没法用 COM 写缩放到多少；能做的只有
+  「按放映软件自己的缩放键 + 读 ``Zoom`` 回来确认」。PowerPoint 是小键盘
+  ``+`` / ``-``，WPS 演示是 ``Ctrl+↑`` / ``Ctrl+↓``（见 ``KIND_ZOOM_KEYS``）。
+  放大后的**移位**就是方向键（两家的官方说明都这么写）—— ⚠️ 放映态下方向键
+  本来是翻页键，所以要先判「画面现在放大着没有」，**判不出来时按用户意图发**
+  （见 ``_cmd_zoom`` / ``_zoom_state``）。2026-10-06 修的就是这里：早先的实现
+  判不出来就 ``return``，用户点移位什么都发生不了。
 
-控制操作（翻页 / 退出 / 笔 / 清屏）COM 失败时回退为向放映窗口发按键。按键注入按
+控制操作（翻页 / 退出 / 笔 / 清屏 / 放大镜）COM 失败时回退为向放映窗口发按键。按键注入按
 **完整性级别**选路：同级 / 更低走 ``keybd_event``，本进程级别更高时 UIPI 会把
 ``keybd_event`` 静默吞掉（不报错也不生效），改走 ``PostMessage`` 直投放映窗口 ——
 这是「按钮点了没反应」最隐蔽的成因。翻页另有一道 1 秒窗口的限流（对齐
@@ -203,6 +211,65 @@ VK_DOWN = 0x28  # ↓（部分放映软件只认方向键，Luminalium 1 同款�
 VK_UP = 0x26    # ↑
 VK_ESCAPE = 0x1B
 VK_ERASE = 0x45  # E
+VK_LEFT = 0x25
+VK_RIGHT = 0x27
+
+# ------------------------------------------------------------ 放大镜（缩放）
+# 放映软件**没有**可写的缩放接口：``SlideShowView.Zoom`` 是只读的（Microsoft
+# Learn 明写 Read-only），所以只能按各家自己的缩放键 + 读回 ``Zoom`` 确认。
+#
+#   · PowerPoint：小键盘 ``+`` / ``-`` 是官方那张放映快捷键表里的缩放键（官方
+#     说明特意写了「+ 必须在小键盘上」，并注明「放大后用方向键在放大区域内
+#     平移」）；没小键盘的笔记本占一大半，所以后面排 ``Ctrl+=`` / ``Ctrl+-``
+#     （另一份 PowerPoint 放映快捷键表写的正是这一组）。
+#     ⚠️ **裸 ``=`` / ``-`` 不能拿来当回退**：放映态下裸 ``=`` 是「显示 / 隐藏
+#     箭头指针」，按下去得到的是跟缩放毫无关系的变化。
+#   · WPS 演示：``Ctrl+↑`` / ``Ctrl+↓``（官方社区教程明确：按住 Ctrl 再按上下
+#     方向键即可缩放；放大之后按方向键平移）；小键盘 ``+`` / ``-`` 只在
+#     「右键 → 使用放大镜」弹出缩放窗口之后才认，所以排在后面。
+VK_ADD = 0x6B        # 小键盘 +
+VK_SUBTRACT = 0x6D   # 小键盘 -
+VK_OEM_PLUS = 0xBB   # 主键盘 = / +
+VK_OEM_MINUS = 0xBD  # 主键盘 -
+
+# 各软件族的缩放键，**顺序即尝试顺序** —— 前一个没让 ``view.Zoom`` 变化就试
+# 下一个（元组是 ``(虚拟键, 要不要同时按 Ctrl)``）。
+# 永中没实测过，按 PowerPoint 那条走 —— 与 ``KIND_TOOL_SHORTCUTS`` 同一条兜底
+# 规则：认不出族就按 PowerPoint 发，真不支持时读回校验会发现「没变」，只记
+# 一行日志、不做别的动作（不去猜第三个键位）。
+KIND_ZOOM_KEYS: dict[str, dict[str, tuple[tuple[int, bool], ...]]] = {
+    APP_KIND_PPT: {
+        "in": ((VK_ADD, False), (VK_OEM_PLUS, True), (VK_ADD, True)),
+        "out": ((VK_SUBTRACT, False), (VK_OEM_MINUS, True), (VK_SUBTRACT, True)),
+    },
+    APP_KIND_WPS: {
+        "in": ((VK_UP, True), (VK_ADD, False)),
+        "out": ((VK_DOWN, True), (VK_SUBTRACT, False)),
+    },
+}
+# 放大之后的**移位**就是方向键（PowerPoint 与 WPS 同一套：放大后方向键不再
+# 翻页，改成平移画面 —— 两家的官方说明都这么写）。
+ZOOM_PAN_KEYS: dict[str, int] = {
+    "up": VK_UP, "down": VK_DOWN, "left": VK_LEFT, "right": VK_RIGHT,
+}
+# 放大镜面板能发的操作：三个缩放 + 四个移位。
+ZOOM_OPS = ("in", "out", "reset", "up", "down", "left", "right")
+# 日志 / 诊断里用的虚拟键名。``_cmd_zoom`` 那一串「按了哪个键」只写 hex 太难读，
+# 而 Windows 的键名表在不同版本里叫法不一样（``VK_OEM_PLUS`` 是 ``=`` 还是
+# ``+``、``VK_ADD`` 是不是小键盘），所以自己写一份**我们真会用到的那几个**。
+VK_NAMES: dict[int, str] = {
+    VK_LEFT: "Left", VK_RIGHT: "Right", VK_UP: "Up", VK_DOWN: "Down",
+    VK_ADD: "Num+", VK_SUBTRACT: "Num-",
+    VK_OEM_PLUS: "=/+", VK_OEM_MINUS: "-/_",
+    VK_ESCAPE: "Esc", VK_ERASE: "E", 0x11: "Ctrl",
+}
+# 「复位」最多连按几次缩小键。放映软件没有「复位缩放」这条命令 —— PowerPoint
+# 与 WPS 都是「一直缩小就回到适应屏幕」，按少了回不去、按多了无害（到底之后
+# 再按是 no-op），所以给个上限、再由读回值提前收手。
+ZOOM_RESET_MAX_STEPS = 8
+# 读不到 ``view.Zoom`` 时（部分 WPS 版本不暴露）复位按几次 —— 没有读回校验
+# 可用，只能按固定次数。
+ZOOM_RESET_BLIND_STEPS = 6
 
 # 键盘消息（PostMessage 降级路径用）
 WM_KEYDOWN = 0x0100
@@ -1196,6 +1263,23 @@ class _ComBackend:
         except Exception:
             return None
 
+    def read_zoom(self) -> Optional[int]:
+        """当前放映的缩放百分比（``view.Zoom``，10~400）；读不到返回 ``None``。
+
+        ⚠️ ``SlideShowView.Zoom`` 是**只读**的（Microsoft Learn 明写
+        Read-only）—— 缩放到多少只能由放映软件自己决定，我们能做的只有
+        「按它自己的缩放键 + 读回来确认」。于是这份读回值同时是「按键有没有
+        生效」的**唯一**判据：这条通道上按键没送出去同样不抛异常。
+        """
+        view = self._view()
+        if view is None:
+            return None
+        try:
+            value = int(getattr(view, "Zoom", 0) or 0)
+        except Exception:
+            return None
+        return value or None
+
     def set_pointer_color(self, r: int, g: int, b: int) -> bool:
         """直接写 ``View.PointerColor.RGB``（L1 ``_try_apply_pointer_color``）。
 
@@ -1505,6 +1589,12 @@ class _ComThread(QThread):
         self._wake = threading.Event()
         self._snapshot = _ComSnapshot()
         self._ticks = 0
+        # 本次放映里「确实放大过」没有 —— 移位的判据之一（见 ``_zoom_state``：
+        # 放映态下方向键是翻页键，没放大就发移位 = 莫名其妙翻页）。
+        self._zoom_engaged = False
+        # 进场那一刻的缩放值（「未放大」基准）—— 判据之二：用户在 PowerPoint
+        # 里自己用 Ctrl+滚轮放大时，只有跟它比才看得出画面已经放大了。
+        self._zoom_baseline: Optional[int] = None
         self.heartbeat = _Heartbeat("COM 线程")
 
     # ---------------------------------------------------- 主线程侧（非阻塞）
@@ -1632,6 +1722,17 @@ class _ComThread(QThread):
             else:
                 pen_color = previous.pen_color if presenting else None
 
+        if not presenting:
+            # 换了一场放映（或退出了），缩放状态从头来过 —— 移位的判据不能
+            # 带着上一场的「已放大」进来。
+            self._zoom_engaged = False
+            self._zoom_baseline = None
+        elif not light and self._zoom_baseline is None:
+            # 头几拍记一份「未放大」基准（读不到就下一拍再试 —— 它只是判据，
+            # 迟到不影响别的功能）。⚠️ 只在**完整**刷新里读：轻量路径是为了
+            # 让页码第一时间跟上手势，不该在这里多花一次跨进程调用。
+            self._zoom_baseline = self._com.read_zoom()
+
         now = time.monotonic()
         self._snapshot = _ComSnapshot(
             presenting=bool(presenting),
@@ -1757,6 +1858,157 @@ class _ComThread(QThread):
             return
         if kind == APP_KIND_PPT:
             send_slideshow_key(VK_ERASE, hwnd)
+
+    def _cmd_zoom(self, hwnd: int, op: str, kind: str = "") -> None:
+        """放大镜：``in`` / ``out`` / ``reset`` 与 ``up`` / ``down`` / ``left`` / ``right``。
+
+        三条与 :meth:`_cmd_tool` 同源的讲究：
+
+        1. **先拉前台** —— 按键注入要求放映窗口在前台（同 ``_cmd_tool`` 的理由）；
+        2. 按键**按软件族选**（``KIND_ZOOM_KEYS``）；
+        3. 发完**读回校验**：``view.Zoom`` 虽然是只读的，正好拿来当「这一下到底
+           生效没有」的判据 —— 一个键位没让它变化就换下一个键位再试。
+
+        ⚠️ **移位（方向键）的三条分支**（2026-10-06 修「移位按钮无效」）：放映态
+        下方向键就是翻页键，所以「能不能发」取决于画面现在放大着没有::
+
+            已放大              → 直接发方向键（两家的官方文档都是「放大后方向
+                                   键平移」）
+            判不出来（读不到值）→ 直接发（没有判据可用，而用户是从放大镜面板
+                                   里够到这几个按钮的，静默吞掉最难查）
+            读到「还是适应屏幕」→ **先补一档放大再发** —— 直接发就是翻页
+
+        第三条是这次的重点。早先在「没确认已放大」时**直接 return**，于是用户
+        点移位什么都不会发生；而「确认」又要靠读回值变化，读不到或不变就永远
+        确认不了 —— 两道静默叠起来，表现就是「按钮无效」。
+        """
+        if hwnd:
+            focus_slideshow_window(int(hwnd))
+
+        keys = KIND_ZOOM_KEYS.get(kind or APP_KIND_PPT, KIND_ZOOM_KEYS[APP_KIND_PPT])
+
+        if op in ZOOM_PAN_KEYS:
+            if self._zoom_state() == "fit":
+                # 画面还停在适应屏幕，这时候的方向键是翻页键。补一档放大再移 ——
+                # 用户点的是放大镜面板里的「移位」，他要的是「放大着看那一块」，
+                # 不是翻页。补完就当成已放大，后面几次移位不再重复补。
+                #
+                # ⚠️ ``limit=1`` 是必须的，**别改成默认的全键位重试**：读回值
+                # 在「适应屏幕」时反而一定读得到（所以我们才判出 fit），于是
+                # 正常情况下第一个键位就能让基准变化、正常返回；但要是那个键位
+                # 在这台机器上没效（笔记本没有小键盘是常态），全键位会一路按到
+                # 最后一个 —— 用户点一下「移位」画面直接放大三档。
+                log.info("还没放大，先补一档放大再移位 %s", op)
+                if self._zoom_step(keys.get("in", ()), hwnd, limit=1):
+                    self._zoom_engaged = True
+                    time.sleep(L1_SHORTCUT_SETTLE_S)
+                else:
+                    log.info("补放大没送出去，这一下移位可能是翻页")
+            if not send_slideshow_key(ZOOM_PAN_KEYS[op], hwnd):
+                log.info("移位 %s 没送出去", op)
+            return
+
+        if op == "reset":
+            # ``reset`` 本身走的是「一直缩小到适应屏幕」，所以无论从哪个状态出发
+            # 都是对的 —— 不需要那套「判据」，也就不能落进 ``_zoom_step`` **换键位**
+            # 那条路：缩小键换到第二个（``Ctrl+-``）在 PowerPoint 里是「缩放窗口 +
+            # 滑块」的快捷键，从没放大过的时候按它等于弹了一个跟复位无关的窗口。
+            self._zoom_out_until_fit(hwnd, keys.get("out", ()))
+            self._zoom_engaged = False
+            return
+
+        # 读回值拿得到才「一个键位没变就换下一个」；拿不到时只按第一个 ——
+        # 没有判据还挨个按一遍，一次点击会连着放大好几档。
+        sent = self._zoom_step(keys.get(op, ()), hwnd,
+                               limit=None if self._com.read_zoom() is not None else 1)
+        if op == "in":
+            # ⚠️ 不再等读回值变化才认账：``Zoom`` 是只读的、WPS 部分版本读不到，
+            # 「没变化」只说明**我们判断不了**，不代表按键没生效。认下这一档，
+            # 移位才有判据可用。
+            if sent:
+                self._zoom_engaged = True
+        elif self._zoom_readback_is_fit():
+            # 一路缩回「适应屏幕」了 —— 方向键又变回翻页键，判据跟着清。
+            self._zoom_engaged = False
+        if not sent:
+            log.info("缩放 %s 没生效：%s 族的键位一个都没送出去", op, kind or "?")
+
+    def _zoom_state(self) -> str:
+        """画面现在放大着没有：``zoomed`` / ``fit`` / ``unknown``。
+
+        判据按可靠性排（两条都失效才是 ``unknown``）：
+
+        1. ``_zoom_engaged`` —— 本次放映里我们确实发过「放大」（``in``）；
+        2. 读回值**不等于**进场那份「未放大」基准 —— 用户在 PowerPoint 里自己
+           用 ``Ctrl+滚轮`` 放大时只有这条路看得出来；
+        3. 两条都没有 → ``unknown``：没有判据，按用户意图发（见 ``_cmd_zoom``）。
+        """
+        if self._zoom_engaged:
+            return "zoomed"
+        current = self._com.read_zoom()
+        if current is None or self._zoom_baseline is None:
+            return "unknown"
+        return "zoomed" if current != self._zoom_baseline else "fit"
+
+    def _zoom_readback_is_fit(self) -> bool:
+        """读回值明确等于「未放大」基准（判不出时算 ``False`` —— 不去清判据）。"""
+        current = self._com.read_zoom()
+        return (current is not None and self._zoom_baseline is not None
+                and current == self._zoom_baseline)
+
+    def _zoom_step(self, candidates, hwnd: int, limit: Optional[int] = None) -> bool:
+        """按一次缩放键（``in`` / ``out``），返回**有没有把键送出去**。
+
+        ⚠️ 返回值说的不是「缩放真的变了」—— 后者要靠读回校验，而读回值常常
+        拿不到（见 ``_zoom_state``）。
+
+        ``limit=1`` 时只按第一个键位（读回值拿不到时的做法：没有判据还挨个按，
+        一次点击会连着放大好几档，2026-10-06）。
+        """
+        if not candidates:
+            return False
+        tries = len(candidates) if limit is None else max(1, int(limit))
+        before = self._com.read_zoom()
+        sent_any = False
+        for vk, ctrl in candidates[:tries]:
+            sent = (send_slideshow_ctrl_key(vk, hwnd) if ctrl
+                    else send_slideshow_key(vk, hwnd))
+            if not sent:
+                continue
+            sent_any = True
+            if before is None:
+                return True
+            time.sleep(L1_SHORTCUT_SETTLE_S)
+            after = self._com.read_zoom()
+            if after is None or after != before:
+                return True
+            log.debug("按 %s 之后缩放值没变（%s → %s），换下一个键位再试",
+                      hex(vk), before, after)
+        return sent_any
+
+    def _zoom_out_until_fit(self, hwnd: int, candidates) -> None:
+        """连按「缩小」直到回到适应屏幕（``reset`` 的实现）。
+
+        放映软件**没有**「复位缩放」这条命令：PowerPoint 与 WPS 都是「缩小到底
+        就回到适应屏幕」。所以这里是「连按 + 读回」，缩放值不再变小就收手；
+        读不到缩放值时退成固定次数（没有判据可用）。
+        """
+        if not candidates:
+            return
+        steps = (ZOOM_RESET_MAX_STEPS if self._com.read_zoom() is not None
+                 else ZOOM_RESET_BLIND_STEPS)
+        previous = self._com.read_zoom()
+        for _ in range(steps):
+            vk, ctrl = candidates[0]
+            sent = (send_slideshow_ctrl_key(vk, hwnd) if ctrl
+                    else send_slideshow_key(vk, hwnd))
+            if not sent:
+                return
+            time.sleep(L1_SHORTCUT_SETTLE_S)
+            current = self._com.read_zoom()
+            if current is not None and previous is not None and current >= previous:
+                return  # 已经到底（再按也不会更小）
+            previous = current if current is not None else previous
 
     def _cmd_tool(self, hwnd: int, tool: str, kind: str = "") -> None:
         """切换笔 / 橡皮 / 指针 —— 腿的**顺序照 Luminalium 1 ``set_pointer_type``**。
@@ -2347,6 +2599,18 @@ class PptController(QObject):
             log.warning("未知工具: %s", tool)
             return False
         self._com.request("tool", int(hwnd or 0), tool, self._state.kind)
+        return True
+
+    def zoom(self, op: str, hwnd: int = 0) -> bool:
+        """放大镜：``in`` / ``out`` / ``reset`` 与 ``up`` / ``down`` / ``left`` / ``right``。
+
+        带上当前放映的 **kind** 一起投递 —— COM 线程靠它选缩放键位
+        （PowerPoint 走小键盘 ``+`` / ``-``，WPS 走 ``Ctrl+↑`` / ``Ctrl+↓``）。
+        """
+        if op not in ZOOM_OPS:
+            log.warning("未知的缩放操作: %s", op)
+            return False
+        self._com.request("zoom", int(hwnd or 0), op, self._state.kind)
         return True
 
     def set_pen_color(self, r: int, g: int, b: int, hwnd: int = 0) -> bool:

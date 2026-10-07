@@ -16,7 +16,10 @@
 * Tab 切换：``SelectorBar`` 切到「更新设置」后两张 Expander 与
   「强制检查更新」入口可见；
 * 「有更新」一整档：GitHub 在沙箱里未必可达，用打桩的发布列表验
-  available 档的按钮 / 副行 / 状态大字 / 日志视图。
+  available 档的按钮 / 副行 / 状态大字 / 日志视图；
+* 大图回归（2026-10-06 用户指令）：打桩日志里插一张 1920×1080 的截图，
+  日志视图的 ``contentWidth`` 不得超出自身宽度 —— ``MarkdownText`` 下图片
+  按原始像素铺设，会把整页撑破、把兄弟项顶出可视区。
 
 环境变量：``LUMI_UPDATE_PROBE_THEME=light`` —— 换浅色主题跑全套（截图文件名
 随之带 ``_light`` / ``_dark`` 后缀）。
@@ -505,11 +508,30 @@ def main() -> int:
     # 状态大字、日志视图全部跟进。
     from app import update_checker as update_checker_mod
 
+    # 大图回归用的一张 1920×1080「发布截图」（本地文件，不联网也能验）。
+    # 绿底 + 左上角一块橙，几何之外还能按颜色确认它真的画出来了。
+    big_shot = ROOT / "preview" / "update_probe_bigimg.png"
+    try:
+        from PySide6.QtGui import QImage, QPainter, QColor
+        _big = QImage(1920, 1080, QImage.Format_RGB32)
+        _big.fill(QColor("#1a6b3c"))
+        _painter = QPainter(_big)
+        _painter.fillRect(0, 0, 600, 300, QColor("#e0a020"))
+        _painter.end()
+        _big.save(str(big_shot))
+    except Exception as exc:  # noqa: BLE001 - 造不出图也要跑完其余断言
+        print(f"[WARN] 大图素材生成失败，跳过尺寸断言: {exc}")
+        big_shot = None
+
     fake_releases = [{
         "tag_name": "27.1.808.1",
         "prerelease": False,
         "draft": False,
-        "body": "## 新增\n- 测试日志条目",
+        # ⚠️ **必须带 ``file:///`` 前缀**：写成 ``G:/xxx`` 的话 Qt 会把 ``G:``
+        # 当成 URL 协议名、转去走网络请求，实测整个探针卡死在那里（十几分钟
+        # 不返回，也不报错）。本地路径统一走 file 协议。
+        "body": "## 新增\n- 测试日志条目\n\n## 截图\n![预览截图](file:///"
+                + (big_shot.as_posix() if big_shot else "") + ")\n",
         "html_url": "https://github.com/SECTL/Luminalium-2/releases/tag/27.1.808.1",
     }]
     original_fetch = update_checker_mod._fetch_releases
@@ -559,6 +581,24 @@ def main() -> int:
               changelog_view is not None and bool(changelog_view.property("visible")))
         check("日志内容来自发布说明",
               "测试日志条目" in str(changelog_view.property("text")))
+        # ---- 大图回归（2026-10-06 用户指令「大分辨率图片会把元素挡住」）----
+        # 日志走 RichText + ``<img max-width:100%>``：图片按**列宽**缩放，
+        # 不再按原始像素铺进文本流。
+        # ⚠️ 只断言 contentWidth 会**假阳性** —— 图没加载出来时同样不超宽，
+        # 所以必须再验一句「图确实画出来了」（内容高度远大于纯文字那几行）。
+        _log_text = str(changelog_view.property("text"))
+        _has_cap = "max-width:100%" in _log_text
+        # detail 只在失败时给（check 无论成败都打印，成功行拖一句说明像报错）
+        check("图片带宽度上限（max-width 已注入）", _has_cap,
+              "" if _has_cap else _log_text[:120])
+        _log_w = float(changelog_view.property("width"))
+        _log_cw = float(changelog_view.property("contentWidth"))
+        check("大图不撑破日志列", _log_cw <= _log_w + 2.0,
+              f"contentWidth={_log_cw:.0f} / 列宽={_log_w:.0f}")
+        if big_shot is not None:
+            _log_ch = float(changelog_view.property("contentHeight"))
+            check("大图确实画出来了（高度远大于纯文字）", _log_ch > 200.0,
+                  f"contentHeight={_log_ch:.0f}")
         check("空状态面板隐藏",
               not find_by_name(root_item, "updateUpToDatePanel").property("visible"))
         grab(window, app, ROOT / "preview" / "update_probe_available.png")

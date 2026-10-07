@@ -21,20 +21,27 @@ import Luminalium
 Item {
     id: root
 
+    /*! 竖条里用（2026-10-07）：分隔线转置成**横**线，跨越的是**列宽**。 */
+    property bool vertical: false
+
     property int dividerWidth: 1   /*! 线的**厚度**。 */
     property int dividerHeight: 20 /*! 线的**长度**。 */
     property int dividerGap: 14
     /*! 内容行的跨度 —— 分隔线在其间垂直居中。 */
     property int rowHeight: Lumi.dockHitSize
 
-    width: root.dividerGap * 2 + root.dividerWidth
-    height: root.rowHeight
+    width: root.vertical
+        ? root.rowHeight
+        : (root.dividerGap * 2 + root.dividerWidth)
+    height: root.vertical
+        ? (root.dividerGap * 2 + root.dividerWidth)
+        : root.rowHeight
 
     Rin.ToolSeparator {
         anchors.centerIn: parent
-        orientation: Qt.Vertical
-        width: root.dividerWidth
-        height: root.dividerHeight
+        orientation: root.vertical ? Qt.Horizontal : Qt.Vertical
+        width: root.vertical ? root.dividerHeight : root.dividerWidth
+        height: root.vertical ? root.dividerWidth : root.dividerHeight
         padding: 0
         topPadding: 0
         bottomPadding: 0

@@ -178,12 +178,40 @@
       "icon": "ic_fluent_more_horizontal_20_filled",
       "tooltip": "更多操作"
     },
-    "//tools": "分段的分页，**顺序即显示顺序（左 → 右）**。id 后端只认 pen / eraser / arrow（arrow = 鼠标指针，PP_POINTER_ARROW）；arrow 放第一个（2026-09-25 用户指令：指针要在最左，不然没法切回鼠标）",
+    "//tools": "分段的分页，**顺序即显示顺序（左 → 右）**。id 后端只认 pen / eraser / arrow（arrow = 鼠标指针，PP_POINTER_ARROW）；arrow 放第一个（2026-09-25 用户指令：指针要在最左，不然没法切回鼠标）。⚠️ **放大镜不在这里** —— 2026-10-06 用户指令「放大镜不应当以 Segmented 内排版」：它不是指针类型，不该和指针 / 笔 / 橡皮并列成分段的一页，而是条上紧跟着分段的一枚独立开关（见 PresentationDock.qml）",
     "tools": [
       { "id": "arrow", "label": "鼠标指针", "icon": "ic_fluent_cursor_20_filled" },
       { "id": "pen", "label": "笔", "icon": "ic_fluent_pen_20_filled" },
       { "id": "eraser", "label": "橡皮", "icon": "ic_fluent_eraser_20_filled" }
     ],
+    "//zoom": "放大镜（``ui/presentation/ZoomPanel.qml``）——条上**紧跟着工具分段**的一枚独立圆钮，点一下切到放大镜并弹出选单：缩放（放大 / 缩小 / 复位）与移位（四向）在**同一块面板**里（2026-10-06 用户指令）。缩放调的是**演示软件自己的缩放**：PowerPoint 走小键盘 + / -（回退 Ctrl+= / Ctrl+-），WPS 演示走 Ctrl+↑ / Ctrl+↓（``ppt_controller.KIND_ZOOM_KEYS``）。⚠️ ``SlideShowView.Zoom`` 是只读的，所以「缩放到多少」由放映软件自己定，我们只按键 + 读回校验；放大后的移位就是方向键 —— 放映态下方向键本来是翻页键，所以要先判画面放大着没有，判不出来就按用户意图发（见 ``_cmd_zoom`` / ``_zoom_state``）",
+    "zoom": {
+      "//enabled": "条上那枚放大镜入口要不要显示",
+      "enabled": true,
+      "//icon": "条上那枚入口的图标（下面的 ``icon_*`` 是**面板里**七枚按钮的）",
+      "icon": "ic_fluent_search_20_filled",
+      "label": "放大镜",
+      "tooltip": "放大镜",
+      "//label_zoom": "「缩放」那一小段的小标题",
+      "label_zoom": "缩放",
+      "//label_pan": "「移位」那一小段的小标题",
+      "label_pan": "移位",
+      "icon_in": "ic_fluent_zoom_in_20_filled",
+      "icon_out": "ic_fluent_zoom_out_20_filled",
+      "icon_reset": "ic_fluent_arrow_reset_20_filled",
+      "icon_up": "ic_fluent_arrow_up_20_filled",
+      "icon_down": "ic_fluent_arrow_down_20_filled",
+      "icon_left": "ic_fluent_arrow_left_20_filled",
+      "icon_right": "ic_fluent_arrow_right_20_filled",
+      "tooltip_in": "放大",
+      "tooltip_out": "缩小",
+      "//tooltip_reset": "一直缩小直到回到适应屏幕 —— 放映软件没有「复位缩放」这条命令，只有「缩小到底就回到原始大小」",
+      "tooltip_reset": "恢复原始大小",
+      "tooltip_up": "向上移位",
+      "tooltip_down": "向下移位",
+      "tooltip_left": "向左移位",
+      "tooltip_right": "向右移位"
+    },
     "actions": [
       {
         "id": "clear_screen",
@@ -213,11 +241,18 @@
       "icon_prev": "ic_fluent_chevron_up_20_filled",
       "icon_next": "ic_fluent_chevron_down_20_filled"
     },
-    "//jump": "**点页码展开的快速切页面板**（2026-10-06 用户指令：把 Luminalium 1 的「点按翻页 + 页码展开切页」搬过来）。点翻页 pill 中间的页码 → 从**窗口侧边**滑出一整条侧栏，里面是单列 16:9 幻灯片缩略图，点哪一张跳哪一页；点面板外 / 切工具 / 退出放映自动收起。️横版（bottom_left / bottom_right，组件 PresentationDock.qml）与竖版（middle_left / middle_right，组件 SidePager.qml）**共用这一份配置**。⚠️ 2026-10-06 返工：第一版是「5 列页码网格 + 贴着控制条」，用户对着 L1 说「不像」，于是改成 L1 的形态（L1 的 CSS 原值逐条列在 ui/presentation/PageJumpPanel.qml 的头注释里）",
+    "//jump": "**点页码展开的快速切页面板**（2026-10-06 用户指令：把 Luminalium 1 的「点按翻页 + 页码展开切页」搬过来）。点翻页 pill 中间的页码 → 从**窗口侧边**滑出一整条侧栏，里面是单列 16:9 幻灯片缩略图，点哪一张跳哪一页；点面板外 / 切工具 / 退出放映自动收起。⚠️ 横版（bottom_left / bottom_right，组件 PresentationDock.qml）与竖版（middle_left / middle_right，组件 SidePager.qml）**共用这一份配置**。⚠️ 2026-10-06 返工：第一版是「5 列页码网格 + 贴着控制条」，用户对着 L1 说「不像」，于是改成 L1 的形态（L1 的 CSS 原值逐条列在 ui/presentation/PageJumpPanel.qml 的头注释里）",
     "//jump.enabled": "面板总开关。关掉后页码区不再可点、也不再给 hover 提示（「点不动」和「看着能点但没反应」是两回事）",
     "jump": {
       "enabled": true
     }
+  },
+  "toolbar": {
+    "//": "工具栏的**组数与位置**（入口：主界面编辑器 → 选中工具栏 → 「组数」「位置」，2026-10-07 用户指令）。真实生效的仍是 ``corners``（windows.py 与编辑器预览都只读它），这两项只是它的人话开关 —— 与 ``pager.position`` 同一个套路，见 bridge.py::_apply_toolbar_layout",
+    "//count": "single = 单组；dual = 双组（左右各一组，此时 ``position`` 被忽略）。两种形态**互斥**，改它会连同 ``position`` 一起重排 corners",
+    "count": "single",
+    "//position": "count=single 时工具栏摆哪儿：bottom_center = 底部居中（默认，翻页组件仍是独立角落，由 ``pager.position`` 决定）；left = 屏幕左下；right = 屏幕右下。⚠️ 只要工具栏**不在**底部居中（left / right / dual 三种），该侧会与翻页组件合并成同一个 dock（groups 里直接带上 pager，见 corners 的注释）—— 此时 ``pager.position`` 被覆盖不生效",
+    "position": "bottom_center"
   },
   "exit": {
     "enabled": true,
@@ -227,7 +262,7 @@
     "style": "default"
   },
     "corners": {
-      "//": "工具栏是**独立的一套组**摆在下中部（tools/actions/exit，恒横向）；翻页栏有两种形态，二选一（同时开会四个翻页栏）：bottom_left / bottom_right = 底部左右各一只横版 pill（.flipper-bottom）；middle_left / middle_right = 屏幕左右、垂直居中的**竖版** pill（SidePager.qml，L1 .flipper 默认形态）。默认竖版 —— 与 L1 一致；要横版就把 middle_* 关掉、bottom_* 打开",
+      "//": "每个角落的启停与区块编排。**这里是权威** —— 工具栏组数与位置（toolbar.count / toolbar.position）、翻页组件形态（pager.position）都只是人话开关，改它们会重排本段（bridge.py::_apply_toolbar_layout / _apply_pager_position）。工具栏居中时：bottom_center = tools/actions/exit；翻页栏按 pager.position 二选一，bottom_left / bottom_right = 底部左右各一只横版 pill、middle_left / middle_right = 屏幕左右垂直居中的竖版 pill（SidePager.qml）。工具栏**不在**居中时（单组居左 / 单组居右 / 双组左右两侧）：工具栏所在角落的 groups 直接带上 pager（tools/actions/exit/pager），由 PresentationDock 的 sectionOrder 在工具栏与翻页之间画**一条**分割线，两者表现为同一个组件；此时不再有独立的翻页角落",
       "bottom_center": {
         "enabled": true,
         "groups": ["tools", "actions", "exit"]

@@ -233,6 +233,22 @@ QtObject {
     /*! 翻页 pill 的左右留白只有 4（L1 圆钮自带 margin），比工具条紧凑得多。 */
     readonly property int dockPagerPaddingX: 4
 
+    /*! 翻页 pill 里**页码区** hover 底的圆角（组件 ``PresentationDock.qml`` /
+        ``SidePager.qml`` 共用这一枚，横竖两版同值）。
+
+        ⚠️ **不要用 ``dockJumpItemRadius``**（= ``dockPaletteRadius`` 8）：那个是
+        **快速切页面板里卡片**的圆角，跟这里不是同一族东西（2026-10-06 用户实锤
+        「翻页组件的 hover 不行，横版超出竖版偏位」）。
+
+        页码区是 68×44（竖版 44×68），夹在两枚 **44 正圆** 圆钮之间 —— 给它
+        ``dockJumpItemRadius``(8) 会画出一个 68×44 的**大圆角方块**：形状与两侧
+        正圆不搭，而且方块比圆更像「容器」，视觉重量凭空高一档。
+
+        正解是**按短边钳制成胶囊**（= 22），与两侧圆钮同族、同一套形态语言；
+        ``Rectangle`` 不会自己钳制，自己算最稳。竖版转置后自动取另一边的短边，
+        一个式子两版都对。 */
+    readonly property int dockPagerHitRadius: Math.round(dockHitSize / 2)
+
     // ---- 竖版两侧翻页（横版 pill 旋转 90° 的同款布局，屏幕左右、垂直居中）----
     // 2026-09-30 用户指令「竖版的按照横版翻转的布局来，不要全抄 L1」：
     // 尺寸**直接由横版翻页 pill（180×62）转置**成 62×180 —— 圆钮 44、间距 8、
@@ -309,6 +325,21 @@ QtObject {
     readonly property int dockPalettePreviewPad: 10
     /*! 还没选中任何一格时，预览笔迹用的颜色（= 卡片底色上一道中性线）。 */
     readonly property color dockPaletteIdleStroke: fade(textPrimary, 0.35)
+
+    // ---- 放大镜选单（``presentation/ZoomPanel.qml``）----
+    // 2026-10-06 用户指令：放大镜的「缩放」与「上下左右移位」在**同一块面板**里。
+    // 卡片 / 投影 / 进出场全部复用上面那组 ``dockPalette*``（两块浮出层本就该
+    // 长得一样），这里只多两个值：面板里那几枚圆钮的直径与间距。
+    /*! 圆钮直径。比控制条那档 44 收一档 —— 面板只有 156 宽，44 的钮会把卡片
+        撑成一条，也不像「控制条上的浮出层」而像第二根控制条。 */
+    readonly property int dockZoomButtonSize: 36
+    /*! 圆钮间距。与上面那条一起把两段凑成**同一个宽度**：
+        ``3×36 + 2×6 = 120`` —— 于是「缩放」那一行与下面那个十字方向键的
+        左右沿天然齐平，不需要额外对齐（见 ``ZoomPanel.rowWidth``）。
+
+        取 6 而不是笔选单那种 8：十字方向键是**两行**，行距也是这个值，8 会让
+        整块显得松（面板本来就在工具栏正上方，块头越小越不挡画面）。 */
+    readonly property int dockZoomButtonSpacing: 6
 
     // ---- 页码快速跳转面板（``presentation/PageJumpPanel.qml``）----
     // 出处是 **Luminalium 1** 的点按翻页组件：L1 里点页码那一块，会从屏幕侧边

@@ -45,6 +45,10 @@ import Luminalium
     粉笔侧光标用 Cross（瞄准落点），橡皮用 SizeAll 而不是 PointingHand：
     手型光标的语义是「这里有个可点的链接」，不是「擦」；SizeAll 的
     四向箭头读作「大面积挪动/擦除」，与宽笔触的橡皮语义对得上。
+
+    2026-10-08 隐藏常驻导航栏：本窗口无导航项，``Component.onCompleted``
+    里把 ``navigationView.navigationBar.visible`` 置 false，空 rail 与
+    ≡ 折叠按钮不再出现，内容区自动铺满（理由见该处注释）。
 */
 Rin.FluentWindow {
     id: boardWindow
@@ -64,6 +68,15 @@ Rin.FluentWindow {
     onClosing: function (event) {
         event.accepted = false
         Backend.triggerAction("plugin:blackboard:close")
+    }
+
+    Component.onCompleted: {
+        // FluentWindow 常驻一条 NavigationBar（左侧 rail + ≡ 折叠按钮），
+        // 本窗口没有任何导航项，空 rail 和 ≡ 是纯干扰。NavigationBar 在
+        // NavigationView 的 RowLayout 里，不可见即被布局跳过，内容区自动
+        // 铺满；标题在 titleBarLeadingHost 里，不受影响。藏它而不改 RinUI
+        // 包（AGENTS.md 铁律：site-packages 不许动）。
+        navigationView.navigationBar.visible = false
     }
 
     // ------------------------------------------------ 快捷键

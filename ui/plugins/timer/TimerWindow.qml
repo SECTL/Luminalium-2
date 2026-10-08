@@ -53,6 +53,10 @@ import Luminalium
     正计时跑动（``swRunning``）与时钟页不动标题；暂停也算「否则」，
     回到静态「计时器」。窗口 chrome 由 RinUI 接管，改 ``title`` 属性
     不涉及任何窗口 flag，安全。
+
+    2026-10-08 隐藏常驻导航栏：本窗口无导航项，``Component.onCompleted``
+    里把 ``navigationView.navigationBar.visible`` 置 false，空 rail 与
+    ≡ 折叠按钮不再出现，内容区自动铺满（理由见该处注释）。
 */
 Rin.FluentWindow {
     id: timerWindow
@@ -153,6 +157,13 @@ Rin.FluentWindow {
         // 双保险之外再补一次就绪态回填（理由见 backfillBoxes 注释）
         backfillBoxes()
         Backend.triggerAction("plugin:timer:sync")
+
+        // FluentWindow 常驻一条 NavigationBar（左侧 rail + ≡ 折叠按钮），
+        // 本窗口没有任何导航项，空 rail 和 ≡ 是纯干扰。NavigationBar 在
+        // NavigationView 的 RowLayout 里，不可见即被布局跳过，内容区自动
+        // 铺满；标题在 titleBarLeadingHost 里，不受影响。藏它而不改 RinUI
+        // 包（AGENTS.md 铁律：site-packages 不许动）。
+        navigationView.navigationBar.visible = false
     }
 
     ColumnLayout {

@@ -119,7 +119,7 @@ for _path in (str(ROOT), str(TOOLS)):
 os.chdir(ROOT)
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, QUrl  # noqa: E402
-from PySide6.QtGui import QGuiApplication  # noqa: E402
+from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlComponent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from RinUI import BackdropEffect, RinUIWindow, Theme  # noqa: E402
@@ -1534,20 +1534,34 @@ def _run_plugin_seams() -> int:
         window.setProperty("cdRemaining", 142000)
 
     def _seed_blackboard(window):
-        # 直接灌两笔已落定的笔画 + 一个单击点（点路径 2026-10-07 才有，
-        # 正好让预览盯住它）：下一帧 onPaint 的 dirtyAll 分支整幅重画
-        strokes = [
-            {"color": "#F3F3EE", "width": 6, "points": [
-                {"x": 70.0, "y": 210.0}, {"x": 180.0, "y": 150.0},
-                {"x": 300.0, "y": 230.0}, {"x": 420.0, "y": 160.0},
-            ]},
-            {"color": "#F7D858", "width": 12, "points": [
-                {"x": 120.0, "y": 330.0}, {"x": 330.0, "y": 350.0},
-            ]},
-            {"color": "#F28B82", "width": 6, "points": [{"x": 480.0, "y": 220.0}]},
-        ]
-        window.setProperty("strokes", strokes)
-        window.setProperty("dirtyAll", True)
+        # 2026-10-08 小黑板搬到 InkLayer（照搬叠加层自建批注）：strokes 属性
+        # 没了，改按名找到墨迹层、直调 begin/extend/end 槽铺笔画（绕过事件
+        # 的 QA 直调通道，layer.py 头注释「输入接线」节）。延迟到窗口 show 后
+        # 再落笔：setup 时层宽高还是 0，beginStroke 的尺寸守卫会直接拒收；
+        # 落笔与抓图（1800ms）错开两个事件循环回合，防渲染线程待处理 update
+        # 顶住挂死（self-ink 预览场景的实测坑）。
+        def _lay_strokes():
+            layer = window.findChild(QObject, "blackboardInkLayer")
+            if layer is None:
+                print("BLACKBOARD SEED ERROR: 找不到 blackboardInkLayer")
+                return
+            strokes = [
+                ("#F3F3EE", 6.0, [
+                    (70.0, 210.0), (180.0, 150.0), (300.0, 230.0), (420.0, 160.0),
+                ]),
+                ("#F7D858", 12.0, [(120.0, 330.0), (330.0, 350.0)]),
+                # 单击成点：begin/end 两点合一的圆点笔画（盯住单点路径）
+                ("#F28B82", 6.0, [(480.0, 220.0)]),
+            ]
+            for color, width, points in strokes:
+                layer.setProperty("penColor", QColor(color))
+                layer.setProperty("penWidth", width)
+                layer.beginStroke(points[0][0], points[0][1], 1.0)
+                if len(points) > 1:
+                    layer.extendStroke([[x, y, 1.0] for x, y in points[1:]])
+                layer.endStroke()
+
+        QTimer.singleShot(600, _lay_strokes)
 
     plugin_windows.append(_make_plugin_window(
         Path("timer") / "TimerWindow.qml",

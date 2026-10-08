@@ -42,7 +42,9 @@ import Luminalium
       ``SelectorBar``）：RinUI 没有 TabView/TabControl，
       ``SelectorBar``（Fluent 的选择条，下划线选中态）是与 compact
       TabControl 最接近的一档：
-      * **更新日志**：有更新 → 直接铺更新日志（Markdown）；其余档 → 居中的
+      * **更新日志**：有更新 → 直接铺更新日志（**RichText**，见
+        ``updateChangelogView`` 那段注释：Markdown 渲不了「限宽的图片」，
+        大图会撑破页面）；其余档 → 居中的
         81×81 贴图 + 「已经是最新版啦，真棒，夸夸你哦♪」（对应 ClassIsland 那张
         HoYo 贴图；本项目用 ``resources/up_to_date.png``，同尺寸 81）。
         ⚠️ 原版这块
@@ -51,6 +53,8 @@ import Luminalium
         滚动**（MarkdownScrollViewer），这里直接铺在页面里、靠页面本身滚
         （FluentPage 自带 Flickable）：页面里再嵌一个 Flickable 会跟页面滚动
         抢滚轮，版式收益却只有「滚到顶后接着滚日志」。
+        日志的 Markdown 由 Python 侧用 **Qt 自己的 markdown 导入器**转成
+        HTML（``app/markdown_html.py``），语义与原先一致。
       * **更新设置**：两张 ``SettingExpander`` —— 「更新模式」（下拉四档，
         对应 ``Settings.UpdateMode``）与「更新通道」（下拉稳定/预览 +
         通道说明行 + 「强制检查更新」入口，对应
@@ -101,6 +105,16 @@ Rin.FluentPage {
         : isUpToDate ? qsTr("您已更新到最新版本。")
         : status === "error" ? qsTr("检查更新失败。")
         : qsTr("尚未检查更新。")
+
+    /*! 更新日志的**渲染形态**：Python 已经把 Markdown 转成 HTML 了
+        （``Backend.updateChangelogHtml``），这里再给每个 ``<img>`` 补一条
+        宽度上限 —— 发布说明里插的截图动辄 1920 宽，不限就会撑破页面
+        （详见 ``updateChangelogView`` 那段注释）。
+
+        ⚠️ **只有 UI 侧知道日志列有多宽**，所以这条样式在 QML 这里加，
+        不在 Python 那边写死数值；用百分比后窗口变宽变窄都自动跟着走。 */
+    readonly property string changelogHtml:
+        Backend.updateChangelogHtml.replace(/<img\b/g, '<img style="max-width:100%"')
 
     /*! 通道候选与说明**不在这里定义** —— 唯一一份在 Python 侧
         （``app/update_checker.py::CHANNELS`` / ``CHANNEL_NAMES``），由
@@ -384,15 +398,45 @@ Rin.FluentPage {
         visible: tabs.currentIndex === 0
         enabled: !page.working
 
-        /*! 有更新：直接铺新版本的更新日志（Markdown，ClassIsland 的
-            ``MarkdownScrollViewer`` 内容层）。链接可点。 */
+        /*! 有更新：直接铺新版本的更新日志（ClassIsland 的
+            ``MarkdownScrollViewer`` 内容层）。链接可点。
+
+            ⚠️⚠️ **这里是 ``RichText`` 不是 ``MarkdownText``**
+            （2026-10-06 用户指令「插入的图片分辨率过大就会把元素挡住」）：
+            Markdown 语法里图片不带尺寸，Qt 就按**原始像素**把它铺进文本流
+            —— 实测一张 2400×1600 的图让本项 ``contentWidth`` 变成 2400，
+            超出列宽的部分被页面 Flickable 裁掉，下面的兄弟项被顶出可视区。
+            ``MarkdownText`` 下没有任何约束手段：尺寸写不进 Markdown 语法，
+            而行内 HTML 会被 markdown 导入器**转义**（实测写
+            ``<img width="300">`` 渲出来是 38px 高的一行字面文本，不是图）。
+            所以整份改走 RichText：Python 用 Qt 自己的导入器把 Markdown 转成
+            HTML（语义与原来一致），这里给 ``<img>`` 补 ``max-width:100%``。
+
+            ⚠️ **是 ``max-width`` 不是 ``width``**：``width`` 是硬尺寸，会把
+            小图（徽标之类）**放大**到列宽（实测 120×80 的图给 ``width=584``
+            → 撑成 584×389）；``max-width`` 只压上限，小图保持原样。
+            百分比参照的就是本项宽度，列宽随窗口变化自动跟着走。
+
+            ⚠️ 图片没加载完（或加载失败）时 Qt 只留一行占位高度（实测 16px），
+            不会先撑破再收回 —— 远程图是异步的，这个特性正好兜住加载窗口期。
+
+            ⚠️⚠️ **行高必须改成比例档**：``Rin.Text`` 默认是
+            ``lineHeightMode: FixedHeight`` + ``lineHeight: 20``（主题正文行高），
+            那个固定行高会**把富文本的每一行都钉成 20px** —— 图片行被压成
+            16px（图整个看不见，实测），``x-large`` 的标题也被压扁叠行。
+            日志是要显示图片的，这里换成 ``ProportionalHeight``；
+            ``1.4`` ≈ 主题正文的 ``20 / 14``，正文观感与页面其它地方一致
+            （代价：图片独占一段时行高也按 1.4 倍算，实测纯图片段 389 → 539，
+            图上下会多出留白 —— 比例行高的固有行为，比把图压成 16px 强）。 */
         Rin.Text {
             objectName: "updateChangelogView"
             Layout.fillWidth: true
             visible: page.isAvailable
-            textFormat: Text.MarkdownText
+            textFormat: Text.RichText
             wrapMode: Text.WordWrap
-            text: page.isAvailable ? Backend.updateChangelog : ""
+            lineHeightMode: Text.ProportionalHeight
+            lineHeight: 1.4
+            text: page.isAvailable ? page.changelogHtml : ""
             onLinkActivated: (link) => Qt.openUrlExternally(link)
         }
 

@@ -92,6 +92,9 @@ Item {
 
     Rectangle {
         id: surface
+        // 几何诊断锚点（2026-10-06）：底板没有 ``id`` 之外的可抓句柄，
+        // 探针 / smoke 要量「hover 底相对底板有没有超出」就得能按名字挑出它。
+        objectName: "dockSurface"
         x: root.margin
         y: root.margin
         width: inner.implicitWidth + root.paddingX * 2
@@ -123,5 +126,35 @@ Item {
         y: surface.y + root.paddingY
         spacing: root.contentSpacing
         flow: root.vertical ? Flow.TopToBottom : Flow.LeftToRight
+        // ⚠️ Flow **不自带**合适的内容尺寸：``implicitWidth`` 在 TopToBottom 下
+        // 取「最宽子项的 implicitWidth」，可子项里有靠容器宽算尺寸的（Segmented
+        // 的 contentWidth），两边互等 → 收敛到偏小值 → 子项被默默截断
+        // （2026-10-07 实测：3 个工具钮只排得下 2 个）。
+        //
+        // 修法是**横竖各写一个 Flow**：横版的 implicitWidth/Height 由 Qt 自己算
+        // （LeftToRight 下 implicitWidth = 累加，implicitHeight = 最高项，没问题）；
+        // 竖版则沿轴方向累加、横向取「最高子项的高」—— 都写成具体表达式，
+        // 绝不写 ``: implicitWidth`` 自引用（绑定循环，Qt 静默作废）。
+    }
+
+    /*! 按 ``objectName`` 在**内容层**（``inner``）里找一项 —— 用 ``id`` 是不行的：
+        调用方写在 ``FlyoutSurface { … }`` 里面的那些子项都被 ``default property``
+        收进 ``inner.data``，属于**另一个作用域**，外层拿它们的 id 只会得到
+        ``ReferenceError``（2026-10-06 实测：``ReferenceError: dockZoomButton is
+        not defined``，而那条依赖它的绑定被**静默丢弃**，面板落回 x=0 —— 症状看着
+        像「对齐算错」，实际是「压根没算」）。
+
+        注意 ``inner.data`` 里混着 ``Repeater`` / 分隔线之类非视觉项，跳过它们。
+
+        用它的地方：放大镜选单要把横向落点对齐到条上那枚圆钮（见
+        ``PresentationDock.qml`` 的 ``flyoutX``）。 */
+    function contentItemByName(name) {
+        for (var i = 0; i < inner.data.length; ++i) {
+            var child = inner.data[i]
+            if (child && child.objectName === name) {
+                return child
+            }
+        }
+        return null
     }
 }

@@ -32,11 +32,29 @@ Rin.Segmented {
     property int edgePadding: Lumi.dockSegmentPadding
     property int itemSpacing: Lumi.dockSegmentSpacing
 
+    /*! 竖排（两侧合并布局）—— 见头注释「竖版为什么不能靠 contentWidth」。 */
+    property bool vertical: false
+    /*! 子项个数（竖版自己算宽要用）。 */
+    readonly property int itemCount: contentChildren.length
+
     /*! 钳制后的**实际**圆角（胶囊时为 高/2）。自检会读这个值。 */
     readonly property real effectiveRadius: bg.radius
 
-    implicitWidth: contentWidth + leftPadding + rightPadding
-    implicitHeight: itemHeight
+    /*! ⚠️ **竖版不能靠 ``contentWidth``**（2026-10-07 实测踩坑）：外层
+        ``FlyoutSurface`` 的 ``inner`` 是 ``Flow``，它的 ``implicitWidth`` 在
+        ``TopToBottom`` 下取「最宽子项的 implicitWidth」；而本组件的
+        ``contentWidth`` 又来自基类那行随容器宽走的 Row —— 两边互相等对方的宽，
+        收敛到一个偏小值，结果 3 个钮只排得下 2 个（工具段被默默截掉一枚）。
+        竖版与子项数无关，自己按「项数 × 项高 + 间距 + 留白」算，断开这个环。
+        项全等高（``ToolSegmentItem`` 纯图标时宽 = 高），横向不折行。 */
+    implicitWidth: vertical
+        ? itemCount * itemHeight + Math.max(0, itemCount - 1) * itemSpacing
+            + leftPadding + rightPadding
+        : contentWidth + leftPadding + rightPadding
+    implicitHeight: vertical
+        ? itemCount * itemHeight + Math.max(0, itemCount - 1) * itemSpacing
+            + topPadding + bottomPadding
+        : itemHeight
     height: implicitHeight
     spacing: itemSpacing
     leftPadding: edgePadding

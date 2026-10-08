@@ -405,6 +405,12 @@ Rin.FluentWindowBase {
             return qsTr("控制条")
         }
         var traits = entry.traits !== undefined ? entry.traits : ({})
+        // 合并角（工具栏系组 + pager 同处一角）—— 两者已拼成同一个 dock，
+        // 只叫「工具栏」会骗人（2026-10-07 用户指令）。
+        var hasToolbar = cornerHasTrait(cornerName, "toolbar")
+        var hasPager = cornerHasTrait(cornerName, "pager")
+        if (hasToolbar && hasPager)
+            return qsTr("组 | 工具栏和翻页器")
         if (traits.toolbar === true)
             return qsTr("工具栏")
         if (traits.pager === true)
@@ -432,6 +438,40 @@ Rin.FluentWindowBase {
         return cornerLabels[cornerName] !== undefined ? cornerLabels[cornerName] : cornerName
     }
 
+    /*! 角落预览该用哪个 QML 组件 —— 必须与 ``windows.py::_resolve_dock_qml``
+        逐条同源，否则编辑器里看到的东西和放映时不是同一件。
+
+        1. 合并角（工具栏系组 + pager）一律 PresentationDock（它支持
+           ``isVertical``，横竖都能渲染；SidePager 塞不进工具组）。
+        2. 其余竖版角落（垂直对齐 ``middle``）→ SidePager；横向 → PresentationDock。
+    */
+    function previewSourceFor(cornerName) {
+        var hasToolbar = cornerHasTrait(cornerName, "toolbar")
+        var hasPager = cornerHasTrait(cornerName, "pager")
+        if (hasToolbar && hasPager)
+            return "presentation/PresentationDock.qml"
+        return cornerName.indexOf("middle") === 0
+                ? "presentation/SidePager.qml"
+                : "presentation/PresentationDock.qml"
+    }
+
+    /*! 选中角 inspector 的**结构签名**（``角落|组1,组2,...``）。
+
+        ⚠️ 这一层是**性能与稳定性**的关键，不是可选优化。``selectedInspectorItems``
+        原来直接读 ``Backend.presentationConfig`` 与 ``groupsOf()``，而
+        ``presentationConfig`` 在**任何** ``presentation_*`` 设置变更时都会发
+        ``presentationConfigChanged`` → 那个数组每次都算出一个**新引用** → 下面
+        ``Repeater`` 把**全部** delegate 销毁重建。重建会把 RinUI ``ComboBox``
+        的下拉菜单（``ContextMenu`` / ``MenuItem``）一起销毁，销毁期残留的绑定
+        再求值一次就刷一屏 ``Cannot read property 'max' of undefined``
+        （``MenuItem.qml:19`` 的 ``Math.max`` —— 全局环境此刻已经取不到，
+        2026-10-07 实测：改「组数 / 位置」时必现）。
+
+        改成依赖**字符串**：``property string`` 只在值真的变了才通知，于是
+        「与本角落结构无关的设置变更」不再重建 delegate，报错与抖动一起消失。 */
+    readonly property string inspectorSignature: selectedCorner.length === 0
+        ? "" : (selectedCorner + "|" + groupsOf(selectedCorner).join(","))
+
     /*! 检查器列表 = 选中角**各组**的 ``inspector_items`` 并集（2026-10-05
         插件系统 Wave 2 任务 10）：原先三个硬编码 InspectorSetting 已删，
         改由注册表描述符驱动（``inspectorRepeater`` 的模型）。顺序 = 组在
@@ -442,12 +482,51 @@ Rin.FluentWindowBase {
         内建角落的 groups 配置下，与重构前的 trait 显隐（``selectedHasToolbar``
         / ``selectedHasPager``，已随本任务移除）逐项一致：下中部角
         （tools/actions/exit）→ 「显示按钮文本」+「退出键样式」；
-        翻页角（pager）→ 「翻页组件位置」。 */
-    readonly property var selectedInspectorItems: {
+        翻页角（pager）→ 「翻页组件位置」。
+
+        ⚠️⚠️ 这个属性是**可写 + 内容去重**的（不是 ``readonly`` 绑定），
+        只在算出的条目 **key 序列**与当前不同时才赋值 —— 于是「新旧内容一样」
+        时引用不变，``Repeater`` 不会把 delegate（含 RinUI ``ComboBox``）拆了
+        重来。理由见 ``inspectorSignature``：销毁期的残留绑定会刷一屏
+        ``Cannot read property 'max' of undefined``。 */
+    property var selectedInspectorItems: []
+
+    onInspectorSignatureChanged: refreshInspectorItems()
+    Component.onCompleted: refreshInspectorItems()
+
+    function refreshInspectorItems() {
+        var next = _computeInspectorItems()
+        if (_sameInspectorKeys(next, selectedInspectorItems))
+            return
+        selectedInspectorItems = next
+    }
+
+    /*! 两条目列表的 **key 序列**是否一致（跨角落也复用：同一个 key 序列
+        = 同一批设置项，delegate 没有重建的必要）。 */
+    function _sameInspectorKeys(a, b) {
+        if (!a || !b || a.length !== b.length)
+            return false
+        for (var i = 0; i < a.length; ++i) {
+            if (a[i].key !== b[i].key)
+                return false
+        }
+        return true
+    }
+
+    /*! 按 ``inspectorSignature`` 现算条目列表（唯一依赖是那个字符串）。
+
+        合并角落（工具栏系组 + pager 拼成同一个 dock）的两组设置**并成一列
+        显示**（2026-10-07 用户指令）—— 顺序按 ``corners.<角>.groups`` 排，
+        即布局里的区块顺序。给每项附一份带 ``_group`` 的浅拷贝：delegate 要
+        靠它渲染分组小标题，说清哪几项归工具栏、哪几项归翻页器。 */
+    function _computeInspectorItems() {
         var result = []
-        if (selectedCorner.length === 0)
+        var sig = inspectorSignature
+        if (sig.length === 0)
             return result
-        var groups = groupsOf(selectedCorner)
+        var parts = sig.split("|")
+        var groups = (parts.length > 1 && parts[1].length > 0)
+                ? parts[1].split(",") : []
         var seen = ({})
         for (var i = 0; i < groups.length; ++i) {
             var entry = groupEntry(groups[i])
@@ -462,10 +541,32 @@ Rin.FluentWindowBase {
                         && groups.indexOf(item.visible_when_group) < 0)
                     continue
                 seen[item.key] = true
-                result.push(item)
+                // 浅拷贝：不能往注册表给的描述符上挂字段（那是全局共享的元数据，
+                // 改它会让别的角落也带上标题）。
+                var copy = ({})
+                for (var k in item)
+                    copy[k] = item[k]
+                copy._group = entry.display_name !== undefined
+                        ? String(entry.display_name) : groups[i]
+                result.push(copy)
             }
         }
         return result
+    }
+
+    /*! 分组小标题：只在**多组混在同一个角落**时才显示（单组时不加noise）。
+        判据用「这一项所属组是不是和上一项不同」—— 同一组连续出现时只标一次。 */
+    function inspectorSectionTitle(descriptor, index) {
+        var groups = groupsOf(selectedCorner)
+        if (groups.length < 2)
+            return ""
+        var g = descriptor._group
+        if (g === undefined || g === null)
+            return ""
+        var prev = index > 0 ? selectedInspectorItems[index - 1] : undefined
+        if (prev !== undefined && prev !== null && prev._group === g)
+            return ""
+        return g
     }
 
     /*! 描述符的**当前值**：默认读扁平设置键（``Backend.settings[key]``）。
@@ -479,6 +580,30 @@ Rin.FluentWindowBase {
         if (key === "presentation_pager_position")
             return pagerPositionIndex === 1 ? "bottom" : "side"
         return Backend.settings[key]
+    }
+
+    /*! 描述符可不可用：带 ``enabled_when`` 时，仅当条件全部满足才可用（否则
+        变灰且点不动）。``enabled_when`` 可以是单个 ``{key, value}``，也可以是
+        ``[{key, value}, ...]`` 的列表（全部满足）。
+
+        2026-10-07（工具栏组数 / 位置）：两个联动点 —— 「位置」只在「组数 =
+        单组」时可选（双组就是左右两侧）；「翻页组件位置」只在「组数 = 单组
+        **且** 位置 = 底部居中」时可选（工具栏挪到左右后翻页已与它合并成同一个
+        dock，改不动任何东西）。让**点不动但看得见**优于「看着能点、点了没反应」
+        的静默失效。 */
+    function settingEnabled(descriptor) {
+        var cond = descriptor.enabled_when
+        if (cond === undefined || cond === null)
+            return true
+        var list = (cond instanceof Array) ? cond : [cond]
+        for (var i = 0; i < list.length; ++i) {
+            var c = list[i]
+            if (c === undefined || c === null || c.key === undefined)
+                continue
+            if (inspectorCurrentValue(c.key) !== c.value)
+                return false
+        }
+        return true
     }
 
     /*! ``combo`` 描述符的下拉文案列表（``options[].label``）。 */
@@ -988,15 +1113,18 @@ Rin.FluentWindowBase {
                         readonly property string cornerName: String(modelData)
 
                         // 竖版两侧翻页（middle_*）是独立的竖排组件，其余角落是
-                        // 横向 dock —— 与 ``windows.py::_load_docks`` 同一条判断。
+                        // 横向 dock —— 与 ``windows.py::_resolve_dock_qml`` 同一条
+                        // 判断。
+                        // ⚠️ 合并角（工具栏系组 + pager 同处一角）**必须**走
+                        // PresentationDock：竖版合并角的朝向是 vertical，pager 组
+                        // 的 orientation 正好命中，会把它抢到只有翻页的 SidePager
+                        // （2026-10-07 用户指令：合并后也该能是竖的）。
                         // ⚠️ 这里用 ``source``（URL）而不是 ``sourceComponent``：
                         // ``Component`` 不是 QQuickItem，声明在窗口里会被塞进
                         // ``default property``（= ``contentArea.children``）而报
                         // 「Cannot assign object of type QQmlComponent to list
                         // property content」。
-                        source: Qt.resolvedUrl(cornerName.indexOf("middle") === 0
-                            ? "presentation/SidePager.qml"
-                            : "presentation/PresentationDock.qml")
+                        source: Qt.resolvedUrl(editorWindow.previewSourceFor(cornerName))
 
                         onLoaded: {
                             item.objectName = "editorPreviewDock_" + cornerName
@@ -1410,6 +1538,10 @@ Rin.FluentWindowBase {
                         required property var modelData
                         readonly property var descriptor: modelData
 
+                        // 合并角落里两组的设置并排显示，用小标题分区
+                        // （2026-10-07 用户指令）。
+                        sectionTitle: editorWindow.inspectorSectionTitle(
+                                           descriptor, index)
                         title: descriptor.title !== undefined
                                ? String(descriptor.title) : ""
                         description: descriptor.description !== undefined
@@ -1420,6 +1552,8 @@ Rin.FluentWindowBase {
                             objectName: "editorInspectorSwitch_"
                                         + inspectorItem.descriptor.key
                             visible: inspectorItem.descriptor.kind === "switch"
+                            enabled: editorWindow.settingEnabled(
+                                         inspectorItem.descriptor)
                             primaryColor: Lumi.accent
                             // 「开 / 关」状态字走 RinUI Switch 自带的 checkedText /
                             // uncheckedText —— 别再挂 Rin.Text（会跟默认的
@@ -1444,6 +1578,8 @@ Rin.FluentWindowBase {
                             objectName: "editorInspectorCombo_"
                                         + inspectorItem.descriptor.key
                             visible: inspectorItem.descriptor.kind === "combo"
+                            enabled: editorWindow.settingEnabled(
+                                         inspectorItem.descriptor)
                             Layout.preferredWidth: 200
                             model: editorWindow.inspectorOptionLabels(
                                        inspectorItem.descriptor)
@@ -1481,6 +1617,8 @@ Rin.FluentWindowBase {
                                     required property var modelData
 
                                     primaryColor: Lumi.accent
+                                    enabled: editorWindow.settingEnabled(
+                                                 inspectorItem.descriptor)
                                     text: modelData.label
                                     checked: editorWindow.inspectorCurrentValue(
                                                  inspectorItem.descriptor.key)

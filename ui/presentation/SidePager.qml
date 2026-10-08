@@ -241,6 +241,7 @@ Item {
 
         // ================================================ 上一页（chevron 朝上）
         IconButton {
+            objectName: "sidePagerPrev"
             visible: pager.pagerEnabled
             iconName: pager.iconPrev
             tooltip: qsTr("上一页")
@@ -261,10 +262,15 @@ Item {
             height: pager.infoHeight
 
             // hover 底 / 面板开着时保持点亮（与横版同一套反馈，见 PresentationDock）
+            //
+            // ⚠️ 圆角用 ``Lumi.dockPagerHitRadius``（短边一半 = 胶囊），**不是**
+            //    ``Lumi.dockJumpItemRadius``(8) —— 那是快速切页面板里**卡片**的圆角，
+            //    与这里不是同一族（2026-10-06 用户实锤「翻页组件的 hover 不行」，
+            //    竖版偏位）。理由与横版逐条相同，见 ``Lumi.qml`` 里那枚令牌的说明。
             Rectangle {
                 objectName: "sidePagerHitSurface"
                 anchors.fill: parent
-                radius: Lumi.dockJumpItemRadius
+                radius: Lumi.dockPagerHitRadius
                 color: pagerHitArea.containsMouse || pager.jumpPanelOpened
                     ? Lumi.dockJumpItemHover : "transparent"
                 Behavior on color {
@@ -316,6 +322,7 @@ Item {
 
         // ================================================ 下一页（chevron 朝下）
         IconButton {
+            objectName: "sidePagerNext"
             visible: pager.pagerEnabled
             iconName: pager.iconNext
             tooltip: qsTr("下一页")

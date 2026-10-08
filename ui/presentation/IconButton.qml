@@ -21,6 +21,11 @@ import Luminalium
     宽度按文字**实际**宽度撑开，所以整条控制条会自然变宽 —— 真机上
     ``windows.py::_load_docks`` 挂了 ``widthChanged`` → 重摆，位置不会漂。
 
+    ⚠️ **圆形底只盖图标那个正圆，不铺满整条胶囊**（2026-10-06 用户实锤
+    「hover 背景和图标没居中」：实测块 107×86、图标中心偏右 7px）。悬停 / 选中的
+    底色跟着 ``glyphSlot`` 走，文字那截保持透明 —— 填充的圆心与图标的圆心必须
+    同源，改一个要改两个。
+
     ⚠️ 文字宽度用**隐藏的探针标签**量（同组件同字阶），不用 ``TextMetrics``：
     后者得自己抄一遍字体族与字号，主题一换就漂。探针是被量对象的同一个类，
     宽度天然一致。
@@ -88,7 +93,23 @@ Rin.Button {
     implicitHeight: hitSize
     width: implicitWidth
     height: implicitHeight
+    // ⚠️⚠️ **四个 padding 必须逐个清零，只写 ``padding: 0`` 不够**
+    //（2026-10-06 实测：圆钮 hover 底相对按钮本体偏 +2 / -1）。
+    //
+    // Qt Quick Controls 里 ``padding`` 与 ``topPadding`` / ``bottomPadding`` 是
+    // **各自独立**的属性：派生类写 ``padding: 0`` 覆盖不了基类里显式赋值过的
+    // ``topPadding`` / ``bottomPadding``。``Rin.Button`` 正好就显式写了
+    // ``padding: 6`` + ``topPadding: 5`` + ``bottomPadding: 7``
+    // （``RinUI/components/BasicInput/Button.qml:35-37``）——
+    // 净剩 **L2 T5 R2 B7**，于是 Qt 把contentItem 摆成 40×32 并居中。
+    //
+    // 本控件把 contentItem整个换掉了、自己管内边距，基类那套 padding 布局
+    // 只会把图标和填充一起挤歪 → 四边全部显式归零，让 contentItem 拿满整颗按钮。
     padding: 0
+    topPadding: 0
+    bottomPadding: 0
+    leftPadding: 0
+    rightPadding: 0
     // 半径取**短边**的一半：带名称文本时按钮是宽的，仍要恒为胶囊而不是椭圆
     // （``Rectangle.radius`` 不保证自己钳制，自己算最稳）。
     radius: Math.min(width, height) / 2
@@ -104,10 +125,27 @@ Rin.Button {
         }
 
         // 圆底 / 胶囊底填充：选中 > 悬停（与 L1 的 CSS 顺序一致，active 覆盖 hover）。
-        // 必须声明在图标**之前**，否则会盖住图标。
+        //
+        // ⚠️ **宽度只盖图标那个圆（``glyphSlot``），不是铺满整个按钮**
+        //（2026-10-06 用户实锤「hover 背景和图标没居中」，实测块 107×86、
+        // 图标中心偏 +7px）。「显示按钮文本」打开时按钮是胶囊（图标圆 + 间距 +
+        // 文字 + 右留白），若这里 ``anchors.fill: parent``，填充就会铺满整条胶囊：
+        // 块变宽而 ``glyphSlot`` 恒在左端，于是**块中心与图标中心必然错开** ——
+        // 悬停时看着像「圆底歪了」。
+        //
+        // 正确形态：填充跟着 ``glyphSlot``（图标那个正圆）走，文字部分保持透明 ——
+        // 也正是 L1 ``.tool-btn`` 只给圆加背景、名字那截不加的做法。
+        //
+        // 声明顺序：必须压在图标**之前**（同层级后声明的在上），否则盖住图标。
+        // ``objectName`` 是**几何诊断锚点**（2026-10-06）：肉眼只能看出「歪了」，
+        // 判不出歪多少。这枚矩形没有 ``id``（外层拿不到，见 FlyoutSurface 的作用域），
+        // 探针 / smoke 就靠这个名字从 ``contentItem`` 的子项里把它挑出来，
+        // 直接读 x/width 与 ``glyphSlot`` 比 —— 像素量测会被条的渐变边框吃掉一块，
+        // 读树里的真几何才是可信判据。
         Rectangle {
-            anchors.fill: parent
-            radius: Math.min(width, height) / 2
+            objectName: "dockButtonFill"
+            anchors.fill: glyphSlot
+            radius: width / 2
             color: root.active
                 ? root.activeFill
                 : (root.hovered ? root.hoverFill : "transparent")
@@ -118,9 +156,12 @@ Rin.Button {
         }
 
         /*! 图标槽 —— 恒为 ``hitSize`` 的正圆，图标在它里面居中。
-            带名称文本时按钮向右长，图标仍停在左端这个圆里（就是它平时占的位置）。 */
+            带名称文本时按钮向右长，图标仍停在左端这个圆里（就是它平时占的位置）。
+            ⚠️ **上面的圆底填充也是按它铺的**，两者必须同源，否则填充分区和图标
+            对不上（2026-10-06 修的就是这个）。 */
         Item {
             id: glyphSlot
+            objectName: "dockButtonGlyphSlot"
             width: root.hitSize
             height: root.hitSize
             anchors.left: parent.left

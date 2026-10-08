@@ -33,6 +33,27 @@ import Luminalium
     ``currentIndex ↔ Backend.activeTool`` 由本组件双向同步（后端换工具
     —— 快捷键 / 托盘 —— 时选中页自动跟随）。
 
+    ⚠️ **放大镜不进分段**（2026-10-06 用户指令：「放大镜不应当以 Segmented
+    内排版」）。它是条上**紧跟着分段**的一枚独立圆钮（``dockZoomButton``），
+    状态挂在**独立的** ``Backend.zoomActive`` 布尔上，**不占** ``activeTool``。
+    为什么强调「不占」：放大镜不是 PowerPoint 的指针类型
+    （``PpSlideShowPointerType`` 里没有这一项），它**不改变指针** ——
+    用着放大镜的时候笔照样是笔。
+
+    ⚠️⚠️ 早先把它塞进 ``activeTool``（取值 ``"zoom"``）试过，代价极大：
+    ``ToolSegment.currentIndex`` 的绑定读 ``toolIndex(Backend.activeTool)``，
+    「分段里没有这一页」会被翻译成「指针那一页」，于是点一下放大镜 → 工具被切回
+    指针 → ``onActiveToolChanged`` 顺手把刚弹的面板收掉。**全程零报错**，
+    只是面板「刚出来就没了」。
+
+    ⚠️ **别再为它改这一行绑定**（试过三种写法，全留副作用）：绑定里自引用
+    ``currentIndex`` = binding loop（Qt 静默作废整条绑定、属性落回默认 0）；
+    块语法 + ``lastToolIndex`` 回退 = 分段项点不动。``activeTool`` 只取那三个
+    指针类型之后，这里**原样就成立**。详见 ``ToolSegment`` 那处注释。
+
+    * 两个高亮会并存，这是有意的：分段说的是「演示软件的指针是什么」，
+      放大镜那枚说的是「视图是不是放大着」。
+
     **「显示按钮文本」**（``presentation.buttons.show_labels``，入口在主界面编辑器 →
     选中工具栏 → 设置项）：打开后工具栏的按钮从「直径 44 的圆」变成「图标 + 名称」的
     胶囊，整条按文字实际宽度撑宽；**翻页 pill 不参与** —— 它本来就是「小、聚拢」的
@@ -100,8 +121,22 @@ Item {
     readonly property var actionsCfg: cfg.actions !== undefined ? cfg.actions : []
     readonly property var penCfg: cfg.pen !== undefined ? cfg.pen : ({})
     readonly property var inkCfg: cfg.ink !== undefined ? cfg.ink : ({})
+    readonly property var zoomCfg: cfg.zoom !== undefined ? cfg.zoom : ({})
+
     // ---- 尺寸（默认值就是 Lumi 里按实测比例定的那一档）----
     readonly property int barHeight: cfg.bar_height !== undefined ? cfg.bar_height : 56
+
+    /*! 竖版（2026-10-07 用户指令：「为什么默认用户只会用横版」）。
+
+        两侧布局（左 / 右 / 双组）且 ``pager.position == "side"`` 时，工具栏与
+        翻页合并进 ``middle_left`` / ``middle_right``（贴屏幕左右、垂直居中），
+        整条**转置成竖排** —— 与 ``SidePager`` 的转置账同源：横版的高（``bar_height``）
+        变成竖版的宽，内容自上而下排。
+
+        ⚠️ 朝向**由角落的垂直对齐推**（``middle`` = 竖），不看角名前缀 —— 与
+        ``windows.py::_resolve_dock_qml`` 同一条口径。 */
+    readonly property bool isVertical: corner.indexOf("middle") === 0
+
     readonly property int surfacePaddingX: surfaceCfg.padding_x !== undefined
         ? surfaceCfg.padding_x : Lumi.dockPaddingX
     readonly property int surfacePaddingY: surfaceCfg.padding_y !== undefined
@@ -114,8 +149,15 @@ Item {
         ⚠️ **设计单位**（缩放变换之前）—— 屏幕上量到的半径还要乘 ``scaleFactor``。 */
     readonly property real pillRadius: bar.effectiveRadius
 
-    /*! 内容行高度：底板扣掉上下 padding —— 图标按钮、退出键共用这一档。 */
-    readonly property int contentHeight: barHeight - surfacePaddingY * 2
+    /*! 底板**宽度**（设计单位）：横版由内容撑开（读 ``bar``），竖版恒等于
+        ``bar_height``（转置 —— 与 ``SidePager`` 的 62 宽同源）。 */
+    readonly property int barWidth: isVertical ? barHeight : bar.implicitWidth
+
+    /*! 内容行高度：底板扣掉上下 padding —— 图标按钮、退出键共用这一档。
+        ⚠️ 竖版由**宽度**算（转置）。 */
+    readonly property int contentHeight: isVertical
+        ? barWidth - (surfacePaddingX * 2)
+        : barHeight - surfacePaddingY * 2
 
     /*! **显示按钮文本**（``presentation.buttons.show_labels``，入口在主界面编辑器 →
         选中工具栏 → 设置项）：按钮从「直径 44 的圆」变成「图标 + 名称」的胶囊，
@@ -165,6 +207,15 @@ Item {
     /*! ``TabBar.count`` —— Repeater 的项**真的进了**容器的 contentModel
         （配置长度只能证明 model 有几条，这条才证明接线成立）。 */
     readonly property int segmentPageCount: present("tools") ? toolSegment.count : 0
+    /*! 分段当前选中页的下标（自检用；没启用工具组时为 -1）。
+
+        为什么要挂一份：``toolSegment.currentIndex`` 挂在 ``ToolSegment`` 里，
+        Python 侧够不着那个实例（``_find_named`` 只能按 ``objectName`` 找，而
+        ``ToolSegment`` 没给名字），所以镜像到根Item 上。
+        自检拿它盯「切到放大镜时分段选中页不动」—— 那个 bug（2026-10-06）就是
+        这里被悄悄拉回 0，进而把工具切回指针。 */
+    readonly property int segmentCurrentIndex: present("tools")
+        ? toolSegment.currentIndex : -1
 
     // ---- 开关 ----
     readonly property bool shadowEnabled: shadowCfg.enabled !== undefined
@@ -195,6 +246,16 @@ Item {
         ? exitCfg.icon : "ic_fluent_power_20_filled"
     readonly property string exitLabel: exitCfg.label !== undefined
         ? exitCfg.label : qsTr("退出放映")
+    /*! 条上**放大镜入口**那枚独立圆钮的图标 / 名称 / 提示。
+        ⚠️ 别和面板里七枚按钮的 ``zoom.icon_*`` / ``tooltip_*`` 混了 —— 那是
+        另一组（放大 / 缩小 / 复位 / 四向移位），见``ZoomPanel`` 实例上的绑定。 */
+    readonly property bool zoomEnabled: zoomCfg.enabled !== false
+    readonly property string zoomIcon: zoomCfg.icon !== undefined
+        ? zoomCfg.icon : "ic_fluent_search_20_filled"
+    readonly property string zoomLabel: zoomCfg.label !== undefined
+        ? zoomCfg.label : qsTr("放大镜")
+    readonly property string zoomTooltip: zoomCfg.tooltip !== undefined
+        ? zoomCfg.tooltip : qsTr("放大镜")
     /*! ``default``（缺省）= 与其他按钮同款的透明圆钮 + 主题色图标；
         ``danger`` = L1 的 .tool-btn-danger（红色图标透明圆钮）。
         强调色实底版式已取消（2026-09-25）。 */
@@ -262,14 +323,23 @@ Item {
     readonly property int effPaddingCross: surfacePaddingY
 
     // ------------------------------------------------------- 工具 ↔ 选中页
-    /*! ``presentation.tools`` 里 id 为 ``toolId`` 的下标，找不到回落 0。 */
+    /*! ``presentation.tools`` 里 id 为 ``toolId`` 的下标，**找不到返回 -1**。
+
+        ⚠️ 返回 ``-1`` 而不是回落 0（2026-10-06）。回落 0 等于把「不认识的工具」
+        翻译成「指针」—— 而 ``currentIndex`` 的绑定会照单全收写进去，触发
+        ``onCurrentIndexChanged`` 把工具真切回指针。
+
+        放大镜曾经就是这么栽的（那时它还占着 ``activeTool``）：症状是点一下放大镜，
+        面板刚弹出来就被收掉，**全程零报错**。现在放大镜改用独立的
+        ``Backend.zoomActive``、不再占 ``activeTool``，这条路已经走不到了 ——
+        但 ``-1`` 仍留着当安全值（配置被改坏时不至于静默切错工具）。 */
     function toolIndex(toolId) {
         for (var i = 0; i < toolsCfg.length; i++) {
             if (toolsCfg[i].id === toolId) {
                 return i
             }
         }
-        return 0
+        return -1
     }
 
     function toolIdAt(index) {
@@ -350,6 +420,14 @@ Item {
         （见 ``windows.py::_watch_overlay``）。 */
     readonly property bool jumpPanelOpened: jumpPanel.opened
 
+    /*! 放大镜选单展开着没有（``interactiveRect`` / 区域塑形用）。
+
+        ⚠️ 它**不参与** Python 侧那个「光标移出控制条就收面板」
+        （``windows.py::_dismiss_jump_panels`` 只认 ``jumpPanelOpened``）：
+        那是**工具自己的选项**，与笔的色板同一类 —— 用户要按好几下缩放 / 移位，
+        中途光标飘出去就收起来会很难用。退路是「再点一下放大镜」或切工具。 */
+    readonly property bool zoomPanelOpened: zoomPanel.opened
+
     /*! 可用宽度（**屏幕逻辑像素**）= 所在**窗口**的宽 —— 遮罩层是铺满放映窗口的
         整屏窗口，所以窗口尺寸就是面板能横着占的地方。
 
@@ -405,6 +483,84 @@ Item {
         eraserPalette.opened = false
     }
 
+    /*! 放大镜选单要对齐的那枚圆钮（缓存实例）。
+
+        ⚠️ **必须有这一层缓存，不能在绑定里直接查表**：``FlyoutSurface.contentItemByName``
+        要读 ``inner.data``，而 ``QQuickItem::data`` 在 QML 里是 **non-bindable** ——
+        直接写在绑定表达式里，每次求值都会刷一串
+        ``depends on non-bindable properties: QQuickFlow::data`` 警告，而且
+        ``showLabels`` / 工具数变化导致圆钮挪位置时**绑定追不到**，面板会错位。
+
+        缓存实例之后，绑定读的是 ``zoomPanelAnchor`` 这个**可绑定**属性 + 圆钮自己的
+        ``x`` / ``width``（也都是可绑定），依赖链恢复干净。刷新时机：条尺寸变化
+        （``bar.width/height``，含 ``showLabels`` 切换与工具数变化）。 */
+    property Item zoomPanelAnchor: null
+
+    function _refreshZoomPanelAnchor() {
+        zoomPanelAnchor = bar.contentItemByName("dockZoomButton")
+    }
+
+    Connections {
+        target: bar
+        function onWidthChanged() { dock._refreshZoomPanelAnchor() }
+        function onHeightChanged() { dock._refreshZoomPanelAnchor() }
+    }
+
+    Component.onCompleted: _refreshZoomPanelAnchor()
+
+    /*! 浮出卡片（笔选单 / 放大镜选单）的横向落点。
+
+        返回的是**根 Item 坐标**（面板这个 Item 自己的 ``x``）。
+
+        两块浮出层的锚**不一样**，这是有意的（2026-10-06 用户指令「要改成
+        对齐圆钮」）：
+
+        * 不传 ``anchor``（笔选单）→ 卡片左沿对齐**底板左沿**。笔在分段第一页，
+          那个位置本来就在条的最左边，两者差一个 ``segmentPaddingX``，肉眼看
+          是一回事。
+        * 传 ``anchor``（放大镜）→ 卡片**中心线**对准那枚圆钮的中心线。圆钮在
+          条的中间（紧跟分段之后），还按左沿对齐的话面板会明显偏在它左边
+          （实测偏 100px 出头），看着像「不知道从哪冒出来的」。
+
+        算式全在**设计单位**里做完，最后乘一次 ``scaleFactor`` —— 面板自己
+        带 ``scale`` 变换（``transformOrigin: TopLeft``），所以「先设计单位
+        对齐、再整体缩放」和「先缩放、再屏幕对齐」等价，前者好写也好读。
+
+        ⚠️ 别用 ``anchor.mapToItem(dock, …)``：那个方法内部读的是 C++ 字段，
+        **绑定引擎捕获不到**，于是 ``showLabels`` 一开、条变宽、圆钮挪位置，
+        面板不会跟着动。显式读 ``bar.x`` / ``anchor.x`` / ``anchor.width``
+        才是真的建立依赖。
+
+        ⚠️ ``anchor`` 传的是**实例**（由调用方经 ``zoomPanelAnchor`` 缓存后给出），
+        不是名字 —— 「按名字查表」会读 ``inner.data``（non-bindable，见
+        ``zoomPanelAnchor`` 的说明）。
+
+        卡片比条还宽、而条又贴着屏幕右 / 下角时会溢出屏幕 —— 这时整块往左收
+        （可用宽度从父级拿：父级是铺满整屏的容器）。 */
+    function flyoutX(panel, anchor) {
+        var s = dock.scaleFactor
+        var want
+        if (anchor && anchor.visible && anchor.width > 0) {
+            // 圆钮中心相对**底板**的横坐标（设计单位）＝ 底板内边距 + 圆钮在
+            // ``Flow`` 里的 x + 半个圆钮。``bar.x`` 是底板在 dock 内的偏移
+            // （另加 ``bar.margin`` 那份投影余量由下面 panel 的 margin 抵掉，
+            // 与旧算式等价）。
+            var innerX = bar.x + bar.paddingX
+            var anchorCenter = innerX + anchor.x + anchor.width / 2
+            // ⚠️ 扣的是 ``panel.shadowMargin + panel.cardWidth / 2``，**不是**
+            //    ``panel.width``（后者含两侧 shadowMargin）—— 用它会多扣一个
+            //    shadowMargin，面板偏左 20px（实测 200→84 而非 200→104）。
+            want = anchorCenter - (panel.shadowMargin + panel.cardWidth / 2) * s
+        } else {
+            want = (bar.margin - panel.shadowMargin) * s
+        }
+        var limit = dock.parent ? dock.parent.width - dock.x : 0
+        if (limit > 0 && want + panel.width * s > limit) {
+            want = limit - panel.width * s
+        }
+        return want
+    }
+
     /*! 按下分页时选的是谁 —— ``clicked`` 落地时 TabBar 早把 ``currentIndex``
         换好了，那时再读 ``Backend.activeTool`` 分不清「切工具」和「再点一次」。 */
     property string toolBeforePress: ""
@@ -413,18 +569,46 @@ Item {
         toolBeforePress = Backend.activeTool
     }
 
+    /*! 收起全部浮出层（笔选单 / 橡皮子模式卡片 / 放大镜选单 / 快速切页面板）。 */
+    function closeFlyouts() {
+        penPalette.opened = false
+        eraserPalette.opened = false
+        zoomPanel.opened = false
+        jumpPanel.opened = false
+    }
+
+    /*! 分段里点了一页。
+
+        ⚠️ **切工具必须在这里做，不能只靠 ``ToolSegment.onCurrentIndexChanged``**
+        （2026-10-06）。那一层只在 ``currentIndex`` **真的变化**时才发；于是
+        「点已经选中的那一页」什么都不会发生 —— 用着放大镜时点分段里的「指针」
+        就是这种情况（放大镜占着 ``activeTool``，而分段那页仍停在指针），
+        结果点了没反应、放大镜面板也不收。 */
     function activateTool(toolId) {
         var was = toolBeforePress
         toolBeforePress = ""
+        // 先把工具切过去 —— 这一步不能省：``ToolSegment`` 那一层的
+        // ``currentIndex`` 变化只在换页时才发（见上面那段话）。
+        if (Backend.activeTool !== toolId) {
+            Backend.selectTool(toolId)
+        }
+        // ⚠️ **关放大镜要在这里显式做，不能只靠 ``onActiveToolChanged``**
+        // （2026-10-06）。同一类问题：点分段里**已经选中**的那一页时，
+        // ``selectTool`` 根本不会被调（上面那个 ``if`` 不成立），那条信号也就不发 ——
+        // 实测「切到别的工具 → 放大镜整个关掉」红在这里，``zoomActive`` 卡在 True。
+        // 分段里的工具与放大镜是**互斥工位**，所以不分「有没有真换工具」，一律关。
+        if (Backend.zoomActive) {
+            Backend.setZoomActive(false)
+        }
         // 有「二次点击选项卡」的工具：笔（色板/粗细）与橡皮（子模式）。
         // 第一下点 = 切工具，已经切过去了再点一下才弹卡片（2026-10-07 起
         // 橡皮也加入这个习惯，见 EraserModeCard.qml 头注释）。
+        // 放大镜也带选单，但它是条上那枚**独立**的圆钮 —— 走 ``activateZoom``，
+        // 不进这条「二次点击」的路。
         if ((toolId !== "pen" && toolId !== "eraser") || was !== toolId) {
             // 这一下是「切工具」（或点了别的），所有浮出层都跟着收起来 ——
             // 用户已经在做别的事了，面板再飘着就是挡路
-            penPalette.opened = false
-            eraserPalette.opened = false
-            jumpPanel.opened = false
+            closeFlyouts()
             return
         }
         if (toolId === "pen") {
@@ -432,6 +616,41 @@ Item {
         } else {
             eraserPalette.opened = !eraserPalette.opened
         }
+    }
+
+    /*! 放大镜入口（条上紧跟着工具分段的那枚独立圆钮）。
+
+        点一下 = **开放大镜 + 直接弹出选单**；再点一下 = 收起选单（放大镜仍开着，
+        退出靠再点一下或点别的工具）。
+
+        与笔「二次点击才弹选单」不同：那是分段里的习惯 —— 第一下的语义是
+        「切到这一页」。独立的按钮没有「当前分页」那层语义，「打开」就是点它，
+        要求点两下才出东西反而像坏了。
+
+        ⚠️ 走的是 :meth:`Backend.setZoomActive`（独立的 ``zoomActive`` 布尔），
+        **不是** ``selectTool`` —— 放大镜不是指针类型，不该挤占 ``activeTool``
+        （见 ``bridge.py`` 里那个槽的注释：早先挤占的结果是分段把工具切回指针、
+        面板刚弹就被收掉）。
+
+        ⚠️ 顺序：先 ``setZoomActive`` 再开面板 —— 它会发 ``zoomActiveChanged``，
+        那条处理器里有「关掉放大镜就收起面板」的逻辑（见文件末尾的
+        ``Connections``），反过来的话刚开的面板会被自己关掉。 */
+    function activateZoom() {
+        if (!Backend.zoomActive) {
+            closeFlyouts()
+            Backend.setZoomActive(true)
+            zoomPanel.opened = true
+            return
+        }
+        // ⚠️ 三态（2026-10-06）：开着的时候要分「面板开着」和「面板已收」——
+        // 前者再点是**收面板**（放大镜还留着，图照样放大着），后者再点才是
+        // **退出放大镜**。写成 `zoomPanel.opened = !zoomPanel.opened` 的话，
+        // 第三态永远是「又打开」，圆钮亮着就再也灭不掉了。
+        if (zoomPanel.opened) {
+            zoomPanel.opened = false
+            return
+        }
+        Backend.setZoomActive(false)
     }
 
     // ------------------------------------------------------------- 控制条本体
@@ -479,6 +698,12 @@ Item {
             top = Math.min(top, jumpPanel.y)
             bottom = Math.max(bottom, jumpPanel.y + jumpPanel.height * s)
         }
+        // 放大镜选单是同一回事（浮在条**上方**、尺寸固定），只是它不往下长。
+        if (zoomPanelOpened && zoomPanel.visible) {
+            left = Math.min(left, zoomPanel.x)
+            right = Math.max(right, zoomPanel.x + zoomPanel.width * s)
+            top = Math.min(top, zoomPanel.y)
+        }
         return Qt.rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
     }
 
@@ -488,9 +713,12 @@ Item {
     onInteractiveRectChanged: hitRectChanged()
 
     /*! 根 Item 的尺寸 = **缩放后**的屏幕像素（Python 摆位 / 区域塑形 / 编辑器预览
-        都读它，见 ``scaleFactor`` 的说明）。 */
-    implicitWidth: Math.round(bar.implicitWidth * scaleFactor)
-    implicitHeight: Math.round(bar.implicitHeight * scaleFactor)
+        都读它，见 ``scaleFactor`` 的说明）。
+        ⚠️ 竖版宽恒 ``barHeight``、高由内容撑开（``bar.implicitHeight``）——
+        ``FlyoutSurface`` 的 ``vertical`` 模式负责算。 */
+    implicitWidth: Math.round((isVertical ? barHeight : bar.implicitWidth) * scaleFactor)
+    implicitHeight: Math.round((isVertical ? bar.implicitHeight : bar.implicitHeight)
+                               * scaleFactor)
     width: implicitWidth
     height: implicitHeight
 
@@ -504,8 +732,13 @@ Item {
         height: implicitHeight
         scale: dock.scaleFactor
         transformOrigin: Item.TopLeft
-        paddingX: dock.effPaddingAlong
-        paddingY: dock.effPaddingCross
+        // 竖版（两侧合并布局）：内容自上而下一列排（与 SidePager 同一种转置）
+        vertical: dock.isVertical
+        // ⚠️ 竖版把两档 padding **转置**：``FlyoutSurface`` 的 ``paddingX`` 是横向
+        //    （垂直于竖条的轴）、``paddingY`` 是纵向（沿竖条的轴）—— 与横版正好
+        //    互换，所以这里按 ``isVertical`` 换一下，别让竖条沿轴留白变成 9。
+        paddingX: dock.isVertical ? dock.effPaddingCross : dock.effPaddingAlong
+        paddingY: dock.isVertical ? dock.effPaddingAlong : dock.effPaddingCross
         surfaceRadius: dock.surfaceRadius
         surfaceOpacity: dock.surfaceOpacity
         highlightEnabled: dock.highlightEnabled
@@ -526,6 +759,33 @@ Item {
             edgePadding: dock.segmentPaddingX
             itemSpacing: dock.segmentSpacing
 
+            // ⚠️ ``currentIndex`` 是**绑定**，所以「工具切到放大镜」这条路径**绕不开**
+            //    它 —— 不只是底部那个 ``onActiveToolChanged`` 处理器。
+            //
+            //    放大镜不在 ``tools`` 里，``toolIndex("zoom")`` 返回 ``-1``。这里的
+            //    写法有两个坑，都踩过：
+            //
+            //    * 直接绑 ``toolIndex(...)``（早先的写法）→ 写入 0 → 下面那个
+            //      ``onCurrentIndexChanged`` 把工具真切回「指针」，再由
+            //      ``onActiveToolChanged`` 顺手收掉放大镜面板。症状：点一下圆钮，
+            //      面板刚弹出来就没了（2026-10-06 排查了半天才定位到这一行）。
+            //    * 写成 ``index >= 0 ? index : currentIndex`` —— **也不行**：
+            //      绑定里读自己就是 binding loop，Qt 会把这整条绑定作废，
+            //      ``currentIndex`` 落回 TabBar 的默认值 0，走回第一条路
+            //      （而且**一条警告都不打**，QML 侧看起来一切正常）。
+            //
+            //    正解是用 ``lastToolIndex`` 把「上一次有效的那一页」显式记下来：
+            //    绑定读它（单向，不成环），``onCurrentIndexChanged`` 里写它。
+            // ⚠️ 这里就是原来那一行，**一行都没改**（2026-10-06）。放大镜曾经短暂挤进
+            //    ``activeTool``，为了不让 ``toolIndex("zoom")`` 回落0把工具切回指针，
+            //    试过好几种「保护」写法（自引用绑定 / ``lastToolIndex`` 回退）——
+            //    **全都留下了副作用**（自引用那条binding loop 被 Qt 静默作废，
+            //    块语法那条直接让分段项点不动）。
+            //
+            //    正解在数据那边：放大镜**不占** ``activeTool``，改用独立的
+            //    ``Backend.zoomActive``（见 ``bridge.py::setZoomActive``）。于是
+            //    ``activeTool`` 永远只取 pen / eraser / arrow，``toolIndex``
+            //    必然查得到，这一行原样就成立 —— **别再加保护**。
             currentIndex: dock.toolIndex(Backend.activeTool)
 
             onCurrentIndexChanged: {
@@ -551,6 +811,8 @@ Item {
                     showLabel: dock.showLabels
                     // 选单正开着时给对应工具描一圈（见 ``expanded``）：
                     // 笔 ↔ 色板卡，橡皮 ↔ 子模式卡（2026-10-07 自建批注）。
+                    // 放大镜也带一块选单，但它是条上那枚独立的圆钮，**不在这里**描
+                    // （2026-10-06 指令：放大镜不进 Segmented）。
                     expanded: (dock.paletteOpened && modelData.id === "pen")
                         || (dock.eraserPaletteOpened && modelData.id === "eraser")
                     // 按下时就记住「选的是谁」（见 ``noteToolPress``），
@@ -561,8 +823,33 @@ Item {
             }
         }
 
-        // （工具分段右侧**没有分隔线**：分段自带胶囊容器，紧跟着再来一条竖线
-        //  会显得「双层边」。分隔线只画在 动作 → 翻页 → 退出 之间。）
+        // ============================================ 1b. 放大镜（独立圆钮）
+        // ⚠️ **不进**上面那个分段（2026-10-06 用户指令：「放大镜不应当以
+        //    Segmented 内排版」）。它不是 PowerPoint 的指针类型，跟分段里那三页
+        //    **不互斥** —— 用着放大镜的时候笔照样是笔。放在紧跟着分段的位置，
+        //    读起来仍是「工具这一簇」的一员。
+        //
+        //    它右侧同样没有分隔线（理由同分段：它也是一枚圆钮，紧跟着再来一条
+        //    竖线就成了「双层边」）。
+        //
+        //    ⚠️ 它的 ``id`` 外层读不到（``FlyoutSurface`` 用 ``default property
+        //    alias contentData: inner.data`` 把这里的子项收进了另一个作用域），
+        //    所以选单那边按 ``objectName`` 找它 —— 见 ``flyoutX``。
+        IconButton {
+            objectName: "dockZoomButton"
+            visible: dock.present("tools") && dock.zoomEnabled
+            iconName: dock.zoomIcon
+            tooltip: dock.zoomTooltip
+            label: dock.zoomLabel
+            showLabel: dock.showLabels
+            hitSize: dock.hitSize
+            glyphSize: dock.iconSize
+            // 选中态 = 放大镜开着（独立的 ``zoomActive``，**不是** ``activeTool``）。
+            // ⚠️ 它可能和分段里那一页**同时**亮着，这是有意的（见头注释：分段说
+            // 「指针是什么」，这枚说「视图放大着没有」）—— 别去「修」它。
+            active: Backend.zoomActive
+            onClicked: dock.activateZoom()
+        }
 
         // ==================================== 2. 动作按钮 + 溢出「⋯」
         Flow {
@@ -604,6 +891,7 @@ Item {
             dividerHeight: dock.dividerHeight
             dividerGap: dock.dividerGap
             rowHeight: dock.contentHeight
+            vertical: dock.isVertical
         }
 
         // ==================================================== 3. 翻页组
@@ -614,6 +902,7 @@ Item {
             spacing: dock.pagerSpacing
 
             IconButton {
+                objectName: "dockPagerPrev"
                 iconName: dock.pagerIconPrev
                 tooltip: qsTr("上一页")
                 hitSize: dock.hitSize
@@ -633,10 +922,17 @@ Item {
                 // hover 底：这是「这里能点」的唯一提示 —— 页码区平时看着只是一个
                 // 数字，不给反馈没人会去点它。开了面板时也保持点亮，等于「面板是
                 // 从这里长出来的」这条视觉连线。
+                //
+                // ⚠️ 圆角用 ``Lumi.dockPagerHitRadius``（短边一半 = 胶囊），**不是**
+                //    ``Lumi.dockJumpItemRadius``(8) —— 那是快速切页面板里**卡片**的
+                //    圆角，与这里不是同一族（2026-10-06 用户实锤「翻页组件的
+                //    hover 不行」）。8 会把 68×44 画成一块大圆角方块：既不跟两侧
+                //    44 正圆钮同形，方块本身又比圆更像「容器」，视觉重量凭空高一档。
+                //    横竖两版必须同值，见 ``Lumi.qml`` 里那枚令牌的说明。
                 Rectangle {
                     objectName: "dockPagerHitSurface"
                     anchors.fill: parent
-                    radius: Lumi.dockJumpItemRadius
+                    radius: Lumi.dockPagerHitRadius
                     color: pagerHitArea.containsMouse || dock.jumpPanelOpened
                         ? Lumi.dockJumpItemHover : "transparent"
                     Behavior on color {
@@ -672,6 +968,7 @@ Item {
             }
 
             IconButton {
+                objectName: "dockPagerNext"
                 iconName: dock.pagerIconNext
                 tooltip: qsTr("下一页")
                 hitSize: dock.hitSize
@@ -687,6 +984,7 @@ Item {
             dividerHeight: dock.dividerHeight
             dividerGap: dock.dividerGap
             rowHeight: dock.contentHeight
+            vertical: dock.isVertical
         }
 
         // ==================================================== 4. 退出放映
@@ -735,16 +1033,8 @@ Item {
         y: (bar.y + bar.margin - Lumi.dockPaletteGap
             - penPalette.shadowMargin - penPalette.cardHeight) * dock.scaleFactor
         // 左沿与底板的左沿对齐；卡片比条还宽，贴右下的角落会溢出屏幕 ——
-        // 这时整块往左收（可用宽度从父级拿：父级是铺满整屏的容器）。
-        x: {
-            var s = dock.scaleFactor
-            var want = (bar.margin - penPalette.shadowMargin) * s
-            var limit = dock.parent ? dock.parent.width - dock.x : 0
-            if (limit > 0 && want + penPalette.width * s > limit) {
-                want = limit - penPalette.width * s
-            }
-            return want
-        }
+        // 这时整块往左收（算式见 ``flyoutX``）。
+        x: dock.flyoutX(penPalette)
 
         onColorPicked: function (value) {
             // ⚠️ 必须转字符串：``color`` 直接喂给 ``@Slot(str)`` 过不了类型转换。
@@ -812,6 +1102,77 @@ Item {
         }
     }
 
+    // ================================================ 放大镜选单（浮出层）
+    // 条上那枚独立的放大镜圆钮（``dockZoomButton``）点一下就弹（``activateZoom``）
+    // —— 它不在分段里，没有「二次点击才弹选单」那层语义。
+    // 声明在 ``bar`` **之后** → 绘制、命中都在控制条之上。
+    //
+    // ⚠️ 与笔选单同一条约定：**不进** dock 的 ``implicitWidth/Height`` ——
+    //    dock 一改尺寸 ``_position_dock`` 就要重摆，条会闪一帧；代价是
+    //    ``interactiveRect`` 必须自己把它包进来（上面那段就是）。
+    //
+    // 面板里七枚按钮发的是 ``op`` 字符串，真正的缩放 / 移位由 Python 侧按
+    // 软件族去按放映软件自己的键（见 ``ZoomPanel`` 头注释）。
+    ZoomPanel {
+        id: zoomPanel
+        objectName: "zoomPanel"
+
+        // 图标与提示全部来自配置 ``presentation.zoom``（与色板同一条「文案
+        // 同源」约定：换配置就全对，不用改 QML）。
+        titleZoom: dock.zoomCfg.label_zoom !== undefined
+            ? dock.zoomCfg.label_zoom : qsTr("缩放")
+        titlePan: dock.zoomCfg.label_pan !== undefined
+            ? dock.zoomCfg.label_pan : qsTr("移位")
+        iconIn: dock.zoomCfg.icon_in !== undefined
+            ? dock.zoomCfg.icon_in : "ic_fluent_zoom_in_20_filled"
+        iconOut: dock.zoomCfg.icon_out !== undefined
+            ? dock.zoomCfg.icon_out : "ic_fluent_zoom_out_20_filled"
+        iconReset: dock.zoomCfg.icon_reset !== undefined
+            ? dock.zoomCfg.icon_reset : "ic_fluent_arrow_reset_20_filled"
+        iconUp: dock.zoomCfg.icon_up !== undefined
+            ? dock.zoomCfg.icon_up : "ic_fluent_arrow_up_20_filled"
+        iconDown: dock.zoomCfg.icon_down !== undefined
+            ? dock.zoomCfg.icon_down : "ic_fluent_arrow_down_20_filled"
+        iconLeft: dock.zoomCfg.icon_left !== undefined
+            ? dock.zoomCfg.icon_left : "ic_fluent_arrow_left_20_filled"
+        iconRight: dock.zoomCfg.icon_right !== undefined
+            ? dock.zoomCfg.icon_right : "ic_fluent_arrow_right_20_filled"
+        tooltipIn: dock.zoomCfg.tooltip_in !== undefined
+            ? dock.zoomCfg.tooltip_in : qsTr("放大")
+        tooltipOut: dock.zoomCfg.tooltip_out !== undefined
+            ? dock.zoomCfg.tooltip_out : qsTr("缩小")
+        tooltipReset: dock.zoomCfg.tooltip_reset !== undefined
+            ? dock.zoomCfg.tooltip_reset : qsTr("恢复原始大小")
+        tooltipUp: dock.zoomCfg.tooltip_up !== undefined
+            ? dock.zoomCfg.tooltip_up : qsTr("向上移位")
+        tooltipDown: dock.zoomCfg.tooltip_down !== undefined
+            ? dock.zoomCfg.tooltip_down : qsTr("向下移位")
+        tooltipLeft: dock.zoomCfg.tooltip_left !== undefined
+            ? dock.zoomCfg.tooltip_left : qsTr("向左移位")
+        tooltipRight: dock.zoomCfg.tooltip_right !== undefined
+            ? dock.zoomCfg.tooltip_right : qsTr("向右移位")
+        glyphSize: dock.iconSize
+
+        // 与底板同倍率缩放 —— 整块面板跟着组件一起放大 / 缩小。
+        // ``transformOrigin: TopLeft``：下面算的 x/y 是**根 Item 坐标**（未缩放
+        // 的定位），缩放围绕左上角做，落点才不跟着漂。
+        scale: dock.scaleFactor
+        transformOrigin: Item.TopLeft
+
+        // 贴着工具栏底板上沿往上摆（与笔选单同一条算式，见 ``penPalette``）。
+        y: (bar.y + bar.margin - Lumi.dockPaletteGap
+            - zoomPanel.shadowMargin - zoomPanel.cardHeight) * dock.scaleFactor
+        // ⚠️ 横向对齐**那枚圆钮自己**（2026-10-06 用户指令「要改成对齐圆钮」），
+        //    不跟笔选单共用「贴底板左沿」那条 —— 圆钮在条的中间，照旧的话面板
+        //    会偏在它左边 100px 出头。传的是**缓存的实例**（``zoomPanelAnchor``），
+        //    不能在绑定里现查 —— 理由见那个属性的说明。
+        x: dock.flyoutX(zoomPanel, dock.zoomPanelAnchor)
+
+        onZoomRequested: function (op) {
+            Backend.zoomSlide(op)
+        }
+    }
+
     // ============================================ 快速切页面板（点页码展开）
     // 声明在 ``bar`` 之后 → 绘制、命中都在控制条之上。
     //
@@ -872,32 +1233,56 @@ Item {
 
     // 用户点击后 currentIndex 的绑定被打断；后端发起的工具切换
     // （快捷键 / 托盘菜单）由这里继续同步到选中页。
+    // 放大镜另有一条 ``onZoomActiveChanged`` —— 它不在 ``activeTool`` 那条链上。
     Connections {
         target: Backend
 
         function onActiveToolChanged() {
-            var index = dock.toolIndex(Backend.activeTool)
-            if (toolSegment.currentIndex !== index) {
+            var id = Backend.activeTool
+            var index = dock.toolIndex(id)
+            // ``>= 0`` 兜底：配置里的 ``tools`` 万一被改坏（空数组 / id 写错），
+            // ``-1`` 写进去会让分段自己把工具切回 ``toolIdAt(-1)``（空串，处理器
+            // 会忽略），但没必要让选中页变成一个非法值。
+            if (index >= 0 && toolSegment.currentIndex !== index) {
                 toolSegment.currentIndex = index
             }
-            // 选单属于「笔」这个工位：换成指针 / 橡皮就收起来（否则它会跟着
-            // 挂在条上方，而那时已经没有「笔的选项」可言了）。橡皮子模式卡片
+            // 选单属于各自的工位：换成别的工具就收起来（否则它会跟着挂在条
+            // 上方，而那时已经没有「那个工具的选项」可言了）。橡皮子模式卡片
             // 同理（2026-10-07 自建批注）—— 它属于「橡皮」这个工位。
-            if (Backend.activeTool !== "pen") {
+            if (id !== "pen") {
                 penPalette.opened = false
             }
-            if (Backend.activeTool !== "eraser") {
+            if (id !== "eraser") {
                 eraserPalette.opened = false
+            }
+            // 换工具（指针 / 笔 / 橡皮）就是离开放大镜这个工位 —— 收面板并关掉
+            // 放大镜。⚠️ 要**显式关**：放大镜的状态在 ``zoomActive`` 上，不再随
+            // ``activeTool`` 走，只收面板会让那枚圆钮还亮着（看着像还开着）。
+            //
+            // ⚠️ 这条**不是**唯一路径，``activateTool`` 里也有一份 —— 那边的才
+            // 管得住「点分段里已经选中的那一页」（此时 selectTool 不会被调、
+            // 这条处理器根本不发，2026-10-06 实测卡在 zoomActive=True）。
+            // 这里是给「别的代码直接调 setSetting / selectTool 换工具」兜底。
+            if (zoomPanel.opened || Backend.zoomActive) {
+                zoomPanel.opened = false
+                Backend.setZoomActive(false)
             }
         }
 
-        // 退出放映 → 收起浮出层（笔选单 / 橡皮子模式卡片 / 快速切页面板）：
-        // 下一次放映进来时不该看到上次遗留的一块卡片。
+        // 放大镜被关掉（点它自己、或换工具）→ 收起选单。反过来**不开**面板 ——
+        // 「开着放大镜但面板收着」是合法状态（用户只调了缩放，面板挡路）。
+        function onZoomActiveChanged() {
+            if (!Backend.zoomActive) {
+                zoomPanel.opened = false
+            }
+        }
+
+        // 退出放映 → 收起全部浮出层（笔选单 / 橡皮子模式卡片 / 放大镜选单 /
+        // 快速切页面板，见 ``closeFlyouts``）：下一次放映进来时不该看到上次
+        // 遗留的一块卡片。
         function onPresentationActiveChanged() {
             if (!Backend.presentationActive) {
-                penPalette.opened = false
-                eraserPalette.opened = false
-                jumpPanel.opened = false
+                dock.closeFlyouts()
             }
         }
     }

@@ -74,6 +74,7 @@ from PySide6.QtGui import QGuiApplication
 
 from . import autostart
 from . import i18n
+from . import markdown_html
 from . import monitors
 from . import update_checker
 from .config import Config
@@ -116,6 +117,12 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_scale": "presentation.scale",
     "presentation_buttons_show_labels": "presentation.buttons.show_labels",
     "presentation_pager_position": "presentation.pager.position",
+    # 工具栏的组数与位置（主界面编辑器 → 选中工具栏 → 「组数」「位置」，
+    # 2026-10-07 用户指令）。与 ``presentation_pager_position`` 同一个套路：
+    # 真实生效的是 ``corners``，这两项只是它的人话开关 —— 改任一项都会重排
+    # corners（见 ``_apply_toolbar_layout``）并重建控制条。
+    "presentation_toolbar_count": "presentation.toolbar.count",
+    "presentation_toolbar_position": "presentation.toolbar.position",
     "presentation_screen_index": "presentation.screen_index",
     # 钉屏显示器的稳定 id（``QScreen.name()``）。空串 = 走 ``screen_index`` 的旧
     # 语义（-1 跟随 / >=0 索引）；非空时优先。2026-10-08 新增，见
@@ -288,6 +295,9 @@ class Backend(QObject):
     #: 幻灯片缩略图表变了（某几张就绪 / 整场复位，见 ``thumbUrls``）
     slideThumbsChanged = Signal()
     activeToolChanged = Signal()
+    #: 放大镜开 / 关了（2026-10-06：它**独立于** ``activeTool``，
+    #: 理由见 :meth:`setZoomActive`）
+    zoomActiveChanged = Signal()
     #: 墨迹颜色变了（QML 侧的笔选单靠它回显选中的那一格）
     penColorChanged = Signal()
     #: 笔的粗细变了（笔选单「粗细」一行靠它回显选中的那一档；2026-10-07 自建批注）
@@ -373,6 +383,10 @@ class Backend(QObject):
         #: 就高亮着「笔」，用户得先点一下指针才能正常放映，等于默认把放映
         #: 变成书写。默认必须是「什么都不做」的那个工具。
         self._active_tool = "arrow"
+        #: 放大镜开着没有（**独立于** :attr:`activeTool` —— 它不是指针类型）。
+        #: 见 :meth:`setZoomActive` 的注释：早先靠 ``activeTool == "zoom"`` 表达，
+        #: 结果 QML 分段的 ``currentIndex`` 绑定把工具切回指针、面板刚弹就被收。
+        self._zoom_active = False
         #: 墨迹颜色（``#RRGGBB``）。空串 = 还没有选过 —— QML 侧据此决定
         #: 哪一格点亮（见 :meth:`setPenColor`）。
         self._pen_color = ""
@@ -449,6 +463,10 @@ class Backend(QObject):
         self._update_working = "idle"
         self._update_latest_version = ""
         self._update_changelog = ""
+        #: ``_update_changelog`` 的 HTML 版本（日志的**渲染**形态，
+        #: 见 ``app/markdown_html.py``）。与原文一起在同一处算好存着：
+        #: QML 的绑定每次求值都会读一次属性，不能把转换压在 getter 里。
+        self._update_changelog_html = ""
         self._update_current_changelog = ""
         self._update_release_url = ""
         self._update_error = ""
@@ -460,17 +478,25 @@ class Backend(QObject):
         self._dynamic_paths: Dict[str, str] = {}
         #: 副作用第一级：键级回调表（精确命中优先于前缀规则）。内建特例原样
         #: 登记在这里，行为与重构前的硬编码 if/elif 完全一致：
-        #: - ``presentation_pager_position``：连带开关四个角落（两种形态二选一，
-        #:   见 ``PAGER_POSITION_CORNERS`` 处的说明）—— 真实生效的是 ``corners``，
-        #:   所以这一步不是「副作用」而是这个开关的本体；角落集合变了控制条得按
-        #:   新角落重建（``docksRebuildRequested``）。
+        #: - ``presentation_pager_position`` / ``presentation_toolbar_count`` /
+        #:   ``presentation_toolbar_position``：连带重排四个角落的 enabled 与
+        #:   groups（三者的真实落点都是 ``corners``，见 ``_apply_corners_layout``）
+        #:   —— 真实生效的是 ``corners``，所以这一步不是「副作用」而是这些开关的
+        #:   本体；角落集合 / groups 变了控制条得按新的重建
+        #:   （``docksRebuildRequested``）。
         #: - ``theme`` / ``accent``：各自带值发请求信号，由应用层真正换肤。
         self._key_effects: Dict[str, _KeyEffect] = {
             "presentation_pager_position": {
                 "signals": [("docksRebuildRequested", False)],
-                "side_effect": lambda config, key, value: self._apply_pager_position(
-                    str(value)
-                ),
+                "side_effect": lambda config, key, value: self._apply_corners_layout(),
+            },
+            "presentation_toolbar_count": {
+                "signals": [("docksRebuildRequested", False)],
+                "side_effect": lambda config, key, value: self._apply_corners_layout(),
+            },
+            "presentation_toolbar_position": {
+                "signals": [("docksRebuildRequested", False)],
+                "side_effect": lambda config, key, value: self._apply_corners_layout(),
             },
             "theme": {"signals": [("themeChangeRequested", True)], "side_effect": None},
             "accent": {"signals": [("accentChangeRequested", True)], "side_effect": None},
@@ -708,6 +734,21 @@ class Backend(QObject):
 
     updateChangelog = Property(str, _get_update_changelog, notify=updateStatusChanged)
 
+    def _get_update_changelog_html(self) -> str:
+        """更新日志的 HTML（给 ``Text.RichText`` 用）。
+
+        Markdown 原文是 :attr:`updateChangelog`；这一份是它的渲染形态
+        —— 日志里插大分辨率图片时，``MarkdownText`` 会按原图尺寸把它铺进
+        文本流、把页面撑破，而 Markdown 语法无法约束图片尺寸，只能转
+        RichText 后在 ``<img>`` 上加宽度上限。详见
+        ``app/markdown_html.py`` 与 ``ui/settings/Update.qml``。
+        """
+        return self._update_changelog_html
+
+    updateChangelogHtml = Property(
+        str, _get_update_changelog_html, notify=updateStatusChanged
+    )
+
     def _get_update_current_changelog(self) -> str:
         return self._update_current_changelog
 
@@ -784,6 +825,9 @@ class Backend(QObject):
         self._update_status = result["status"]
         self._update_latest_version = result["latest_version"]
         self._update_changelog = result["changelog"]
+        # 渲染形态在这里一次算好：转换跑在后台线程（见 markdown_html 头注释），
+        # 结果缓存进属性，QML 侧只读不转。
+        self._update_changelog_html = markdown_html.to_html(result["changelog"])
         self._update_current_changelog = result["current_changelog"]
         self._update_release_url = result["release_url"]
         self._update_error = result["error"]
@@ -885,6 +929,12 @@ class Backend(QObject):
         return self._active_tool
 
     activeTool = Property(str, _get_active_tool, notify=activeToolChanged)
+
+    def _get_zoom_active(self) -> bool:
+        return self._zoom_active
+
+    #: 放大镜开着没有（**独立于** :attr:`activeTool`，见 :meth:`setZoomActive`）。
+    zoomActive = Property(bool, _get_zoom_active, notify=zoomActiveChanged)
 
     def _get_pen_color(self) -> str:
         return self._pen_color
@@ -1532,25 +1582,80 @@ class Backend(QObject):
         # 与 ClassIsland 一致 —— 用户刚改完就该被问一次，而不是只有第一次改才问。
         self.restartSuggested.emit()
 
-    def _apply_pager_position(self, position: str) -> None:
-        """把「翻页组件位置」落到 ``corners`` 那四个角的开关上。
+    def _apply_corners_layout(self) -> None:
+        """把工具栏「组数 / 位置」与翻页「位置」一起落到 ``corners`` 上。
 
-        ``side`` → 启用 ``middle_left`` / ``middle_right``（竖版两侧中间）、
-        关掉底部两只；``bottom`` → 反过来。
+        这是**角落编排的唯一落点**：``corners`` 是权威（``windows.py`` 建控制条与
+        编辑器预览都只读它），而 ``toolbar.count`` / ``toolbar.position`` /
+        ``pager.position`` 都只是它的人话开关 —— 三者必须一起算、一起写，
+        否则会出现「设置里选了左、屏幕上还在中间」这类影子值骗人的局面。
 
-        ⚠️ 真实生效的是 ``corners``（``windows.py::_load_docks`` 与编辑器预览
-        都只读它），``pager.position`` 只是它的人话开关 —— 两边必须一起改，
-        否则「设置里选了横版、屏幕上还是竖版」。
+        编排规则（2026-10-07 用户指令）::
+
+            工具栏居中（单组 + bottom_center）:
+                bottom_center = tools+actions+exit
+                翻页按 pager.position 二选一:
+                    side   → middle_left / middle_right（竖版 SidePager）
+                    bottom → bottom_left / bottom_right（横版 presentation dock）
+
+            工具栏不在居中（单组居左 / 单组居右 / 双组左右两侧）:
+                工具栏所在角落的 groups 直接带上 pager
+                （tools+actions+exit+pager）—— 两者合并成**同一个 dock**，
+                PresentationDock 的 ``sectionOrder`` 会在工具栏与翻页之间画一条
+                分割线（``dividerBefore("pager")``）。此时不再有独立的翻页角落，
+                ``pager.position`` 被覆盖（值仍保留，切回居中时立即恢复）。
+
+        ⚠️ 合并态**朝向跟随 pager.position**（2026-10-07 用户指令：合并后也该能是竖的）::
+
+            pager.position = side   → 合并落 middle_left / middle_right（竖版合并）
+            pager.position = bottom → 合并落 bottom_left / bottom_right（横版合并）
+
+        竖版合并照样用 ``PresentationDock.qml``（它已支持 ``isVertical``），**不是**
+        SidePager —— SidePager 只有翻页一组，塞不进工具组（见其头注释）。
+        ``_resolve_dock_qml`` 对「同时含工具组与 pager 的角落」一律给
+        PresentationDock，靠垂直对齐决定横竖。
         """
-        enabled = PAGER_POSITION_CORNERS.get(position)
-        if enabled is None:
-            log.info("未知翻页组件位置: %s", position)
-            return
-        for corners in PAGER_POSITION_CORNERS.values():
-            for corner in corners:
-                self._config.set(
-                    f"presentation.corners.{corner}.enabled", corner in enabled
-                )
+        count = str(self._config.get("presentation.toolbar.count", "single"))
+        position = str(self._config.get("presentation.toolbar.position", "bottom_center"))
+        pager_pos = str(self._config.get("presentation.pager.position", "side"))
+
+        toolbar_groups = ["tools", "actions", "exit"]
+        merged_groups = toolbar_groups + ["pager"]
+
+        #: 合并态落哪两个角落，由翻页位置决定（side → 竖版两侧，bottom → 横版两侧）。
+        ml, mr = PAGER_POSITION_CORNERS.get(pager_pos, ("middle_left", "middle_right"))
+
+        #: 本函数负责重排的角落（其余角落——top_* 等——保持配置原样，本功能不碰）。
+        layout: Dict[str, Dict[str, Any]] = {}
+
+        if count == "dual":
+            # 双组：左右各一组，翻页并进各自那一角（position 被忽略）。
+            layout[ml] = merged_groups
+            layout[mr] = merged_groups
+        elif position == "left":
+            layout[ml] = merged_groups
+        elif position == "right":
+            layout[mr] = merged_groups
+        else:
+            # 单组居中：工具栏独居，翻页回到独立角落（pager.position 生效）。
+            layout["bottom_center"] = toolbar_groups
+            for corner in PAGER_POSITION_CORNERS.get(pager_pos, ()):
+                layout[corner] = ["pager"]
+
+        # 先关掉本函数管辖内的全部角落，再按 layout 打开 —— 保证「换布局后
+        # 旧角落一定被清掉」（例如居中 → 居左时 bottom_center 与 middle_* 都要关）。
+        managed = [
+            "bottom_center", "bottom_left", "bottom_right",
+            "middle_left", "middle_right",
+        ]
+        for corner in managed:
+            groups = layout.get(corner)
+            self._config.set(
+                f"presentation.corners.{corner}.enabled", groups is not None
+            )
+            if groups is not None:
+                # groups 变了同样要写（`_resolve_dock_qml` 按它挑组件与区块）。
+                self._config.set(f"presentation.corners.{corner}.groups", groups)
 
     def _apply_autostart(self, enabled: bool) -> None:
         """开关开机自启：写注册表 → **回读真实状态** → 同步影子配置 → 广播。
@@ -1623,7 +1728,17 @@ class Backend(QObject):
 
     @Slot(str)
     def selectTool(self, tool: str) -> None:
-        """切换放映指针：``pen`` / ``eraser`` / ``arrow``；``plugin:`` 前缀走动作通道。"""
+        """切换放映指针：``pen`` / ``eraser`` / ``arrow``；``plugin:`` 前缀走动作通道。
+
+        ⚠️ **放大镜（``zoom``）不在这里**（2026-10-06 用户指令「放大镜不应当以
+        Segmented 内排版」）。它不是 ``PpSlideShowPointerType`` 里的任何一项，
+        不改变演示软件的指针 —— 用着放大镜的时候笔照样是笔。早先把它塞进这个
+        槽（靠 ``activeTool`` 取值 ``"zoom"`` 来表达「放大镜开着」）代价很大：
+        ``activeTool`` 的读者（QML 的分段 ``currentIndex`` 绑定）会把「找不到
+        那一页」翻译成「指针那一页」，于是点一下放大镜就把工具切回指针、
+        连带把刚弹的面板收掉。改用独立的 :attr:`zoomActive` 布尔，
+        ``activeTool`` 回到只取那三个指针类型。
+        """
         # ``plugin:`` 前缀的工具 id 来自插件（registry.add_dock_tool，2026-10-05
         # 任务 6）：不进白名单校验、不调 ``ppt.set_tool``（与 COM 零接触），改按
         # 动作处理 —— 经 ``actionTriggered`` 走应用层 ``_on_action`` 的 ``plugin:``
@@ -1637,6 +1752,29 @@ class Backend(QObject):
             self._active_tool = tool
             self.activeToolChanged.emit()
         self.actionTriggered.emit(f"tool:{tool}")
+
+    @Slot(bool)
+    def setZoomActive(self, active: bool = True) -> None:
+        """开 / 关放大镜（条上那枚独立圆钮）。
+
+        ⚠️ 放大镜**不占用** ``activeTool``（2026-10-06 用户指令）。它不是
+        PowerPoint 的指针类型，开了也不改指针 —— 用着放大镜的时候笔照样是笔。
+        早先靠 ``activeTool == "zoom"`` 表达，结果分段的 ``currentIndex``
+        绑定会把「分段里没有这一页」翻译成「指针那一页」，点一下放大镜工具就
+        被切回指针、面板刚弹出来就被收掉（QML 侧全程零报错）。
+
+        ⚠️ 签名必须是 ``@Slot(bool)``，不能是 ``@Slot()``（2026-10-06 实测）。
+        ``@Slot()`` 声明的是**零参数**签名，QML 那边 ``setZoomActive(false)``
+        传的实参被**静默丢掉**，进来的一直是默认值 ``True`` —— 于是「关放大镜」
+        变成了「再开一次」，而 ``value == self._zoom_active`` 又让它当场 return，
+        状态永远卡在 True 且**不发信号**，QML 侧只表现为「点了没反应」。
+        和本文件 ``licenseText`` 那个坑同源：**QML 侧的槽调用不报错，只是不对**。
+        """
+        value = bool(active)
+        if value == self._zoom_active:
+            return
+        self._zoom_active = value
+        self.zoomActiveChanged.emit()
 
     @Slot(str)
     def setPenColor(self, color: str) -> None:
@@ -1710,6 +1848,23 @@ class Backend(QObject):
             self._eraser_width = value
             self.eraserWidthChanged.emit()
         self.actionTriggered.emit(f"eraser_width:{value:g}")
+
+    @Slot(str)
+    def zoomSlide(self, op: str) -> None:
+        """放大镜面板上的一格。
+
+        ``op`` 取 ``in`` / ``out`` / ``reset``（缩放）或 ``up`` / ``down`` /
+        ``left`` / ``right``（放大之后的移位）。与 ``tool:`` 一样**先于**
+        「在放映中吗」门控 —— 面板只在放映中的控制条上够得着。
+
+        ⚠️ 这是 QML 能直接调到的公开槽，别让它把任意串转发下去：越界的值
+        在 COM 线程里只会变成一条「未知操作」的 warning，而在面板上则表现为
+        「点了没反应」，两头都难查。
+        """
+        if op not in ("in", "out", "reset", "up", "down", "left", "right"):
+            log.warning("忽略未知的缩放操作: %r", op)
+            return
+        self.actionTriggered.emit(f"zoom:{op}")
 
     @Slot(str)
     def triggerAction(self, action_id: str) -> None:

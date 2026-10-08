@@ -78,6 +78,8 @@
   报告展开这些**对照档**不补跑 —— 插件接缝不受那些开关影响，跑了也是同样的图）。
 - ``LUMI_PREVIEW_PLUGIN_RUN=1`` —— 内部标记：本进程即插件接缝子进程，
   只渲染三件套。不要手动用（缺了主进程那套前置就是张空配置）。
+- ``LUMI_PREVIEW_ZOOM=1`` —— 把工具切到「放大镜」并**展开放大镜选单**
+  （ZoomPanel：缩放 + 四向移位），输出 ``top_window_zoom.png``。
 - ``LUMI_PREVIEW_JUMP=1`` —— 把**快速切页面板**（点页码展开的那块）摊开，输出
   ``top_window_jump.png``。页码用 ``main()`` 里注入的那份假状态（第 26 页 / 共 41
   页），所以什么都不用给。这一档会顺手关掉左下角的开发水印 —— 它就画在左翻页条
@@ -117,6 +119,7 @@ for _path in (str(ROOT), str(TOOLS)):
 os.chdir(ROOT)
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, QUrl  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlComponent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from RinUI import BackdropEffect, RinUIWindow, Theme  # noqa: E402
@@ -129,6 +132,7 @@ from app.paths import UI_DIR  # noqa: E402
 from app.plugins import loader  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
 from app.slide_thumbs import SlideThumbCache  # noqa: E402
+from app.windows import CORNERS as WM_CORNERS  # noqa: E402
 from app.windows import WindowManager  # noqa: E402
 from fake_slides import FakeSlideExporter  # noqa: E402
 
@@ -221,6 +225,14 @@ if PEN_LIGHT:
 ERASER_LIGHT = IS_LIGHT and PREVIEW_ERASER
 if ERASER_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 同上
+#: 放大镜选单（ZoomPanel）预览：把工具切到「放大镜」并展开选单，输出
+#: ``top_window_zoom.png``。同样只改内存。
+PREVIEW_ZOOM = os.environ.get("LUMI_PREVIEW_ZOOM", "") not in ("", "0")
+#: 浅色主题 **+** 放大镜选单 = 只出那一张（``top_window_zoom_light.png``）。
+#: 理由同 ``PEN_LIGHT``：卡片底色 / 描边 / 小标题都取主题色。
+ZOOM_LIGHT = IS_LIGHT and PREVIEW_ZOOM
+if ZOOM_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 见上：把「浅色只出启动画面」让开
 #: 快速切页面板（PageJumpPanel，点页码展开的那块）预览：展开面板，输出
 #: ``top_window_jump.png``。
 #:
@@ -571,9 +583,17 @@ def main() -> int:
     for corner in CORNERS:
         if not (corners_cfg.get(corner) or {}).get("enabled", False):
             continue
-        # 与 windows.py::_load_docks 同语义：middle_* 用竖版组件
-        vertical = corner.startswith("middle")
-        component = side_component if vertical else dock_component
+        # ⚠️ 用哪个组件**必须**问 ``WindowManager._resolve_dock_qml``（注册表驱动），
+        # 别在这里按角名前缀自己判 —— 那是本工具曾经自己写的一套判断，
+        # 2026-10-07 实测就被它骗了：合并角落（工具栏 + 翻页器拼一个 dock）落
+        # middle_left 时它按 ``middle`` 前缀选了 SidePager，图上只剩一个翻页 pill，
+        # 工具组整个不出现，而真机跑的是 PresentationDock。
+        dock_qml = WindowManager._resolve_dock_qml(
+            corner, (corners_cfg.get(corner) or {}).get("groups") or [])
+        component = side_component if dock_qml is None or dock_qml.name == "SidePager.qml" else dock_component
+        # 摆位用**角落对齐**（middle = 垂直居中），与 ``windows.py::_position_dock``
+        # 同源 —— 别拿「用了哪个组件」当代判据，合并角落是竖版 dock。
+        vertical = WM_CORNERS.get(corner, ("left", "bottom"))[1] == "middle"
         dock = component.createWithInitialProperties({"corner": corner})
         if dock is None:
             for error in component.errors():
@@ -591,7 +611,8 @@ def main() -> int:
         else:
             x = PREVIEW_W - dock.width() - margin_x + shadow
         if vertical:
-            # 竖版两侧翻页：垂直居中（L1 .flipper 默认形态）
+            # 竖版：垂直居中（L1 .flipper 默认形态）。⚠️ 判据是角落的**垂直对齐**
+            # （middle），不是「用哪个组件」—— 合并角落是竖版 dock，同样居中。
             dock.setY((PREVIEW_H - dock.height()) // 2)
         else:
             dock.setY(PREVIEW_H - dock.height() - margin_y + shadow)
@@ -618,6 +639,26 @@ def main() -> int:
             eraser_card.setProperty("opened", True)
         else:
             print("[WARN] 没找到 eraserPalette（底中工具栏没启用工具组？）")
+
+    # 放大镜选单预览：开放大镜（条上那枚独立圆钮点亮）并展开底中那条
+    # 工具栏上的选单 —— 与笔选单同一条路径，只是这一块里是「缩放 + 移位」两段。
+    #
+    # ⚠️ **一遍就够，不要「先收起再开」**（2026-10-06）。早先这里设两遍，注释写的是
+    #    「第一次会被 ``activeToolChanged`` 的处理器收掉」—— 那次诊断错了：收掉面板的
+    #    是分段的 ``currentIndex`` 绑定把工具真切回了 ``arrow``，再由那个处理器顺手
+    #    ``zoomPanel.opened = false``。放大镜改用独立的 ``setZoomActive`` 之后这条路
+    #    已经走不到，但两遍设值仍没必要 —— 留着只会让人以为有顺序依赖。
+    if PREVIEW_ZOOM and container is not None:
+        backend.setZoomActive(True)
+        for dock_item in container.childItems():
+            panel_item = _find_by_name(dock_item, "zoomPanel")
+            if panel_item is None:
+                continue
+            # ⚠️ 同 ``PREVIEW_JUMP``：离屏抓帧时 ``Behavior`` 推进不可靠，
+            #    关掉动画拿稳定终态。
+            panel_item.setProperty("animate", False)
+            panel_item.setProperty("opened", True)
+        QGuiApplication.processEvents()
 
     # 快速切页面板预览：点页码展开的那块。横版（``pageJumpPanel``）与竖版
     # （``sidePageJumpPanel``）各有一个实例，**两个都展开** —— 它们的落点不一样
@@ -831,12 +872,14 @@ def main() -> int:
             # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
             targets = ([] if editor is None
                        else [("main_editor_edit_light.png", editor)])
-        elif PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT:
-            # 浅色主题 + 某一个浮出层（笔选单 / 橡皮卡片 / 快速切页面板）：
-            # 只出顶层窗口那一张（见 ``PEN_LIGHT`` / ``JUMP_LIGHT`` / ``ERASER_LIGHT``）
+        elif PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT or ZOOM_LIGHT:
+            # 浅色主题 + 某一个浮出层（笔选单 / 橡皮卡片 / 放大镜选单 / 快速切
+            # 页面板）：只出顶层窗口那一张（见 ``PEN_LIGHT`` / ``ERASER_LIGHT`` /
+            # ``ZOOM_LIGHT`` / ``JUMP_LIGHT``）
             targets = ([] if top_window is None else [(
                 "top_window_jump_light.png" if JUMP_LIGHT
                 else "top_window_eraser_light.png" if ERASER_LIGHT
+                else "top_window_zoom_light.png" if ZOOM_LIGHT
                 else "top_window_pen_light.png", top_window)])
         else:
             targets = [("quick_panel.png", panel)]
@@ -845,6 +888,7 @@ def main() -> int:
                 targets.append((
                     preview_name("top_window_jump.png" if PREVIEW_JUMP
                                  else "top_window_eraser.png" if PREVIEW_ERASER
+                                 else "top_window_zoom.png" if PREVIEW_ZOOM
                                  else "top_window_pen.png" if PREVIEW_PEN
                                  else "top_window.png"),
                     top_window,
@@ -882,7 +926,7 @@ def main() -> int:
         # ``_restore_preview_state``（外层 finally），不会重演 2026-10-06 前
         # 「浅色档 return 掉还原代码、进程挂死、主题留在 Light」那个坑。
         if (error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT
-                or PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT
+                or PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT or ZOOM_LIGHT
                 or INK_LIGHT or PREVIEW_INK):
             return
         # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档

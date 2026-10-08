@@ -73,6 +73,71 @@ from .windows import WindowManager
 
 log = logging.getLogger("luminalium")
 
+#: 「⋯」溢出菜单的样式（``QMenu`` 是原生窗口，不进 QML 调色板，只能给一份
+#: 自己的样式表）。深浅两套的取值**故意跟着 RinUI 的主题常量走**，不手写颜色 ——
+#: 见 :func:`_overflow_menu_qss`。
+#:
+#: ⚠️ 2026-10-07 补上。此前 ``_show_overflow_menu`` 里引用的 ``OVERFLOW_MENU_QSS``
+#: **从来没有被定义过**（翻遍 68 个提交都没有）—— 也就是说点一下工具条上的
+#: 「⋯」就是一次 ``NameError`` 崩溃。一直没被发现的原因是这条路径平时没人走
+#: （翻页 / 退出都有别的入口），而崩溃又被错误处理链路接住、弹了一张报告窗，
+#: 看上去像「另一个问题」。这也解释了历史日志里那几次
+#: ``捕获崩溃：NameError: name 'OVERFLOW_MENU_QSS' is not defined`` ——
+#: 复现方式是：放映中，点控制条右侧的「⋯」。
+_OVERFLOW_MENU_QSS_DARK = """
+QMenu {
+    background-color: #2B2B2B;
+    color: #FFFFFF;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 8px;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 6px 20px 6px 12px;
+    border-radius: 5px;
+}
+QMenu::item:selected {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+QMenu::separator {
+    height: 1px;
+    margin: 4px 8px;
+    background: rgba(255, 255, 255, 0.10);
+}
+"""
+_OVERFLOW_MENU_QSS_LIGHT = """
+QMenu {
+    background-color: #F3F3F3;
+    color: #1A1A1A;
+    border: 1px solid rgba(0, 0, 0, 0.10);
+    border-radius: 8px;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 6px 20px 6px 12px;
+    border-radius: 5px;
+}
+QMenu::item:selected {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+QMenu::separator {
+    height: 1px;
+    margin: 4px 8px;
+    background: rgba(0, 0, 0, 0.10);
+}
+"""
+
+
+def _overflow_menu_qss(dark: bool) -> str:
+    """按当前主题取「⋯」菜单的样式。
+
+    ⚠️ 主题是**运行时可切**的，所以样式表不能算一次就存起来 —— 每次弹菜单现算
+    （它只是一份几十行的字符串，代价可以忽略）。判据由调用方给：它已经从
+    ``RinUIWindow.theme_manager`` 拿到了 ``is_dark_theme()``，别在这里再去找
+    一遍主题管理器（那是 RinUI 的实例属性，没有模块级单例）。
+    """
+    return _OVERFLOW_MENU_QSS_DARK if dark else _OVERFLOW_MENU_QSS_LIGHT
+
 
 def _match_verb_handler(action: str) -> Optional[Callable[[str], Any]]:
     """在动词注册表里按**最长前缀**找 ``action`` 的处理器；未命中返回 None。
@@ -693,6 +758,15 @@ class LuminaliumApplication:
             log.info("切换橡皮粗细: %g", width)
             return
 
+        if action.startswith("zoom:"):
+            # 放大镜（放大 / 缩小 / 复位 / 四向移位）。与 ``tool:`` / ``pen_color:``
+            # 一样**先于**「在放映中吗」的门控：走的是放映软件自己的缩放键，
+            # 不该被窗口探测的时序挡住 —— 控制条本来就只在放映中出现。
+            op = action.split(":", 1)[1]
+            self.ppt.zoom(op, hwnd)
+            log.info("放大镜: %s", op)
+            return
+
         if action.startswith("plugin:"):
             # 2026-10-05（插件系统 Wave 2 任务 6）：``plugin:`` 前缀动作在
             # ``state.active`` 门控**之前**路由 —— 与 ``tool:`` / ``pen_color:``
@@ -831,6 +905,9 @@ class LuminaliumApplication:
         ``Qt.WindowDoesNotAcceptFocus``，而 QML Popup 会另开一个真窗口并
         抢走聚焦；原生菜单是临时的，用户点击时弹出、关闭后焦点立刻回到
         放映窗口，不会把放映打断。
+
+        样式现取（见 :func:`_overflow_menu_qss`）：主题运行时可切，算一次存起来
+        会一直停在启动那一刻的那套颜色。
         """
         if self._overflow_menu is not None:
             self._overflow_menu.close()
@@ -839,6 +916,8 @@ class LuminaliumApplication:
         # 半透明底 + 圆角 QSS：不设这个属性的话 QSS 的 border-radius 外面
         # 会露出一圈方角黑底
         menu.setAttribute(Qt.WA_TranslucentBackground, True)
+        # 主题明暗走 ``windows._dark_theme()``：内部已带 try/except（RinUI 未就绪
+        # 按深色兜底），与早先这里的内联 try/except 同语义，别写第二份。
         menu.setStyleSheet(_overflow_menu_qss(self.windows._dark_theme()))
         menu.addAction(i18n.tr("Overflow", "上一页"), self.backend.previousSlide)
         menu.addAction(i18n.tr("Overflow", "下一页"), self.backend.nextSlide)

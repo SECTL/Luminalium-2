@@ -215,6 +215,19 @@ def _find_named(item, name):
     return None
 
 
+def _segment_current_index(dock):
+    """读工具分段当前选中页（走 dock 上的镜像属性 ``segmentCurrentIndex``）。
+
+    ⚠️ QML 那边挂了一份镜像到根 Item 上（见 ``PresentationDock``）。
+
+    ⚠️⚠️ **别写 ``property(...) or -1``**：``0 or -1`` 在 Python 里是 ``-1``
+    （``0`` 是 falsy）—— 分段选中第 0 页时会被读成 -1，断言变成恒成立的假绿。
+    必须显式判``None``。
+    """
+    value = dock.property("segmentCurrentIndex")
+    return -1 if value is None else int(value)
+
+
 def _wait_named(item, name: str, timeout_ms: int = 4000, step_ms: int = 50):
     """轮询等一项出现（超时返回 ``None``）。
 
@@ -3406,6 +3419,293 @@ def main() -> int:
                 and palette.property("opened") is False,
                 f"activeTool={app.backend.activeTool!r} "
                 f"opened={palette.property('opened')}",
+            )
+
+            # ================================================================
+            # 放大镜的选单（2026-10-06 用户指令）
+            # ================================================================
+            # 用户指令原话：「新增工具『放大镜』，打开之后在工具栏上方弹出放大镜
+            # 选项和上下左右移位的选项，他们在一个面板之内。至于这个放大要调用
+            # 演示软件的缩放功能」。
+            zoom_button = _find_named(cdock, "dockZoomButton")
+            zoom_panel = _find_named(cdock, "zoomPanel")
+            zoom_card = _find_named(cdock, "zoomPanelCard")
+            check(
+                "（前置）条上有独立的「放大镜」圆钮，且选单组件已挂上",
+                None not in (zoom_button, zoom_panel, zoom_card),
+                f"button={zoom_button} panel={zoom_panel} card={zoom_card}",
+            )
+            # 2026-10-06 用户指令：「放大镜不应当以 Segmented 内排版」。这里把
+            # 「它不在分段里」钉住：分段只剩指针 / 笔 / 橡皮三页，且树里不再
+            # 有 ``dockTool_zoom`` 这一项 —— 否则改着改着又会回到分段里去。
+            check(
+                "放大镜**不排进 Segmented**：分段里没有它这一页，它是独立圆钮",
+                _find_named(cdock, "dockTool_zoom") is None
+                # ``or -1`` 陷阱：页数是 3（falsy 的是 0，这里安全），但仍显式判
+                # None，免得以后页数变成 0 时读成 -1 还能「碰巧」通过
+                and cdock.property("segmentItemCount") is not None
+                and int(cdock.property("segmentItemCount")) == 3,
+                f"分段页数={cdock.property('segmentItemCount')} "
+                f"dockTool_zoom={_find_named(cdock, 'dockTool_zoom')}",
+            )
+            # ⚠️⚠️ 这条是本轮那个 bug 的**根因**所在，单独钉住：「放大镜不占
+            #    activeTool」。它一度靠 ``activeTool == "zoom"`` 表达，而 QML 分段
+            #    的 ``currentIndex`` 绑定读的就是这个值 ——「分段里没有这一页」
+            #    被翻译成「指针那一页」，点一下放大镜就把工具切回指针、连带把刚
+            #    弹的面板收掉，全程零报错。现在状态在独立的 ``zoomActive`` 上，
+            #    ``activeTool`` 回到只取 pen / eraser / arrow。
+            check(
+                "放大镜**不占** activeTool（它是独立的 zoomActive 布尔）",
+                app.backend.activeTool in ("pen", "eraser", "arrow")
+                and app.backend.zoomActive is False,
+                f"activeTool={app.backend.activeTool!r} "
+                f"zoomActive={app.backend.zoomActive}",
+            )
+            # 槽签名守卫：`@Slot()` 是**零参数**签名，QML 那边
+            # `setZoomActive(false)` 传的实参会被静默丢掉 → 进来的一直是默认
+            # `True`，「关」变成「再开一次」，撞上 `value == self._zoom_active`
+            # 当场 return，状态卡住且不发信号。症状是「点了没反应」+ 零报错，
+            # 本轮真踩过（2026-10-06，①②都 PASS 就第三态永远红）。
+            # 这里直接从 Python 侧调，绕开 QML 那一层，只验签名本身。
+            _zoom_sig_ok = True
+            try:
+                app.backend.setZoomActive(True)
+                app.backend.setZoomActive(False)
+                _zoom_sig_ok = app.backend.zoomActive is False
+            finally:
+                app.backend.setZoomActive(False)
+            check(
+                "setZoomActive 的槽签名收得到 false（`@Slot(bool)`，不是 `@Slot()`）",
+                _zoom_sig_ok,
+                f"签名不收参数时 QML 的 false 会被丢掉 → zoomActive="
+                f"{app.backend.zoomActive}",
+            )
+
+            zoom_fired = []
+
+            def _collect_zoom(action, _sink=zoom_fired):
+                _sink.append(str(action))
+
+            def _wait_zoom_reveal(target: float, *, timeout_ms: int = 2500) -> bool:
+                """等放大镜选单的进出场动画走完（与 ``_wait_reveal`` 同一条理由）。"""
+                waited = 0
+                while waited <= timeout_ms:
+                    v = zoom_panel.property("reveal")
+                    if v is not None and abs(float(v) - target) <= 0.001:
+                        return True
+                    QTest.qWait(60)
+                    waited += 60
+                    if waited >= timeout_ms // 2:
+                        _nudge_top()
+                return False
+
+            # ① 点一下 = 开放大镜 **+ 直接弹出选单**。
+            #    （它是条上一枚独立的开关，没有分段那种「当前分页」的语义，
+            #    也就没有「二次点击才弹选单」那层习惯。）
+            #
+            #    记住点击前分段选中的是哪一页 —— 下面要断言它**没动**。这条单列
+            #    是因为「点了放大镜面板刚弹出来就没了」这个 bug（2026-10-06）当时
+            #    只表现为面板消失，不报错，混在① 里看不出是哪一步坏的。
+            segment_index_before = _segment_current_index(cdock)
+            tool_before_zoom = app.backend.activeTool
+            app.backend.actionTriggered.connect(_collect_zoom)
+            try:
+                _click_dock_item(zoom_button)
+            finally:
+                app.backend.actionTriggered.disconnect(_collect_zoom)
+            zoom_open_settled = _wait_zoom_reveal(1.0)
+            check(
+                "点一下「放大镜」= 开放大镜并弹出选单（缩放 + 移位在同一块面板里）",
+                app.backend.zoomActive is True
+                and zoom_button.property("active") is True
+                and zoom_panel.property("opened") is True
+                and zoom_open_settled
+                and zoom_panel.isVisible(),
+                f"zoomActive={app.backend.zoomActive} "
+                f"active={zoom_button.property('active')} "
+                f"opened={zoom_panel.property('opened')} "
+                f"reveal={zoom_panel.property('reveal')} "
+                f"visible={zoom_panel.isVisible()}",
+            )
+            check(
+                "放大镜不是指针类型：开它不发 tool:（不该去写 PointerType，"
+                "也不该动分段选中的那一页）",
+                not [a for a in zoom_fired if str(a).startswith("tool:")],
+                f"发出={zoom_fired}",
+            )
+            # 顺带守住「分段不该被放大镜带跑」：开放大镜之后，分段里选中的
+            # 仍应是刚才那一页**且指针没变**（放大镜不改指针）。
+            #
+            # ⚠️ 这里必须比对**具体那一页 + 指针本身**，不能只数页数
+            #    （2026-10-06 的 bug 就是页数照样是 3、但 ``currentIndex`` 被
+            #    绑定拉回了 0 → ``onCurrentIndexChanged`` → 工具真切回「指针」
+            #    → 面板被顺手收掉）。
+            segment_index_after = _segment_current_index(cdock)
+            check(
+                "开放大镜**不动**分段的选中页与指针（笔照样是笔）",
+                segment_index_after == segment_index_before
+                and app.backend.zoomActive is True
+                and app.backend.activeTool == tool_before_zoom,
+                f"点击前={segment_index_before} 点击后={segment_index_after} "
+                f"指针={tool_before_zoom!r}→{app.backend.activeTool!r} "
+                f"zoomActive={app.backend.zoomActive}",
+            )
+
+            # ② 版式：两段（缩放 / 移位）在同一张卡里，且**等宽**（左右沿齐平）。
+            titles = [_find_named(zoom_panel, n) for n in
+                      ("zoomPanelTitleZoom", "zoomPanelTitlePan")]
+            zoom_row = _find_named(zoom_panel, "zoomPanelZoomRow")
+            pan_grid = _find_named(zoom_panel, "zoomPanelPanGrid")
+            divider_item = _find_named(zoom_panel, "zoomPanelDivider")
+            check(
+                "两段标题（缩放 / 移位）都在同一张卡片里",
+                all(t is not None for t in titles) and divider_item is not None,
+                f"标题={titles} 分隔线={divider_item}",
+            )
+            check(
+                "缩放那行与移位十字等宽（两段左右沿天然齐平）",
+                zoom_row is not None and pan_grid is not None
+                and abs(float(zoom_row.property("width"))
+                        - float(pan_grid.property("width"))) <= 1,
+                f"row={zoom_row.property('width') if zoom_row else None} "
+                f"grid={pan_grid.property('width') if pan_grid else None}",
+            )
+
+            # ③ 七枚按钮都得在，且每枚都接上了「发 op」这条路 —— 版式对但按钮
+            #    没接线是最容易漏的一环（面板能画出来，点了没反应）。
+            button_ops = (
+                ("zoomBtn_in", "in"), ("zoomBtn_out", "out"),
+                ("zoomBtn_reset", "reset"), ("zoomBtn_up", "up"),
+                ("zoomBtn_down", "down"), ("zoomBtn_left", "left"),
+                ("zoomBtn_right", "right"),
+            )
+            missing = [n for n, _ in button_ops if _find_named(zoom_panel, n) is None]
+            check(
+                "缩放三枚 + 移位四枚按钮都在",
+                not missing,
+                f"缺={missing}",
+            )
+            app.backend.actionTriggered.connect(_collect_zoom)
+            try:
+                if not missing:
+                    _click_dock_item(_find_named(zoom_panel, "zoomBtn_in"))
+            finally:
+                app.backend.actionTriggered.disconnect(_collect_zoom)
+            check(
+                "点「放大」→ 走到应用层（actionTriggered 走 zoom:in）",
+                "zoom:in" in zoom_fired,
+                f"发出={zoom_fired}",
+            )
+
+            # ③b 横向落点：**卡片中心线对准那枚圆钮的中心线**
+            #（2026-10-06 用户指令「要改成对齐圆钮」）。笔选单那条「左沿与底板
+            #对齐」在这里**不适用** —— 圆钮在条的中间，照旧的话面板偏在它左边
+            # 100px 出头，看着不像从这枚钮里出来的。
+            #    ⚠️ 两边都要换算到**同一个坐标系**再比中心：``zoom_card`` 在面板
+            #    里、圆钮在 bar 里、``interactiveRect`` 是 dock 局部 —— 一律用
+            #    ``mapToItem(cdock, …)``。
+            zcard_c = zoom_card.mapToItem(cdock, QPointF(0, 0))
+            zcard_mid = zcard_c.x() + zoom_card.width() / 2
+            zoom_btn_mid = (zoom_button.mapToItem(cdock, QPointF(0, 0)).x()
+                            + zoom_button.width() / 2)
+            check(
+                "放大镜选单横向对齐圆钮（中心线对中心线，不是贴底板左沿）",
+                abs(zcard_mid - zoom_btn_mid) <= 1.0,
+                f"卡片中心={zcard_mid:.1f} 圆钮中心={zoom_btn_mid:.1f} "
+                f"差={zcard_mid - zoom_btn_mid:+.1f}",
+            )
+
+            # ④ 命中矩形 / 窗口区域：选单必须被圈进去（与笔选单同一条铁律）。
+            #    ⚠️ 坐标必须先换算到 **dock 局部**：``zoom_card.x()/y()`` 是
+            #    **面板内**坐标（卡片挂在 zoomPanel 下），而 ``interactiveRect``
+            #    是 dock 局部坐标 —— 直接拿来比会得出「没被圈进去」的假红
+            #    （面板浮在条上方，卡片 y 在 dock 里是负数，2026-10-06 踩过）。
+            zcard_pos = zoom_card.mapToItem(cdock, QPointF(0, 0))
+            z_rect = cdock.property("interactiveRect")
+            z_center = QPointF(zcard_pos.x() + zoom_card.width() / 2,
+                               zcard_pos.y() + zoom_card.height() / 2)
+            z_scene = cdock.mapToScene(z_center)
+            z_covered = [
+                r for r in app.windows._dock_rects_local()
+                if r[0] <= z_scene.x() <= r[0] + r[2]
+                and r[1] <= z_scene.y() <= r[1] + r[3]
+            ]
+            check(
+                "放大镜选单被算进 interactiveRect（否则会被区域塑形裁掉、点不动）",
+                z_rect.x() <= z_center.x() <= z_rect.x() + z_rect.width()
+                and z_rect.y() <= z_center.y() <= z_rect.y() + z_rect.height()
+                and z_rect.y() < pad_bar,
+                f"rect=({z_rect.x():.0f},{z_rect.y():.0f},{z_rect.width():.0f},"
+                f"{z_rect.height():.0f}) 卡片中心=({z_center.x():.0f},"
+                f"{z_center.y():.0f})",
+            )
+            check(
+                "区域塑形的矩形里有一块盖住了放大镜选单",
+                bool(z_covered),
+                f"卡片中心(scene)=({z_scene.x():.0f},{z_scene.y():.0f}) "
+                f"区域块={app.windows._dock_rects_local()}",
+            )
+            z_applied = app.windows._last_region_rects
+            check(
+                "放大镜选单的块已实际应用到 Win32 区域（逐项一致）",
+                z_applied is not None
+                and z_applied == tuple(tuple(r) for r in app.windows._dock_rects_local()),
+                f"已应用={z_applied} 账面={app.windows._dock_rects_local()}",
+            )
+
+            # ⑤ 收起的两条路：再点一下「放大镜」/ 换工具。
+            _click_dock_item(zoom_button)
+            zoom_closed = _wait_zoom_reveal(0.0)
+            check(
+                "再点一下「放大镜」→ 选单收起（淡出走完、命中矩形缩回条本身）",
+                zoom_panel.property("opened") is False and zoom_closed
+                and not zoom_panel.isVisible()
+                and cdock.property("interactiveRect").y() >= pad_bar - 1
+                # 收起面板**不等于**退出放大镜：那枚圆钮还亮着。这是合法状态 ——
+                # 用户只是不需要那块面板了，图照样放大着（缩放由 PPT 自己记着）。
+                and app.backend.zoomActive is True
+                and zoom_button.property("active") is True,
+                f"opened={zoom_panel.property('opened')} "
+                f"reveal={zoom_panel.property('reveal')} "
+                f"visible={zoom_panel.isVisible()} "
+                f"zoomActive={app.backend.zoomActive} "
+                f"active={zoom_button.property('active')}",
+            )
+            # 再点一下圆钮**关掉**放大镜（不是只收面板），再点分段把它叫回来。
+            _click_dock_item(zoom_button)
+            _wait_zoom_reveal(1.0)
+            check(
+                "再点一下「放大镜」→ 退出放大镜（圆钮的选中态也灭）",
+                app.backend.zoomActive is False
+                and zoom_button.property("active") is False
+                and zoom_panel.property("opened") is False,
+                f"zoomActive={app.backend.zoomActive} "
+                f"active={zoom_button.property('active')} "
+                f"opened={zoom_panel.property('opened')}",
+            )
+            _click_dock_item(zoom_button)
+            _wait_zoom_reveal(1.0)
+            _click_dock_item(arrow_item)
+            _wait_zoom_reveal(0.0)
+            check(
+                "切到别的工具 → 放大镜整个关掉（它属于「放大镜」这个工位）",
+                zoom_panel.property("opened") is False
+                and app.backend.zoomActive is False
+                and zoom_button.property("active") is False
+                and app.backend.activeTool == "arrow",
+                f"opened={zoom_panel.property('opened')} "
+                f"zoomActive={app.backend.zoomActive} "
+                f"active={zoom_button.property('active')} "
+                f"activeTool={app.backend.activeTool!r}",
+            )
+            check(
+                "（收尾）工具回到默认档（指针），放大镜选单收起",
+                app.backend.activeTool == "arrow"
+                and app.backend.zoomActive is False
+                and zoom_panel.property("opened") is False,
+                f"activeTool={app.backend.activeTool!r} "
+                f"zoomActive={app.backend.zoomActive} "
+                f"opened={zoom_panel.property('opened')}",
             )
 
             # ---- 「显示按钮文本」在**真机控制条**上也生效，并且会重新摆位 ----

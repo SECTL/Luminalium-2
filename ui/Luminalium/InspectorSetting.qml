@@ -51,11 +51,24 @@ ColumnLayout {
     property string title: ""
     /*! 名称下方的一行浅色说明（可空 —— 窄面板里多数设置不需要它）。 */
     property string description: ""
+    /*! 分组小标题（可空）。合并角落（工具栏 + 翻页器拼成同一个 dock）时，
+        面板要把两边的设置**放在一起显示**，靠它分区 —— 否则一列控件看不出
+        哪几项归工具栏、哪几项归翻页器（2026-10-07 用户指令）。 */
+    property string sectionTitle: ""
     /*! 名称与控件之间、以及各控件之间的间距。 */
     property int itemSpacing: 8
 
     Layout.fillWidth: true
     spacing: root.itemSpacing
+
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: root.sectionTitle.length > 0 ? 6 : 0
+        visible: root.sectionTitle.length > 0
+        typography: Rin.Typography.Caption
+        color: Lumi.accent
+        text: root.sectionTitle
+    }
 
     Rin.Text {
         Layout.fillWidth: true

@@ -29,11 +29,39 @@ import Luminalium
     倒计时的「就绪态」判据是 ``cdRemaining >= cdTotal``（引擎重置后两者
     相等；跑动 / 暂停时剩余小于总长）—— 刻意不另设状态位，少一处两边
     对不上的可能。
+
+    2026-10-08 交互三连改（builtin-plugins-ux 计划 todo 2，GAP-4/6）：
+
+    * **预设按钮 = 一键开始**，不再只填自选框。课堂高频操作要一步到位，
+      点「5 分」直接 ``plugin:timer:start:300000`` 开跑；三个 SpinBox
+      退位给「自定义时长」这一条路（配「开始」按钮）。
+    * **走完态也显示「加时 1 分钟」**：引擎 ``add:`` 分支本就支持把走完
+      的倒计时复活（``_cd_finished`` 翻回 False、剩余 += 加时），UI 之前
+      用 ``visible: !cdFinished`` 把这条退路雪藏了，现在放开并换文案。
+    * **就绪态回填**：四个状态属性的变化回调里把引擎的 ``cdTotal`` 分解
+      回填三个自选框，只兜「停止后框与引擎脱节」；SpinBox 是手动编辑、
+      不绑 cdTotal，回填只在就绪态做，不会打断用户正在输入的自定义
+      时长。（只挂 ``onCdTotalChanged`` 会撞上推送顺序拿到陈旧剩余量，
+      见下面 onCdRemainingChanged 一段的注释。）
+
+    2026-10-08 标题带状态（builtin-plugins-ux 计划 todo 10，GAP-9）：
+    倒计时跑动时窗口标题实时显示剩余时间（「计时器 · 剩 4:37」），走完
+    变「计时器 · 时间到」—— 用户眼睛在别处（放映画面、另一个窗口）时，
+    任务栏 / 标题栏就是唯一的进度来源。引擎 100ms 一推，但标题文本走
+    ``fmtCountdown``（ceil 到秒），格式化结果每秒才变一次，不闪烁。
+    绑定只读倒计时三态（``cdRunning`` / ``cdFinished`` / ``cdRemaining``），
+    正计时跑动（``swRunning``）与时钟页不动标题；暂停也算「否则」，
+    回到静态「计时器」。窗口 chrome 由 RinUI 接管，改 ``title`` 属性
+    不涉及任何窗口 flag，安全。
 */
 Rin.FluentWindow {
     id: timerWindow
 
-    title: qsTr("计时器")
+    // 标题随倒计时状态走（理由见头注释 2026-10-08 条目）：跑动带剩余
+    // 时间、走完报「时间到」，其余态（就绪 / 暂停 / 正计时 / 时钟）静态
+    title: cdRunning
+           ? qsTr("计时器 · 剩 %1").arg(fmtCountdown(cdRemaining))
+           : (cdFinished ? qsTr("计时器 · 时间到") : qsTr("计时器"))
     visible: false
     width: 460
     height: 640
@@ -57,9 +85,39 @@ Rin.FluentWindow {
     property int swMs: 0
     property bool swRunning: false
 
-    onCdRemainingChanged: ring.requestPaint()
-    onCdTotalChanged: ring.requestPaint()
-    onCdFinishedChanged: ring.requestPaint()
+    // 回填挂在全部四个状态属性上而不是只挂 cdTotal：_push_state 按
+    // mode→cdTotal→cdRemaining→cdRunning→cdFinished 的顺序逐个写，只挂
+    // cdTotal 会在「剩余量还是上一拍的旧值」时判定，错过或误判就绪态
+    // （2026-10-08 证据脚本实锤：9 分钟就绪态回填出了 0:00:01）。守卫
+    // 会挡住中间态的误写，最后一拍写入时四个属性全是新值，必然收敛。
+    onCdRemainingChanged: {
+        ring.requestPaint()
+        backfillBoxes()
+    }
+    onCdTotalChanged: {
+        ring.requestPaint()
+        backfillBoxes()
+    }
+    onCdRunningChanged: backfillBoxes()
+    onCdFinishedChanged: {
+        ring.requestPaint()
+        backfillBoxes()
+    }
+
+    /*! 就绪态把引擎的 cdTotal 分解回填进三个自选框。
+        只在就绪态动手：SpinBox 靠手动编辑（编辑不产生 cdTotal 变化），
+        跑动 / 暂停 / 走完时绝不能动框 —— 那是用户可能正在输入的自定义
+        时长。cdTotal 为 0（窗口刚建、引擎首推未到）时跳过，免得把
+        minutesBox 的默认值 5 抹掉。 */
+    function backfillBoxes() {
+        if (timerWindow.cdTotal <= 0) return
+        if (timerWindow.cdRunning || timerWindow.cdFinished
+                || timerWindow.cdRemaining < timerWindow.cdTotal) return
+        var total = Math.floor(timerWindow.cdTotal / 1000)
+        hoursBox.value = Math.floor(total / 3600)
+        minutesBox.value = Math.floor((total % 3600) / 60)
+        secondsBox.value = total % 60
+    }
 
     /*! 毫秒 → H:MM:SS（倒计时用 ceil：起跑显示 5:00、临终点到 0:00）。 */
     function fmtCountdown(ms) {
@@ -92,6 +150,8 @@ Rin.FluentWindow {
         // 其实是空操作：onCompleted 触发时句柄还没挂上窗口（_create 未返回），
         // Python 侧 _push_state 会早退 —— 真正兜底的是 toggle/open 动作里
         // show() 之后的那次推送（见 plugin.py）；这里留着作双保险。
+        // 双保险之外再补一次就绪态回填（理由见 backfillBoxes 注释）
+        backfillBoxes()
         Backend.triggerAction("plugin:timer:sync")
     }
 
@@ -278,10 +338,10 @@ Rin.FluentWindow {
                             Layout.preferredWidth: 54
                             text: modelData + qsTr(" 分")
                             onClicked: {
-                                // 预设 = 直接灌进三个自选框，不另开动作通道
-                                hoursBox.value = 0
-                                minutesBox.value = modelData
-                                secondsBox.value = 0
+                                // 预设 = 一键开始（时长编在动作后缀里，毫秒）；
+                                // 自定义时长走上面的 SpinBox +「开始」按钮
+                                Backend.triggerAction(
+                                    "plugin:timer:start:" + modelData * 60000)
                             }
                         }
                     }
@@ -325,8 +385,11 @@ Rin.FluentWindow {
                 }
                 Rin.Button {
                     objectName: "timerAddOneMinute"
-                    visible: !timerWindow.cdFinished
-                    text: qsTr("+1 分钟")
+                    // 走完态也显示：引擎 add: 本就支持复活走完的倒计时
+                    // （plugin.py 里 finished 翻回 False、剩余 += 加时），
+                    // 走完换文案，把这条退路从 UI 雪藏里放出来
+                    text: timerWindow.cdFinished ? qsTr("加时 1 分钟")
+                                                 : qsTr("+1 分钟")
                     Layout.preferredWidth: 104
                     onClicked: Backend.triggerAction("plugin:timer:add:60000")
                 }

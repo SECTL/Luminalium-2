@@ -10,7 +10,10 @@
 架构要点（为什么这样写，别改回去）：
 
 * **倒计时引擎在 Python，不在 QML**。窗口是懒创建、只藏不销毁的，但用户
-  会把窗口关掉继续讲课 —— 倒计时必须藏在窗口背后继续走、走完了照响。
+  会把窗口关掉继续讲课 —— 倒计时必须藏在窗口背后继续走、走完了照响；
+  走完且窗口藏着时引擎还会把窗口自己弹出来（铃声最长循环 180s，屏幕上
+  看不到来源就是「响铃找不到入口」的事故现场；弹窗既是视觉来源也是关闭
+  入口，与提示音开关解耦 —— 关了声音照弹）。
   这也是 ``context.py`` 铁规 1（驻留组件的状态放 Python 侧）的窗口版。
   引擎用 ``time.monotonic()`` 逐拍累计（QTimer 只当节拍器），不靠间隔数
   数，定时器漂移 / 挂起不会让表走慢。
@@ -157,6 +160,20 @@ def _tick() -> None:
             _cd_running = False
             _cd_finished = True
             _start_alarm()
+            # 走完时窗口若藏着就自己弹出来：铃声最长循环 180s，屏幕上看不到
+            # 来源就是「响铃找不到入口」的事故现场 —— 弹窗本身就是视觉来源
+            # 与关闭入口。与铃声解耦：提示音关了照弹（用户关声音 ≠ 不要提醒）。
+            # 只判句柄不判 .window is None 后的语义 —— ``handle.window is None``
+            # 恰是「窗口还没建 / 藏着」的一部分，此时 show() 会懒创建，正是要的
+            # 行为；已显示时绝不二次 show（不抢焦点 / 不重定位）。
+            if _window_handle is not None:
+                window = _window_handle.window
+                if window is None or not window.isVisible():
+                    _window_handle.show()
+                    # show() 返回后窗口已建，立即推一帧真实状态再走本拍末尾的
+                    # 例行推送（同 toggle/open 分支 2026-10-07 首帧闪 0:00 的
+                    # 修复时序 —— 别指望 QML 的 sync 动作，懒创建路径上它会早退）。
+                    _push_state()
             log.info("倒计时结束，铃声已起（最长 %ds，重置 / 切页 / 关提示音即停）", _ALARM_MAX_SECONDS)
     if _sw_running:
         _sw_ms += dt_ms

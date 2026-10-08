@@ -105,6 +105,20 @@
     机制当成常驻插件）；铁律的白名单键 ``plugins._demo.note`` 只落在
     临时配置里，真 ``config/config.json`` 全程不被碰。详见下方
     「插件断言组」一节的注释。
+17. 自建批注双引擎（2026-10-07 计划 self-ink 第 11 项）：``presentation.ink.engine``
+    （self 默认 / com 兜底，用户决策 Q1）的两条链路都过一遍。编排：从
+    ``inject_state`` **之前**就把引擎钉在 com —— 既有断言全部写在墨迹功能出现
+    之前，而墨迹窗口「显示过一次再被 self→com 切走」（可见层上 clearAll）会把
+    overlay 的动画钟别死、偶发整进程挂死（todo 11 诊断实录，产品侧遗留雷）；
+    插件场景子进程同理，临时配置统一带 engine=com。engine=self 的 10 条新增
+    断言（``[self]`` 前缀）放在 run_checks **末尾**单独跑：墨迹窗口在场、层工具
+    跟手、PPT 指针最多被一次性复位 arrow（``_ComProbe`` 数 COM 出口调用 ——
+    smoke 无真 PowerPoint 的「读回」方式）、pen_color 只落 InkLayer、
+    clear_screen 只清自建页、切工具全程**不动** ``WS_EX_LAYERED``（那是 Qt 给
+    透明窗口自己加的位，铁律是只读不动，不是「不许有」）。com→self 是不含
+    clearAll 的安全路径，且该段之后不再有需要动画 / qWait 的断言；段内等待
+    一律 ``_pump``（墨迹窗口可见时 QTest.qWait 卡死）。收尾复刻真实退场顺序：
+    先退放映（隐藏层上 clearAll）再还原引擎，全程 ``persist=False`` 不落盘。
 
 用法::
 
@@ -128,6 +142,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 import winreg
 from pathlib import Path
@@ -2204,17 +2219,31 @@ def _parse_scenario_output(data) -> list:
 
 
 def _plugin_scenario_configs() -> dict:
-    """各场景的临时用户配置初始内容（只写非默认值键，与真实用户文件同构）。"""
+    """各场景的临时用户配置初始内容（只写非默认值键，与真实用户文件同构）。
+
+    2026-10-07 todo 11：所有场景统一把墨迹引擎钉 **com** —— 场景断言写在
+    墨迹功能出现之前，夹具链路会 inject_state 进放映态，self 引擎下墨迹
+    窗口一显示，场景里的 QTest.qWait 就会卡死（见 ``_pump`` 注释），
+    子进程只能等 300s 超时。com 下墨迹窗口整段不出现，环境同历史。
+    """
+    engine_com = {"presentation": {"ink": {"engine": "com"}}}
+
+    def _with_com(initial: dict) -> dict:
+        merged = dict(initial)
+        merged["presentation"] = {**engine_com["presentation"],
+                                  **merged.get("presentation", {})}
+        return merged
+
     return {
         # 铁律直测（debug 开）：无交互启动即退，白名单外结构必须一致。
-        "iron": {"app": {"debug": True}},
+        "iron": _with_com({"app": {"debug": True}}),
         # 铁律直测（debug 关）：无任何插件加载，退出后字节必须完全一致。
-        "iron-off": {"probe": {"marker": "keep-me"}},
+        "iron-off": _with_com({"probe": {"marker": "keep-me"}}),
         # 夹具全链路（磁贴 / dock / 设置页 / 编辑器组 / 依赖断言）。
         # 把 _demo_group 挂进下中部的 groups：编辑器检查器渲染的是「选中角
         # 各组 inspector_items 的并集」，夹具开关由此可见可点（只写临时
         # 配置，真配置不受影响）。
-        "full": {
+        "full": _with_com({
             "app": {"debug": True},
             "presentation": {
                 "corners": {
@@ -2224,12 +2253,12 @@ def _plugin_scenario_configs() -> dict:
                     }
                 }
             },
-        },
+        }),
         # 故障隔离：坏插件由父进程在启动前注入到 app/plugins/_smoke_bad/。
-        "fault": {"app": {"debug": True}},
+        "fault": _with_com({"app": {"debug": True}}),
         # 孤儿容忍：手写的「不存在」残留 —— 组名（组件）与磁贴 id 各一，
         # 模拟用户手改 config / 插件卸载后的配置残留。
-        "orphan": {
+        "orphan": _with_com({
             "app": {"debug": True},
             "presentation": {
                 "corners": {
@@ -2237,12 +2266,12 @@ def _plugin_scenario_configs() -> dict:
                 }
             },
             "quick_panel": {"shortcuts": ["settings", "_ghost_tile"]},
-        },
+        }),
         # 禁用过滤：_demo 禁用后，_demo_dep 应因依赖缺失被连带跳过。
-        "disabled": {
+        "disabled": _with_com({
             "app": {"debug": True},
             "plugins": {"_demo": {"enabled": False}},
-        },
+        }),
     }
 
 
@@ -2797,6 +2826,87 @@ def _scenario_from_argv():
     return None
 
 
+# ------------------------------------------------------------------ 墨迹引擎
+# 2026-10-07 计划 self-ink 第 11 项：双引擎断言用的三件小工具。
+
+def _set_ink_engine(app, engine: str) -> str:
+    """内存层切换墨迹引擎（不落盘），返回切换前的值。
+
+    走 ``Config.set(persist=False)``：``on_change`` 会同步触发
+    ``application._on_config_changed``，与设置页改引擎是同一条链路
+    （self→com 收墨清场 / com→self 复位 PPT 指针），又不碰用户的 config.json。
+    值相同会被 Config 短路（不回调），所以重复设同值是安全空操作。
+    """
+    previous = str(app.config.get("presentation.ink.engine", "self"))
+    app.config.set("presentation.ink.engine", engine, persist=False)
+    return previous
+
+
+def _ink_exstyle(app) -> "int | None":
+    """墨迹窗口的 exstyle 快照（复用 windows.py 的 GetWindowLong 封装）。"""
+    window = app.windows.ink_window
+    if window is None:
+        return None
+    try:
+        hwnd = int(window.winId())
+    except RuntimeError:  # 窗口已释放
+        return None
+    return win_mod._window_ex_style(hwnd) if hwnd else None
+
+
+def _pump(app, ms: int) -> None:
+    """事件循环空转 ``ms`` 毫秒（processEvents + 小步 sleep）。
+
+    墨迹窗口可见时 ``QTest.qWait`` 会**卡死**（faulthandler 钉在 qWait 那一行，
+    与 Task 3 在线束里踩的同一个坑：线程渲染循环 + qWait 攥 GIL 不放）。
+    所以 engine=self 的段落一律用这个自写等待。步长保持 5ms 别调大 ——
+    大步长会饿死纯 Python 后台线程（AGENTS.md）。
+    """
+    end = time.monotonic() + ms / 1000.0
+    while True:
+        app.qt_app.processEvents()
+        if time.monotonic() >= end:
+            return
+        time.sleep(0.005)
+
+
+class _ComProbe:
+    """包住 PptController 的 COM 出口方法，记录每次调用。
+
+    smoke 里没有真 PowerPoint，self 引擎「不碰 COM」的读回只能靠数调用：
+    ``set_tool`` / ``set_pen_color`` / ``clear_screen`` 是 application._on_action
+    唯三会摸到 COM 的出口。用完必须 ``restore()``（方法是换到实例上的，不还原
+    会污染后面 com 段的语义 —— 虽然记录无害，但别把探针留成常驻行为）。
+    """
+
+    _WATCHED = ("set_tool", "set_pen_color", "clear_screen")
+
+    def __init__(self, ppt) -> None:
+        self._ppt = ppt
+        self._orig = {}
+        self.calls: list = []
+        for name in self._WATCHED:
+            original = getattr(ppt, name)
+            self._orig[name] = original
+
+            def _wrapped(*args, _name=name, _fn=original, **kwargs):
+                self.calls.append((_name, args))
+                return _fn(*args, **kwargs)
+
+            setattr(ppt, name, _wrapped)
+
+    def calls_of(self, name: str) -> list:
+        """某个方法的调用记录，只留首个位置参数（工具名 / 颜色三元组里的 r）。
+
+        比全参数够用的原因：断言关心的是「投了哪种工具 / 有没有投」，不关心 hwnd。
+        """
+        return [tuple(args[:1]) for _name, args in self.calls if _name == name]
+
+    def restore(self) -> None:
+        for name, original in self._orig.items():
+            setattr(self._ppt, name, original)
+
+
 def main() -> int:
     scenario = _scenario_from_argv()
     if scenario == "self-test":
@@ -2895,6 +3005,17 @@ def main() -> int:
         check("面板可隐藏", not panel.isVisible())
 
         # ---- 模拟进入放映：顶层窗口全屏 + 控制条贴角 ----
+        # 2026-10-07 自建批注 todo 11：从这里到 run_checks 末尾的 self 段之前，
+        # 全程把墨迹引擎钉在 **com**。原因：这一大段既有断言全部写在墨迹功能
+        # 出现之前（环境 = 无墨迹窗口），而墨迹窗口只要**显示过一次再被切走**
+        # （self→com 会在可见层上 clearAll），overlay 的动画钟就会被别死、
+        # 偶发整进程挂死 —— 笔选单 reveal 不动、编辑器 / 关于页连环假红全是它。
+        # 在 inject_state 之前切，墨迹窗口整段从不显示，既有断言的环境与历史
+        # 逐字节一致；engine=self 的新增断言挪到 run_checks 末尾单独跑
+        # （com→self 是不含 clearAll 的安全路径，且其后不再有需要动画的段落）。
+        # 此刻墨迹窗口还没建，self→com 的 clearAll 落在空层上（只记一行日志）。
+        _engine_restore_to = _set_ink_engine(app, "com")
+        _pump(app, 120)
         app.ppt.inject_state(
             PresentationState(active=True, slide_index=26, slide_total=41)
         )
@@ -3707,6 +3828,10 @@ def main() -> int:
             f"{len(named)} 个窗口取到类名，例: {named[:3]}",
         )
 
+        # ---- COM 链路守卫组（kind 路由 / 快捷键 / 指针映射 / 清屏补 E）----
+        # 2026-10-07 todo 11：默认引擎已是 self，这一组是 COM 旧链路的覆盖 ——
+        # 整个 legacy 阶段从 inject_state 之前就把引擎钉在 com（见 inject_state
+        # 上方的注释），所以这里天然跑在 engine=com 下。
         # ---- 多软件族（kind）路由：照 Luminalium 1 的 ppt / wps / yozo 三分 ----
         # 这是「换台电脑就控制不了」的主因：判不出族就选不对快捷键通道，
         # 给 WPS 下 PowerPoint 专属的 MSO 命令只会白等一轮。
@@ -5771,6 +5896,143 @@ def main() -> int:
         # 一节注释）。放在**最后**：子进程会各自拉起完整应用实例（真窗口），
         # 不能干扰既有断言；主进程保持 app.debug 关，既有断言零影响。
         _check_plugin_suite()
+
+        # ================================================================
+        # 自建批注 engine=self 的真机断言（2026-10-07 计划 self-ink 第 11 项）
+        # ================================================================
+        # 默认引擎是 self（用户决策 Q1），COM 只留兜底。这一组钉 self 链路的
+        # **分流语义**：笔 / 橡皮进自建墨迹窗口，PPT 指针最多被一次性复位成
+        # arrow；颜色 / 清屏完全不碰 COM。smoke 里没有真 PowerPoint，「COM
+        # 读回」用 _ComProbe 数 PptController 出口方法的调用。
+        #
+        # ⚠️ 为什么放在**最后**：com→self 是不含 clearAll 的安全路径（实测
+        # 动画不 wedge）；反向 self→com 会在可见层上 clearAll，把 overlay 的
+        # 动画钟别死甚至整进程挂死（todo 11 诊断实录，产品侧遗留雷）。这一段
+        # 之后没有任何依赖动画 / qWait 的断言，wedge 了也无所谓；且全程用
+        # _pump 而不是 QTest.qWait（墨迹窗口可见时 qWait 卡死，见 _pump 注释）。
+        _set_ink_engine(app, "self")
+        app.ppt.inject_state(
+            PresentationState(active=True, slide_index=26, slide_total=41)
+        )
+        _pump(app, 400)
+        probe = _ComProbe(app.ppt)
+        try:
+            ink_window = app.windows.ink_window
+            layer = app.windows.ink_layer()
+            check(
+                "[self] 放映中墨迹窗口已显示、InkLayer 就位",
+                ink_window is not None and ink_window.isVisible()
+                and layer is not None,
+                f"window={ink_window} visible="
+                f"{ink_window.isVisible() if ink_window else None} layer={layer}",
+            )
+            # 切到「笔」：墨迹窗口退出穿透吃输入；再切橡皮 / 指针各快照一次
+            # exstyle（三段快照同时供「穿透增减」与「LAYERED 不动」两条断言）。
+            app.backend.selectTool("pen")
+            _pump(app, 120)
+            style_pen = _ink_exstyle(app)
+            check(
+                "[self] 切笔后层工具=pen、墨迹窗口退出穿透（吃输入）",
+                layer is not None and layer.property("tool") == "pen"
+                and style_pen is not None
+                and not (style_pen & win_mod.WS_EX_TRANSPARENT),
+                f"tool={layer.property('tool') if layer else None} "
+                f"exstyle={style_pen if style_pen is None else hex(style_pen)}",
+            )
+            app.backend.selectTool("eraser")
+            _pump(app, 90)
+            style_eraser = _ink_exstyle(app)
+            app.backend.selectTool("arrow")
+            _pump(app, 90)
+            style_arrow = _ink_exstyle(app)
+            check(
+                "[self] 橡皮也吃输入、指针态整窗穿透（WS_EX_TRANSPARENT 增减）",
+                style_eraser is not None and style_arrow is not None
+                and not (style_eraser & win_mod.WS_EX_TRANSPARENT)
+                and bool(style_arrow & win_mod.WS_EX_TRANSPARENT),
+                f"eraser={style_eraser if style_eraser is None else hex(style_eraser)} "
+                f"arrow={style_arrow if style_arrow is None else hex(style_arrow)}",
+            )
+            # ⚠️ 铁律钉的是「不动」而不是「没有」：WS_EX_LAYERED 是 Qt 给透明
+            #    窗口自己加的（windows.py 头注释 L288 起），剥掉整窗隐形；所以
+            #    这里断言三个工具态的 LAYERED 位**完全一致**，谁去加减它立刻红。
+            layered_bits = {
+                bool(s & win_mod.WS_EX_LAYERED)
+                for s in (style_pen, style_eraser, style_arrow) if s is not None
+            }
+            check(
+                "[self] 工具切换全程不动 WS_EX_LAYERED（Qt 自带的位只读）",
+                None not in (style_pen, style_eraser, style_arrow)
+                and len(layered_bits) == 1,
+                f"LAYERED={layered_bits}",
+            )
+            # COM 读回：self 下 PPT 指针只允许「一次性 arrow 复位」（com→self
+            # 切换时已投过一次，在探针安装之前，所以这里容忍 0 次），pen /
+            # eraser 一次都不该投到 COM。
+            com_tools = probe.calls_of("set_tool")
+            check(
+                "[self] PPT 指针最多被一次性复位成 arrow（无 pen/eraser 投到 COM）",
+                len(com_tools) <= 1 and all(t == ("arrow",) for t in com_tools),
+                f"set_tool 记录={com_tools}",
+            )
+            app.backend.selectTool("pen")
+            _pump(app, 60)
+            check(
+                "[self] 反复切工具不重复投 COM（arrow 复位只记一次账）",
+                probe.calls_of("set_tool") == com_tools,
+                f"set_tool 记录={probe.calls_of('set_tool')}",
+            )
+            # 颜色：只落到 InkLayer（PointerColor 只有 PowerPoint 认，这正是
+            # 自建墨迹的动机之一），COM 的 set_pen_color 一次都不该被调到。
+            app.backend.setPenColor("#38BDF8")
+            _pump(app, 60)
+            check(
+                "[self] pen_color 落到 InkLayer（层颜色 = 选中色）",
+                layer is not None
+                and _hex(layer.property("penColor")) == "#38BDF8",
+                f"penColor={_hex(layer.property('penColor')) if layer else None}",
+            )
+            check(
+                "[self] pen_color 一次都没碰到 COM set_pen_color",
+                not probe.calls_of("set_pen_color"),
+                f"记录={probe.calls_of('set_pen_color')}",
+            )
+            # 清屏：清的是自建墨迹的当前页（clearPage），不是 COM 的
+            # EraseDrawing。先按契约 API 烘一笔进当前页，再走真入口清屏。
+            if layer is not None:
+                layer.beginStroke(120.0, 200.0, 1.0)
+                layer.extendStroke([[240.0, 260.0, 1.0], [360.0, 200.0, 1.0]])
+                layer.endStroke()
+                page = layer.currentPage
+                baked = len(layer.store.strokes(page))
+                app.backend.triggerAction("clear_screen")
+                _pump(app, 90)
+                check(
+                    "[self] clear_screen 清掉自建墨迹当前页",
+                    baked == 1 and len(layer.store.strokes(page)) == 0,
+                    f"烘入={baked} 清后={len(layer.store.strokes(page))} 页={page}",
+                )
+            else:
+                check("[self] clear_screen 清掉自建墨迹当前页", False,
+                      "InkLayer 不存在")
+            check(
+                "[self] clear_screen 没碰 COM clear_screen",
+                not probe.calls_of("clear_screen"),
+                f"记录={probe.calls_of('clear_screen')}",
+            )
+        finally:
+            probe.restore()
+            # 收尾顺序刻意复刻真实退场：先退放映（hide_docks 把墨迹窗口藏起来，
+            # _sync_ink_page 的退出边沿在**已隐藏**的层上 clearAll —— 安全），
+            # 再还原引擎。别反过来在可见层上触发 self→com 的 clearAll（会
+            # wedge / 挂死，见本段头注释）。
+            app.backend.selectTool("arrow")
+            app.ppt.inject_state(PresentationState(active=False))
+            _pump(app, 200)
+            # 引擎还原回自检前的原值（全是内存层 persist=False；若原值本就是
+            # self，Config 短路不回调，连这次切换都不会发生）
+            _set_ink_engine(app, _engine_restore_to)
+            _pump(app, 120)
         # 收尾（统计失败数 / 退出事件循环）统一由 run_checks_guarded 的
         # ``finally`` 负责 —— 这里再写一遍只会在抛异常时被跳过，反而留坑。
 

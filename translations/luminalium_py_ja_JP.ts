@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="ja_JP">
 <!--
   Luminalium 2 日本語訳（Python 側）。
 
@@ -11,6 +10,8 @@
   重新生成 .qm:
       .venv/Scripts/pyside6-lrelease.exe translations/luminalium_py_ja_JP.ts -qm translations/luminalium_py_ja_JP.qm
 -->
+<TS version="2.1" language="ja_JP">
+
 <context>
     <name>Splash</name>
     <message>
@@ -174,10 +175,7 @@
 </context>
 <context>
     <name>Settings</name>
-    <!-- 任务 7（2026-10-05）：设置窗口导航项从 QML 硬编码搬进 Python
-         （app/bridge.py::_BUILTIN_SETTINGS_NAV），标题改走 app.i18n.tr。
-         context 沿用原 QML 侧的 Settings，译文从 luminalium_ja_JP.ts 平移；
-         lupdate 重扫后 QML 侧这六条会消失，由本文件承接。 -->
+    
     <message>
         <source>主页</source>
         <translation>ホーム</translation>
@@ -195,7 +193,7 @@
         <translation>メイン画面</translation>
     </message>
     <message>
-        <!-- 任务 17（2026-10-05）：内建「插件」管理页加入 _BUILTIN_SETTINGS_NAV。 -->
+        
         <source>插件</source>
         <translation>プラグイン</translation>
     </message>
@@ -208,4 +206,4 @@
         <translation>更新</translation>
     </message>
 </context>
-</TS>
+<context><name>timer</name><message><source>计时器</source><translation type="finished">タイマー</translation></message><message><source>打开 / 收起计时器</source><translation type="finished">タイマーの開閉</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation type="finished">ミニ黒板</translation></message><message><source>打开 / 收起小黑板</source><translation type="finished">ミニ黒板の開閉</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation type="finished">スポットライト</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation type="finished">スポットライトマスクの開閉</translation></message><message><source>聚光灯遮罩</source><translation type="finished">スポットライトマスク</translation></message></context><context><name>Plugins</name><message><source>选择插件文件夹</source><translation type="finished">プラグインフォルダーを選択</translation></message><message><source>选择插件包</source><translation type="finished">プラグインパッケージを選択</translation></message><message><source>插件包 (*.zip);;所有文件 (*)</source><translation type="finished">プラグインパッケージ (*.zip);;すべてのファイル (*)</translation></message></context></TS>

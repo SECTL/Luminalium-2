@@ -117,8 +117,11 @@ class PluginContext:
         """注册快捷面板磁贴（形状对齐 ``quick_panel.shortcut_catalog``）。
 
         ``action`` 约定 ``plugin:<本插件id>:<动作名>``，触发时经动词注册表
-        路由到 :meth:`add_action_handler` 登记的处理器。``title`` 应是插件
-        已翻译好的文案（约定插件自己 ``app.i18n.tr(<id>, ...)``，透传）。
+        路由到 :meth:`add_action_handler` 登记的处理器。``title`` 应是
+        插件已翻译好的文案（约定插件自己 ``app.i18n.tr(<id>, ...)``，透传
+        —— ⚠️ 必须在 ``register`` 内现场调用：模块顶层跑在翻译器安装
+        之前，那时 tr 永远回中文原文，见 ``docs/plugin-development.md``
+        翻译约定一节）。
         """
         entry: Dict[str, Any] = {
             "id": id,
@@ -308,6 +311,24 @@ class PluginContext:
         动作处理器决定。
         """
         return self._windows.register_window(name, qml_path, **options)
+
+    def register_overlay(
+        self, name: str, qml_path: Any, *, label: Optional[str] = None
+    ) -> Any:
+        """注册一只全屏叠加窗口（聚光灯这类「整屏遮罩 + 镂空」）。
+
+        与 :meth:`register_window` 不同族的窗口（2026-10-06 随聚光灯插件
+        新增）：透明置顶、不抢焦点、无 RinUI 非客户区接管，返回的句柄除
+        ``show() / hide() / toggle()`` 外还有 ``set_hole(cx, cy, radius)``
+        —— 插件自己的定时器轮询光标，把镂空圆（窗口局部逻辑坐标）一拍
+        一拍喂进来，区域塑形由 ``app/windows.py`` 统一做。
+
+        为什么单独开一条口子而不是让插件走 ``register_window``：RinUI
+        接管的全屏透明窗口会把 DWM 非客户区处理套上来跟遮罩打架（与
+        放映顶层窗口刻意不接管的理由相同，见 ``app/windows.py``）。铁律
+        不变 —— 插件仍然不得自建 QQuickWindow，叠加窗口也得走这里登记。
+        """
+        return self._windows.register_overlay(name, qml_path, label=label)
 
     # ---------------------------------------------------------- 通信总线
 

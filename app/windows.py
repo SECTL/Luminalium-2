@@ -33,6 +33,18 @@
   连到 ``closing(QQuickCloseEvent*)`` 信号（PySide 无法转换该参数，
   一点关闭按钮就把应用打死，见 ``_bind_panel`` 的注释）。
 * 窗口一律懒创建、只藏不销毁（splash 是唯一例外）。
+* 放映激活期间（``_on_presentation_state`` 最后一次收到的状态为
+  active），自管窗口一律**原生顶进置顶带**
+  （``SetWindowPos(HWND_TOPMOST)``，见
+  :meth:`WindowManager._sync_self_managed_windows_topmost` 与
+  :meth:`RegisteredWindow.show` 末尾）：放映窗口本身就坐在置顶带，
+  普通带的 show/raise 顶不穿它，放映中从控制条打开计时器 / 小黑板
+  会被全屏放映画面整个盖住 —— 而这些 dock 动作恰恰就是为放映场景
+  设计的。退出放映时对称 ``HWND_NOTOPMOST`` 回落普通带。实现上
+  **只用原生调用、绝不改 Qt flags**（改 flags 会重建原生窗口、断
+  RinUI 三清单接管 —— 与 ``_push_panel_above_overlays`` 同一理由）；
+  顶进置顶带后照 ``RegisteredOverlay.show()`` 的次序让放映顶层窗口
+  重申置顶，控制条始终压在最上。
 
 叠加窗口（2026-10-06，聚光灯一类「整屏遮罩 + 镂空」）：与放映顶层窗口
 同族的另一类，走 :meth:`WindowManager.register_overlay`（唯一合法途径，
@@ -482,13 +494,21 @@ def _build_region(rects: list[tuple[int, int, int, int]]) -> Optional[int]:
 
 
 def _build_region_with_hole(
-    width: float, height: float, hole: tuple[float, float, float]
+    width: float,
+    height: float,
+    hole: tuple[float, float, float],
+    keep_rects: Optional[list[tuple[float, float, float, float]]] = None,
 ) -> Optional[int]:
     """「整窗矩形 − 圆形」的 HRGN（聚光灯一类遮罩的镂空），失败返回 ``None``。
 
     ``(cx, cy, r)`` 是**已按坐标倍率换算好**的窗口局部物理像素圆心与半径；
     调用方负责换算（见 :meth:`RegisteredOverlay._sync_region`）。椭圆区域用
     ``CreateEllipticRgn``（外接矩形式 API），从整窗矩形里 ``RGN_DIFF`` 掉。
+
+    ``keep_rects``（同为已换算的物理像素 ``(x, y, w, h)``）在镂空之后用
+    ``RGN_OR`` **补回**窗口区域 —— 2026-10-08 聚光灯修复：光斑跟着光标走，
+    光标一靠近顶部控制胶囊，胶囊就掉进洞里被一起裁掉（区域外既不绘制也不
+    命中），主退出按钮失联。把胶囊矩形补回后，任何光斑位置下胶囊都可点。
     """
     if not hasattr(ctypes, "windll"):
         return None
@@ -506,6 +526,17 @@ def _build_region_with_hole(
         return None
     gdi32.CombineRgn(base, base, hole_rgn, RGN_DIFF)
     gdi32.DeleteObject(hole_rgn)
+    for x, y, w, h in keep_rects or ():
+        if w <= 0 or h <= 0:
+            continue
+        keep = gdi32.CreateRectRgn(
+            int(round(x)), int(round(y)),
+            int(round(x + w)), int(round(y + h)),
+        )
+        if not keep:
+            continue
+        gdi32.CombineRgn(base, base, keep, RGN_OR)
+        gdi32.DeleteObject(keep)
     return base
 
 
@@ -733,6 +764,19 @@ class RegisteredWindow:
                 log.warning("%s post_show 钩子执行失败", self._label, exc_info=True)
         window.raise_()
         window.requestActivate()
+        # 放映激活期间，show/raise 只在普通带里升 —— 顶不穿自带
+        # WS_EX_TOPMOST 的全屏放映窗口，窗口会被放映画面整个盖住。
+        # 原生顶进置顶带（只用 SetWindowPos、绝不改 Qt flags，理由见
+        # 文件头「自管窗口约定」）。
+        if self._manager._presentation_active:
+            self._manager._top_self_managed_window(window)
+        else:
+            # 对称回落：藏着的窗口可能带着 WS_EX_TOPMOST 越过放映结束边沿
+            # （放映中被顶→被藏→边沿同步只摘可见窗口→再 show 时无限期悬浮在
+            # 所有应用之上），这里无条件摘一次 —— 幂等且廉价，与
+            # ``_sync_self_managed_windows_topmost`` 的 inactive 全量摘位
+            # 互为双保险。
+            self._manager._set_self_managed_topmost(window, False)
 
     def hide(self) -> None:
         if self.is_visible():
@@ -816,9 +860,15 @@ class RegisteredOverlay:
     这条铁律对叠加窗口同样有效。
 
     职责边界：本类只管「懒创建 / 全屏摆放 / NOACTIVATE 样式 / 圆形镂空的
-    区域塑形（含 SetWindowRgn 坐标倍率校准）」；洞跟谁走、多大是插件自己的
-    业务，插件经 :meth:`set_hole` 每拍喂进来（光标轮询由插件侧定时器驱动，
-    别把「遮罩用途」写死在窗口管理器里）。
+    区域塑形（含 SetWindowRgn 坐标倍率校准、保留矩形补回）」；洞跟谁走、
+    多大、哪些矩形要保留是插件自己的业务，插件经 :meth:`set_hole` 每拍喂
+    进来（光标轮询由插件侧定时器驱动，别把「遮罩用途」写死在窗口管理器里）。
+
+    保留矩形（``keep_rects``，2026-10-08）：镂空塑形后对这些矩形
+    ``RGN_OR`` 补回 —— 聚光灯的顶部控制胶囊靠它保命：光斑跟光标走，光标
+    靠近胶囊时胶囊会掉进洞里被裁掉（✕ 按钮失联的上线实锤），补回后任何
+    光斑位置下胶囊都可点。坐标与洞同单位（窗口局部逻辑坐标），同走一套
+    倍率校准。
 
     与 TopWindow 的两点刻意差异：
 
@@ -844,6 +894,8 @@ class RegisteredOverlay:
         #: 镂空圆 ``(cx, cy, r)``——窗口局部**逻辑**坐标（set_hole 的入参原样存，
         #: 换算成物理像素在 _sync_region 里做）
         self._hole: Optional[tuple[int, int, int]] = None
+        #: 镂空后要 ``RGN_OR`` 补回的矩形列表，与洞同为窗口局部逻辑坐标
+        self._keep_rects: list[tuple[int, int, int, int]] = []
         self._screen: Optional[QScreen] = None
         #: SetWindowRgn 的坐标单位倍率（与 WindowManager._region_scale 同义，
         #: 各窗口各有一份 —— 不同屏的 DPR 可以不同）
@@ -900,9 +952,52 @@ class RegisteredOverlay:
         else:
             self.show()
 
-    def set_hole(self, cx: int, cy: int, radius: int) -> None:
-        """更新镂空圆（窗口局部逻辑坐标），遮罩可见时立刻重新塑形。"""
+    def move_to_screen(self, screen: Optional[QScreen]) -> None:
+        """把遮罩整窗迁到另一块显示器（聚光灯光标跨屏粘滞迁移用）。
+
+        摆放动作用 Qt 的 ``setScreen + setGeometry``（与 :meth:`show` 的
+        定屏段同款），**刻意不用**裸 ``SetWindowPos`` 挪窗口：Qt 自己
+        缓存窗口几何与 DPR，绕开它搬窗会让 QML 布局与后续
+        ``setGeometry`` 的「没变就跳过」判断失真。
+
+        与 :meth:`show` 的差别是**不清**洞与保留矩形 —— 迁移只是换屏，
+        插件的塑形上下文（半径、胶囊保留矩形）原样存活，随后插件会按
+        新屏立刻喂洞。几何变了，照
+        :meth:`WindowManager._on_presentation_screen_changed` 的
+        「几何变更清单」同款纪律：坐标倍率缓存（``_region_scale`` 是按
+        旧屏 DPR 校准出来的，新屏可能不同）作废，可见时立刻重新塑形，
+        ``_sync_region`` 内部会按新屏重新校准倍率。
+        """
+        if screen is None or self._window is None:
+            return
+        try:
+            self._window.setScreen(screen)
+            self._window.setGeometry(screen.geometry())
+        except Exception:  # pragma: no cover - 平台差异
+            log.debug("%s 迁屏失败", self._label, exc_info=True)
+            return
+        self._screen = screen
+        self._region_scale = None
+        if self.is_visible():
+            self._sync_region()
+
+    def set_hole(
+        self,
+        cx: int,
+        cy: int,
+        radius: int,
+        keep_rects: Optional[list[tuple[int, int, int, int]]] = None,
+    ) -> None:
+        """更新镂空圆（窗口局部逻辑坐标），遮罩可见时立刻重新塑形。
+
+        ``keep_rects`` 是镂空后要补回的矩形列表（同为窗口局部逻辑坐标，
+        与洞走同一套倍率校准）—— 聚光灯的控制胶囊靠它保证任何光斑位置
+        下都不被裁掉、永远可点。
+        """
         self._hole = (int(cx), int(cy), max(8, int(radius)))
+        self._keep_rects = [
+            (int(x), int(y), int(w), int(h)) for x, y, w, h in (keep_rects or ())
+        ]
         if self.is_visible():
             self._sync_region()
 
@@ -970,9 +1065,14 @@ class RegisteredOverlay:
             if not scale or scale <= 0 or scale in seen:
                 continue
             seen.add(scale)
+            keeps = [
+                (x * scale, y * scale, w * scale, h * scale)
+                for x, y, w, h in self._keep_rects
+            ]
             hrgn = _build_region_with_hole(
                 width * scale, height * scale,
                 (cx * scale, cy * scale, radius * scale),
+                keeps,
             )
             if hrgn is None:
                 continue
@@ -1016,6 +1116,11 @@ class WindowManager(QObject):
         self._config = config
         self._backend = backend
         self._ppt = ppt
+        #: 放映是否激活 —— 只由 ``_on_presentation_state`` 按最后一份状态
+        #: 快照维护；``RegisteredWindow.show()`` 靠它决定要不要把窗口顶进
+        #: 置顶带。刻意不反查 ``_ppt.state``：状态快照只经这一条信号链
+        #: 到达管理器，反查会拿到与 bridge / dock 不同步的中间态。
+        self._presentation_active = False
         self._tray = tray
         #: ``RinUIWindow`` 实例 —— 用于把 Python 侧另建的窗口补登记进 RinUI
         #: 的 WinEventFilter / ThemeManager / WinEventManager（见 ``_attach_to_rinui``）
@@ -1632,6 +1737,7 @@ class WindowManager(QObject):
         # 2026-10-01 起不再把整份快照塞给 bridge —— 那是为「设置页显示实际认到
         # 哪家软件 / 哪个窗口」那几张卡片准备的，卡片已随用户指令删除。
         self._backend.apply_state(state)
+        self._presentation_active = bool(state.active)
         if state.active:
             self.show_docks()
         else:
@@ -1640,6 +1746,9 @@ class WindowManager(QObject):
         # 第一次 active 状态到达时墨迹窗口可能还没建，show_docks 按意图
         # 建好之后这里才拿得到层。
         self._sync_ink_page(state)
+        # 自管窗口的置顶带同步放最后：此时放映顶层窗口已按状态显隐完毕，
+        # 批量顶 / 落之后的重申次序才有意义（理由见方法注释）。
+        self._sync_self_managed_windows_topmost(bool(state.active))
 
     def _on_presentation_screen_changed(self) -> None:
         """钉屏显示器变更 → 遮罩立刻重铺（放映中换「目标显示器」即时生效）。
@@ -1716,6 +1825,70 @@ class WindowManager(QObject):
             )
         except OSError:  # pragma: no cover
             log.debug("调整面板 z 序失败", exc_info=True)
+
+    def _set_self_managed_topmost(self, window, topmost: bool) -> bool:
+        """原生 ``SetWindowPos`` 把一只自管窗口推进 / 退出置顶带。
+
+        与 :meth:`_push_panel_above_overlays` 同族：只用原生调用（改 Qt
+        flags 会重建原生窗口、断 RinUI 接管）、``SWP_NOACTIVATE`` 不抢
+        焦点、失败只记日志不抛 —— 置顶失败等于退回「普通带」旧行为，
+        不该因为一次 z 序调整失败打死整个开窗流程。
+        """
+        if not hasattr(ctypes, "windll"):  # pragma: no cover - 非 Windows
+            return False
+        try:
+            hwnd = int(window.winId())
+        except (RuntimeError, AttributeError):  # pragma: no cover - 窗口已释放
+            return False
+        if not hwnd:
+            return False
+        band = HWND_TOPMOST if topmost else HWND_NOTOPMOST
+        try:
+            ctypes.windll.user32.SetWindowPos(
+                wintypes.HWND(hwnd), wintypes.HWND(band),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+            return True
+        except OSError:  # pragma: no cover
+            log.debug("自管窗口 z 序调整失败", exc_info=True)
+            return False
+
+    def _top_self_managed_window(self, window) -> None:
+        """放映激活期把一只自管窗口顶进置顶带（``RegisteredWindow.show()`` 用）。
+
+        顶上去之后照 ``RegisteredOverlay.show()`` 的同款次序，让放映顶层
+        窗口重申置顶 —— 刚顶进置顶带的窗口排在它之上，不压回去控制条会
+        被这只窗口盖住。
+        """
+        if self._set_self_managed_topmost(window, True) and (
+            self.overlay is not None and self.overlay.isVisible()
+        ):
+            self._assert_topmost()
+
+    def _sync_self_managed_windows_topmost(self, active: bool) -> None:
+        """放映状态边沿：批量调整自管窗口的 z 序。
+
+        active → 全体**可见**窗口顶进置顶带（藏着的窗口下次 ``show()`` 时
+        会按 ``_presentation_active`` 自己顶；懒创建窗口此刻连 hwnd 都还
+        没有，顶了也是空调用）；inactive → 全体**已创建**窗口对称回落
+        普通带 —— 包括藏着的：放映中被顶后又被藏掉的窗口也带着
+        WS_EX_TOPMOST，漏摘会让它下次 show 时无限期悬浮在所有应用之上。
+        """
+        changed = False
+        for handle in self._registered_windows.values():
+            if active:
+                if not handle.is_visible():
+                    continue
+            elif handle.window is None:
+                continue
+            if self._set_self_managed_topmost(handle.window, active):
+                changed = True
+        # 批量顶进置顶带后，放映顶层窗口要重申一次（同
+        # ``_top_self_managed_window`` 的次序理由）；inactive 回落时
+        # 控制条随 hide_docks 一起藏，无需重申。
+        if changed and active and self.overlay is not None and self.overlay.isVisible():
+            self._assert_topmost()
 
     def _position_panel(self, pos: Optional[QPoint] = None) -> None:
         """把面板摆到**光标**附近。

@@ -70,6 +70,9 @@
 - ``LUMI_PREVIEW_PEN=1`` —— 把工具切到「笔」并**展开笔的选单**（PenPaletteCard），
   输出 ``top_window_pen.png``；``LUMI_PREVIEW_PEN_COLOR`` 指定预点亮的颜色
   （默认 ``#EC4899``，故意跟配置默认的黄色错开，好核对「选中环 + 预览笔迹」）。
+- ``LUMI_PREVIEW_ERASER=1`` —— 把工具切到「橡皮」并**展开橡皮子模式卡片**
+  （EraserModeCard，2026-10-07 自建批注），输出 ``top_window_eraser.png``
+  （浅色档出 ``top_window_eraser_light.png``）。
 - ``LUMI_PREVIEW_PLUGINS=0`` —— 关掉插件接缝三件套的补跑（默认开：常态全量档
   与浅色档跑完后自动起子进程渲染；``_labels`` / ``_pager_*`` / 编辑态 / 笔选单 /
   报告展开这些**对照档**不补跑 —— 插件接缝不受那些开关影响，跑了也是同样的图）。
@@ -86,6 +89,12 @@
   ``app.slide_thumbs.SlideThumbCache`` 配一个假导出器 —— 队列、代次号、节流、
   Pillow 烤圆角、``file://`` 转换全走真代码，只有「谁来画那张 PNG」换成了本地
   合成图。所以这一档也能证明「QML 那条 Image 路是通的」。
+- ``ink.png`` / ``ink_light.png`` —— 自建批注的墨迹场景（2026-10-07 计划
+  self-ink 第 11 项）：一块 InkLayer 铺在仿幻灯片底板上，烘好正弦曲线（压感
+  渐变）、圆点、自交 8 字与一条橡皮擦除带，用来目检烘焙渲染（圆头笔帽 /
+  相交覆盖 / 擦除透明度）。深色常态全量档自动带出 ``ink.png``；
+  ``LUMI_PREVIEW_INK=1`` 只出这一张（快速迭代用），配
+  ``LUMI_PREVIEW_THEME=light`` 出浅色版 ``ink_light.png``。
 
 ⚠️ 历史坑（2026-10-06 修）：浅色档（``ONLY_SPLASH``）曾在抓完启动画面后
 直接 ``return``，既不调 ``qt_app.quit()`` 也不还原主题 —— 进程挂住、
@@ -193,6 +202,9 @@ PREVIEW_PEN = os.environ.get("LUMI_PREVIEW_PEN", "") not in ("", "0")
 #: 选单预览里预点亮的颜色（``presentation.pen.default`` 之外另挑一个，
 #: 好把「选中环 + 预览笔迹跟着变」一起看掉）。
 PREVIEW_PEN_COLOR = os.environ.get("LUMI_PREVIEW_PEN_COLOR", "#EC4899")
+#: 橡皮子模式卡片（EraserModeCard）预览：把工具切到「橡皮」并展开卡片，
+#: 输出 ``top_window_eraser.png``。2026-10-07 自建批注（计划 self-ink 第 9 项）。
+PREVIEW_ERASER = os.environ.get("LUMI_PREVIEW_ERASER", "") not in ("", "0")
 #: 报告窗出「查看详细信息」展开那一档（默认收起）
 PREVIEW_DETAILS = os.environ.get("LUMI_PREVIEW_DETAILS", "") not in ("", "0")
 #: 本进程是否就是插件接缝子进程（主进程拉起的内部标记，见模块 docstring）。
@@ -204,6 +216,11 @@ PLUGIN_RUN = os.environ.get("LUMI_PREVIEW_PLUGIN_RUN", "") not in ("", "0")
 PEN_LIGHT = IS_LIGHT and PREVIEW_PEN
 if PEN_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 见上：把「浅色只出启动画面」让开
+#: 浅色主题 **+** 橡皮卡片 = 只出那一张（``top_window_eraser_light.png``），
+#: 理由同 ``PEN_LIGHT``（卡片底色 / 描边 / hover 底都取主题色）。
+ERASER_LIGHT = IS_LIGHT and PREVIEW_ERASER
+if ERASER_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 同上
 #: 快速切页面板（PageJumpPanel，点页码展开的那块）预览：展开面板，输出
 #: ``top_window_jump.png``。
 #:
@@ -228,6 +245,17 @@ PREVIEW_THUMBS = PREVIEW_JUMP and os.environ.get(
 JUMP_LIGHT = IS_LIGHT and PREVIEW_JUMP
 if JUMP_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 同上
+
+# ================================================================ 自建批注墨迹场景
+# 2026-10-07 计划 self-ink 第 11 项（本节为整体新增，与既有预览档互不干扰）。
+# 「只出墨迹场景」档：深色出 ``ink.png``、配 light 出 ``ink_light.png``；
+# 不设这个开关时，深色常态全量档也会自动带上 ``ink.png``（浅色档照旧只出
+# 启动画面，免得把深色图覆盖成浅色）。
+PREVIEW_INK = os.environ.get("LUMI_PREVIEW_INK", "") not in ("", "0")
+INK_LIGHT = IS_LIGHT and PREVIEW_INK
+if INK_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 同 PEN_LIGHT：浅色墨迹得单独开口子
+# ============================================================ 自建批注墨迹场景 完
 #: 翻页组件位置 → 该形态下**启用**的角落（与 bridge.py 的常量同一份口径）
 PAGER_POSITION_CORNERS = {
     "side": ("middle_left", "middle_right"),
@@ -428,8 +456,15 @@ def main() -> int:
                            corner in PAGER_POSITION_CORNERS[PREVIEW_PAGER],
                            persist=False)
 
+    # 墨迹输入前提：关高频事件合并（前后各调一次，原因见 configure_input_attributes docstring）
+    from app.ink import configure_input_attributes
+    configure_input_attributes()
     qt_app = QApplication(sys.argv)
+    configure_input_attributes()
     qt_app.setQuitOnLastWindowClosed(False)
+    # 自建墨迹类型（Luminalium.Ink 1.0）必须在加载任何 QML 之前登记（与 application.py 同一时序）
+    from app.ink import register_qml_types
+    register_qml_types()
 
     backend = Backend(config, qt_app)
     # 编辑器分组注册表登记（2026-10-05 插件系统 Wave 2 任务 9）：编辑器的
@@ -482,6 +517,15 @@ def main() -> int:
         try:
             return _run_page_only(rinui, qt_app, config, backend, previous_theme,
                                   previous_effect, labels_previous, pager_previous)
+        finally:
+            _restore_preview_state(rinui, config, backend, previous_theme,
+                                   previous_effect, labels_previous, pager_previous)
+
+    # 自建批注墨迹场景的单出档：就地短路走 _run_ink_only（2026-10-07 todo 11，
+    # 与 PAGE_ONLY 同手法 —— 不为一张图建整个世界）。
+    if PREVIEW_INK:
+        try:
+            return _run_ink_only(rinui, qt_app)
         finally:
             _restore_preview_state(rinui, config, backend, previous_theme,
                                    previous_effect, labels_previous, pager_previous)
@@ -564,6 +608,16 @@ def main() -> int:
             center_dock.setProperty("opened", True)
         else:
             print("[WARN] 没找到 penPalette（底中工具栏没启用工具组？）")
+
+    # 橡皮子模式卡片预览（2026-10-07 自建批注，计划 self-ink 第 9 项）：工具切到
+    # 「橡皮」并展开底中工具栏上的卡片 —— 与笔选单同一档位、同一个落点。
+    if PREVIEW_ERASER and container is not None:
+        backend.selectTool("eraser")
+        eraser_card = _find_by_name(container, "eraserPalette")
+        if eraser_card is not None:
+            eraser_card.setProperty("opened", True)
+        else:
+            print("[WARN] 没找到 eraserPalette（底中工具栏没启用工具组？）")
 
     # 快速切页面板预览：点页码展开的那块。横版（``pageJumpPanel``）与竖版
     # （``sidePageJumpPanel``）各有一个实例，**两个都展开** —— 它们的落点不一样
@@ -751,6 +805,14 @@ def main() -> int:
     # 各设置页单独渲染：用临时宿主窗口 + Loader 承载，逐页跑一遍
     page_hosts = _build_page_hosts(rinui.engine)
 
+    # 自建批注墨迹场景（2026-10-07 todo 11）：独立的仿幻灯片窗口，不挂在
+    # 任何既有窗口里 —— 加进既有图会改变视觉回归的对比基准。
+    ink_scene = _build_ink_scene(rinui.engine)
+    if ink_scene is not None:
+        # 烘笔画要比 capture（1.8s）提早一个事件循环回合：烘完立刻 grabWindow
+        # 会跟渲染循环里待处理的 update 顶住（见 _run_ink_only 的同款注释）。
+        QTimer.singleShot(1200, lambda: _bake_ink_scene(ink_scene))
+
     OUT_DIR.mkdir(exist_ok=True)
 
     def capture() -> None:
@@ -769,18 +831,20 @@ def main() -> int:
             # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
             targets = ([] if editor is None
                        else [("main_editor_edit_light.png", editor)])
-        elif PEN_LIGHT or JUMP_LIGHT:
-            # 浅色主题 + 某一个浮出层（笔选单 / 快速切页面板）：只出顶层窗口那一张
-            #（见 ``PEN_LIGHT`` / ``JUMP_LIGHT``）
+        elif PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT:
+            # 浅色主题 + 某一个浮出层（笔选单 / 橡皮卡片 / 快速切页面板）：
+            # 只出顶层窗口那一张（见 ``PEN_LIGHT`` / ``JUMP_LIGHT`` / ``ERASER_LIGHT``）
             targets = ([] if top_window is None else [(
                 "top_window_jump_light.png" if JUMP_LIGHT
+                else "top_window_eraser_light.png" if ERASER_LIGHT
                 else "top_window_pen_light.png", top_window)])
         else:
             targets = [("quick_panel.png", panel)]
             if top_window is not None:
-                # 笔选单那一档单独一个文件名：常态那张（选单收起）要留着对照
+                # 笔选单 / 橡皮卡片那档单独一个文件名：常态那张（卡片收起）要留着对照
                 targets.append((
                     preview_name("top_window_jump.png" if PREVIEW_JUMP
+                                 else "top_window_eraser.png" if PREVIEW_ERASER
                                  else "top_window_pen.png" if PREVIEW_PEN
                                  else "top_window.png"),
                     top_window,
@@ -798,6 +862,9 @@ def main() -> int:
                     editor,
                 ))
             targets += page_hosts
+            if ink_scene is not None:
+                # 自建批注墨迹场景（2026-10-07 todo 11）：深色常态全量档带上
+                targets.append(("ink.png", ink_scene))
 
         if os.environ.get("LUMI_PREVIEW_SIZES"):
             for name, window in targets:
@@ -815,7 +882,8 @@ def main() -> int:
         # ``_restore_preview_state``（外层 finally），不会重演 2026-10-06 前
         # 「浅色档 return 掉还原代码、进程挂死、主题留在 Light」那个坑。
         if (error_report is None or ONLY_SPLASH or PAGE_ONLY or EDITOR_LIGHT
-                or PEN_LIGHT or JUMP_LIGHT):
+                or PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT
+                or INK_LIGHT or PREVIEW_INK):
             return
         # ``LUMI_PREVIEW_DETAILS=1`` → 出「查看详细信息」**展开**那一档
         # （默认收起，见 ``ErrorReportWindow.qml`` 的头注释）。两档都要能目检，
@@ -965,19 +1033,165 @@ def _build_page_hosts(engine) -> list[tuple[str, object]]:
     return hosts
 
 
+# ================================================================ 自建批注墨迹场景
+# 2026-10-07 计划 self-ink 第 11 项（本节为整体新增，与既有预览档互不干扰）。
+
+INK_SCENE_QML = """import QtQuick
+import Luminalium.Ink 1.0
+
+Window {
+    id: inkScene
+    // 仿幻灯片底板色由 Python 按主题喂入（深色档深底、浅色档浅底），
+    // 墨迹本身的配色两档一致 —— 深浅底下「同一笔墨迹读不读得出来」正是要目检的。
+    property color paper: "#202024"
+
+    width: 1100
+    height: 640
+    visible: false
+    color: paper
+    flags: Qt.Tool | Qt.FramelessWindowHint
+
+    InkLayer {
+        objectName: "inkLayer"
+        anchors.fill: parent
+    }
+}
+"""
+
+
+def _build_ink_scene(engine):
+    """自建批注的墨迹场景窗：一块铺满的 InkLayer + 仿幻灯片底板。
+
+    宿主 QML 写进 ``preview/`` 不删 —— QQmlEngine 的文件监视器会在源文件
+    消失后回收由它创建的全部对象（与 ``_page_host.qml`` 同一个坑）。
+    """
+    OUT_DIR.mkdir(exist_ok=True)
+    scene_path = OUT_DIR / "_ink_scene.qml"
+    scene_path.write_text(INK_SCENE_QML, encoding="utf-8")
+    component = QQmlComponent(engine, QUrl.fromLocalFile(str(scene_path)))
+    if component.isError():
+        for error in component.errors():
+            print("INK SCENE ERROR:", error.toString())
+        return None
+    window = component.createWithInitialProperties(
+        {"paper": "#F7F7F7" if IS_LIGHT else "#202024", "visible": True}
+    )
+    if window is None:
+        print("INK SCENE CREATE ERROR")
+        return None
+    window._ink_component = component  # 持有引用防引擎回收（同 top_window）
+    window.setPosition(OFFSCREEN_X - 3200, OFFSCREEN_Y + 900)
+    window.show()
+    return window
+
+
+def _bake_ink_scene(window) -> bool:
+    """往场景里的 InkLayer 烘一批笔画，供抓图目检烘焙渲染。
+
+    全部走 InkLayer 对 QML 公开的**契约 API**（beginStroke / extendStroke /
+    endStroke + tool / penColor / penWidth 属性），不绕到模型层 —— 与真机
+    输入链路的落墨口完全一致。内容覆盖四类目检点：压感渐变曲线（圆头笔帽）、
+    圆点（单点成圆）、自交 8 字（相交处覆盖关系）、一条横穿的橡皮擦除带
+    （CompositionMode_Clear 的透明度）。
+    """
+    import math
+
+    from PySide6.QtGui import QColor
+
+    layer = _find_by_name(window.contentItem(), "inkLayer")
+    if layer is None:
+        print("[FAIL] 墨迹场景里找不到 inkLayer")
+        return False
+
+    def _stroke(points) -> None:
+        layer.beginStroke(points[0][0], points[0][1], points[0][2])
+        layer.extendStroke(points[1:])
+        layer.endStroke()
+
+    layer.setProperty("tool", "pen")
+    layer.setProperty("penWidth", 8.0)
+    # ① 正弦曲线（黄）：w 随行程渐变，看压感粗细与圆头衔接
+    layer.setProperty("penColor", QColor("#FFC000"))
+    _stroke([
+        [60.0 + t * 420.0,
+         160.0 + math.sin(t * math.pi * 2.5) * 75.0,
+         0.35 + 0.65 * (0.5 + 0.5 * math.sin(t * math.pi * 3))]
+        for t in (i / 120.0 for i in range(121))
+    ])
+    # ② 圆点（同色）：起收笔几乎同位，靠圆头笔帽画成圆点
+    for cx, cy in ((545.0, 95.0), (595.0, 135.0), (645.0, 95.0)):
+        _stroke([[cx, cy, 1.0], [cx + 0.6, cy + 0.6, 1.0]])
+    # ③ 自交 8 字（粉）：两次穿过中心，看相交处的覆盖关系
+    layer.setProperty("penColor", QColor("#EC4899"))
+    _stroke([
+        [810.0 + 150.0 * math.sin(t), 160.0 + 82.0 * math.sin(2.0 * t), 0.9]
+        for t in (i / 240.0 * 2.0 * math.pi for i in range(241))
+    ])
+    # ④ 下部蓝色折线：橡皮带扫不到它，用来对照「未被擦的笔画保持原样」
+    layer.setProperty("penColor", QColor("#38BDF8"))
+    _stroke([
+        [100.0 + i * 9.0, 430.0 + math.sin(i / 14.0 * math.pi) * 55.0, 0.8]
+        for i in range(101)
+    ])
+    # ⑤ 橡皮擦除带：横穿 ① 与 ③，看擦除带边缘与相交笔画的透明扣除
+    layer.setProperty("tool", "eraser")
+    layer.setProperty("penWidth", 36.0)
+    _stroke([[45.0 + i * 8.0, 170.0, 1.0] for i in range(129)])
+    layer.setProperty("tool", "pen")
+    return True
+
+
+def _run_ink_only(rinui, qt_app) -> int:
+    """``LUMI_PREVIEW_INK=1`` 的专用短路：只建墨迹场景窗，抓图收工。
+
+    与 ``_run_page_only`` 同一个理由：墨迹场景不依赖顶层窗口 / 编辑器 / 设置窗，
+    把整套世界（尤其是二十分钟级别的主界面编辑器）建一遍只为抓一张图，
+    单出档迭代根本没法用。
+    """
+    OUT_DIR.mkdir(exist_ok=True)
+    scene = _build_ink_scene(rinui.engine)
+    if scene is None:
+        print("[FAIL] 墨迹场景窗没建起来")
+        return 1
+
+    def shoot() -> None:
+        _grab_pair(scene, "ink_light.png" if INK_LIGHT else "ink.png")
+        qt_app.quit()
+
+    # 烘笔画与抓图必须错开两个事件循环回合：烘完立刻 grabWindow 会跟线程渲染
+    # 循环里待处理的 update 顶住（实测 121 点笔画挂死在 grab 内，2 点碰巧能过；
+    # 让事件循环空跑几百毫秒把这一帧出完再抓即秒回）。t4 自检用 processEvents
+    # + sleep 也是同一味药。
+    QTimer.singleShot(600, lambda: _bake_ink_scene(scene))
+    QTimer.singleShot(900, shoot)
+    return qt_app.exec()
+
+# ============================================================ 自建批注墨迹场景 完
+
+
 class _PreviewWindowStub:
     """``load_plugins`` 的最小窗口管理 stub（参照 task-17-render-list.py）。
 
     预览不经 ``WindowManager`` 开插件窗口：夹具窗口用组件单独建实例渲染，
     这里只要让 ``ctx.register_window`` 拿到一个能 show/hide 的句柄，
     插件的 ``register()`` 就能跑完。
+
+    ⚠️ ``_Handle.window`` 必须存在（恒 None）：计时器引擎的 100ms 心跳
+    ``_tick → _push_state`` 会读 ``句柄.window``，缺属性就是预览子进程里
+    每 100ms 一条 AttributeError 的栈（2026-10-07 插件巡检）。``set_hole``
+    同理是聚光灯 ``register_overlay`` 句柄的形状要求。
     """
 
     class _Handle:
+        window = None  # 计时器 _push_state 读它；恒 None = 推空操作
+
         def show(self) -> None: ...
         def hide(self) -> None: ...
 
     def register_window(self, name, qml_path, **options):
+        return _PreviewWindowStub._Handle()
+
+    def register_overlay(self, name, qml_path, *, label=None):
         return _PreviewWindowStub._Handle()
 
 
@@ -992,8 +1206,9 @@ def _should_render_plugin_seams() -> bool:
     if os.environ.get("LUMI_PREVIEW_ONLY", "") == "splash":
         return False
     return not (
-        PAGE_ONLY or PREVIEW_EDIT or PREVIEW_PEN
+        PAGE_ONLY or PREVIEW_EDIT or PREVIEW_PEN or PREVIEW_ERASER
         or PREVIEW_LABELS or PREVIEW_PAGER or PREVIEW_DETAILS
+        or PREVIEW_INK  # 墨迹场景单出档（2026-10-07 todo 11）：与插件接缝无关
     )
 
 
@@ -1026,7 +1241,7 @@ def _run_plugin_seams() -> int:
       ``main_editor.png`` / ``page_Plugins.png`` 全都会多出演示条目 ——
       既有预览图是视觉回归的对比基准，文件名与内容都必须零回归。
 
-    所以主进程照常渲染（零回归由构造保证），三件套在这个子进程里出：
+    所以主进程照常渲染（零回归由构造保证），插件画面在这个子进程里出：
 
     * ``plugin_demo_settings.png`` —— ``_demo`` 设置页（与 ``page_*`` 同款的
       Loader 宿主；设置键已注册，开关绑定 ``plugins._demo.flag`` 能解析）；
@@ -1035,18 +1250,34 @@ def _run_plugin_seams() -> int:
       组件名 / 图标 / 检查器描述符都按演示组件解析；``pager`` 只是让控制条
       有实体可聚焦 —— 空组区块高度为零，取景矩形会塌掉）；
     * ``plugin_demo_window.png`` —— ``_demo`` 夹具窗口（组件直接建实例，
-      ``onClosing`` 的动作链路不演示）。
+      ``onClosing`` 的动作链路不演示）；
+    * ``plugin_timer_window`` / ``plugin_blackboard_window`` /
+      ``plugin_spotlight_overlay`` / ``plugin_timer_settings`` /
+      ``plugin_spotlight_settings`` —— 三个正式插件的窗口与设置页
+      （2026-10-07 插件巡检补的覆盖：此前正式插件界面从没进过预览管线；
+      计时器灌一拍「剩 2:22」、黑板灌两笔一幕展示例，走的都是引擎 /
+      QML 的真实数据通道，不是截图改图）。
 
     浅色主题（继承主进程的 ``LUMI_PREVIEW_THEME``）下文件名带 ``_light``
     后缀，不覆盖深色版。锁屏可跑（离屏渲染，窗口摆屏幕外）。
     """
-    config = Config()
+    # ⚠️ 插件默认值必须照真实应用（application.py 装配）那样注入：裸 Config()
+    # 里没有 plugins.<id>.*，插件的设置键全是未定义 —— 计时器「提示音」开关
+    # 在预览里假 Off（2026-10-07 插件巡检实锤）。
+    config = Config(extra_defaults=loader.collect_defaults())
     # 演示开关置 ON（只改内存）：设置页与编辑器检查器的开关都绑
     # ``plugins._demo.flag``，点亮了好核对「绑定通 + 强调色对」。
     config.set("plugins._demo.flag", True, persist=False)
 
+    # 墨迹输入前提：关高频事件合并（前后各调一次，原因见 configure_input_attributes docstring）
+    from app.ink import configure_input_attributes
+    configure_input_attributes()
     qt_app = QApplication(sys.argv)
+    configure_input_attributes()
     qt_app.setQuitOnLastWindowClosed(False)
+    # 子进程自建引擎，同样要在加载 QML 前登记墨迹类型（与主流程同一时序）
+    from app.ink import register_qml_types
+    register_qml_types()
 
     backend = Backend(config, qt_app)
     # 内建组登记（幂等）必须在 load_plugins 之前 —— 加载末尾注册表冻结，
@@ -1078,34 +1309,40 @@ def _run_plugin_seams() -> int:
 
     failed = False
 
-    # ---- _demo 设置页（Loader 宿主，与 _build_page_hosts 同一份宿主 QML）----
+    # ---- 插件设置页（Loader 宿主，与 _build_page_hosts 同一份宿主 QML）。
+    # 计时器 / 聚光灯两页是 2026-10-07 巡检补的覆盖，_demo 那张保持原名零回归
     OUT_DIR.mkdir(exist_ok=True)
     host_path = OUT_DIR / "_page_host.qml"
     host_path.write_text(PAGE_HOST_QML, encoding="utf-8")
-    host_component = QQmlComponent(rinui.engine, QUrl.fromLocalFile(str(host_path)))
-    page_host = None
-    if host_component.isError():
-        for error in host_component.errors():
-            print("PLUGIN PAGE HOST ERROR:", error.toString())
-        failed = True
-    else:
-        page_host = host_component.createWithInitialProperties(
+
+    def _make_page_host(page_file, off_x):
+        nonlocal failed
+        component = QQmlComponent(rinui.engine, QUrl.fromLocalFile(str(host_path)))
+        if component.isError():
+            for error in component.errors():
+                print("PLUGIN PAGE HOST ERROR:", error.toString())
+            failed = True
+            return None
+        host = component.createWithInitialProperties(
             {
-                "pageUrl": QUrl.fromLocalFile(
-                    str(UI_DIR / "plugins" / "_demo" / "DemoSettings.qml")
-                ),
+                "pageUrl": QUrl.fromLocalFile(str(UI_DIR / "plugins" / page_file)),
                 "hostHeight": PAGE_HEIGHT,
                 "hostWidth": PAGE_WIDTH,
                 "visible": True,
             }
         )
-        if page_host is None:
+        if host is None:
             print("PLUGIN PAGE HOST CREATE ERROR")
             failed = True
-        else:
-            page_host._host_component = host_component  # 持有引用防引擎回收
-            page_host.setPosition(OFFSCREEN_X - 1800, OFFSCREEN_Y - 1800)
-            page_host.show()
+            return None
+        host._host_component = component  # 持有引用防引擎回收
+        host.setPosition(OFFSCREEN_X - off_x, OFFSCREEN_Y - 1800)
+        host.show()
+        return host
+
+    page_host = _make_page_host(Path("_demo") / "DemoSettings.qml", 1800)
+    timer_host = _make_page_host(Path("timer") / "TimerSettings.qml", 4200)
+    spotlight_host = _make_page_host(Path("spotlight") / "SpotlightSettings.qml", 5400)
 
     # ---- 主界面编辑器：选中含 _demo_group 的角落（backdropEnabled 关掉的
     # 理由与主流程相同：离屏抓图拿不到 DWM 亚克力层）----
@@ -1155,16 +1392,153 @@ def _run_plugin_seams() -> int:
             demo_window.setPosition(OFFSCREEN_X - 2400, OFFSCREEN_Y - 1000)
             demo_window.show()
 
+    # ---- 三个正式插件的窗口（2026-10-07 插件巡检补的覆盖：此前正式插件
+    # 的窗口 / 设置页从没进过预览管线，版式坏了只能靠真机肉眼）----
+    plugin_windows = []
+
+    def _make_plugin_window(file_name, initial=None, setup=None):
+        """按 ``_demo`` 夹具窗口同款手法建一只插件窗口；失败只记不炸。"""
+        nonlocal failed
+        component = QQmlComponent(
+            rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "plugins" / file_name))
+        )
+        if component.isError():
+            for error in component.errors():
+                print(f"PLUGIN WINDOW ERROR [{file_name}]:", error.toString())
+            failed = True
+            return None
+        window = component.createWithInitialProperties(initial or {})
+        if window is None:
+            print(f"PLUGIN WINDOW CREATE ERROR [{file_name}]")
+            failed = True
+            return None
+        window._plugin_component = component  # 持有引用防引擎回收
+        if setup is not None:
+            setup(window)
+        return window
+
+    def _seed_timer(window):
+        # 引擎没在跑（stub 句柄 .window 恒 None），手动灌一拍「剩 2:22」的
+        # 状态 —— 走的正是 Python 引擎 setProperty 的同一条显示通道
+        window.setProperty("cdTotal", 300000)
+        window.setProperty("cdRemaining", 142000)
+
+    def _seed_blackboard(window):
+        # 直接灌两笔已落定的笔画 + 一个单击点（点路径 2026-10-07 才有，
+        # 正好让预览盯住它）：下一帧 onPaint 的 dirtyAll 分支整幅重画
+        strokes = [
+            {"color": "#F3F3EE", "width": 6, "points": [
+                {"x": 70.0, "y": 210.0}, {"x": 180.0, "y": 150.0},
+                {"x": 300.0, "y": 230.0}, {"x": 420.0, "y": 160.0},
+            ]},
+            {"color": "#F7D858", "width": 12, "points": [
+                {"x": 120.0, "y": 330.0}, {"x": 330.0, "y": 350.0},
+            ]},
+            {"color": "#F28B82", "width": 6, "points": [{"x": 480.0, "y": 220.0}]},
+        ]
+        window.setProperty("strokes", strokes)
+        window.setProperty("dirtyAll", True)
+
+    plugin_windows.append(_make_plugin_window(
+        Path("timer") / "TimerWindow.qml",
+        {"visible": True}, _seed_timer,
+    ))
+    plugin_windows.append(_make_plugin_window(
+        Path("blackboard") / "BlackboardWindow.qml",
+        {"visible": True}, _seed_blackboard,
+    ))
+    plugin_windows.append(_make_plugin_window(
+        Path("spotlight") / "SpotlightOverlay.qml",
+        {"visible": True, "width": 960, "height": 600},
+    ))
+    for i, window in enumerate(plugin_windows):
+        if window is not None:
+            window.setPosition(OFFSCREEN_X - 3000 - i * 1200, OFFSCREEN_Y - 1600)
+            window.show()
+
+    # ---- 放映顶层窗口 + 控制条（与主流程同款手法，紧凑 1100x640）：插件
+    # 的 dock 动作（timer / blackboard / spotlight / _demo）全在 actions 区，
+    # 「⋯」溢出菜单就是被它们挤出来的 —— 没这张图，溢出坏了没人知道
+    plugin_top = None
+    top_c = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "presentation" / "TopWindow.qml"))
+    )
+    dock_c = QQmlComponent(
+        rinui.engine,
+        QUrl.fromLocalFile(str(UI_DIR / "presentation" / "PresentationDock.qml")),
+    )
+    side_c = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "presentation" / "SidePager.qml"))
+    )
+    for tag, comp in (("TOP", top_c), ("DOCK", dock_c), ("SIDE", side_c)):
+        if comp.isError():
+            for error in comp.errors():
+                print(f"PLUGIN {tag} COMPONENT ERROR:", error.toString())
+            failed = True
+    if not top_c.isError():
+        plugin_top = top_c.createWithInitialProperties({"visible": True})
+        if plugin_top is None:
+            print("PLUGIN TOP WINDOW CREATE ERROR")
+            failed = True
+        else:
+            plugin_top._top_component = top_c  # 持有引用防引擎回收
+            plugin_top.setWidth(1100)
+            plugin_top.setHeight(640)
+            plugin_top.setPosition(OFFSCREEN_X - 400, OFFSCREEN_Y - 2600)
+            plugin_top.show()
+            container = plugin_top.property("container")
+            margin_x = int(config.get("presentation.margin_x", 20))
+            margin_y = int(config.get("presentation.margin_y", 20))
+            corners_cfg = config.get("presentation.corners", {}) or {}
+            for corner in CORNERS:
+                if not (corners_cfg.get(corner) or {}).get("enabled", False):
+                    continue
+                vertical = corner.startswith("middle")
+                comp = side_c if vertical else dock_c
+                dock = comp.createWithInitialProperties({"corner": corner})
+                if dock is None:
+                    continue
+                dock._dock_component = comp  # 持有引用防引擎回收
+                dock.setParentItem(container)
+                shadow = int(dock.property("shadowMargin") or 0)
+                if corner.endswith("left"):
+                    x = margin_x - shadow
+                elif corner.endswith("center"):
+                    x = (1100 - dock.width()) // 2
+                else:
+                    x = 1100 - dock.width() - margin_x + shadow
+                if vertical:
+                    dock.setY((640 - dock.height()) // 2)
+                else:
+                    dock.setY(640 - dock.height() - margin_y + shadow)
+                dock.setX(x)
+
     def capture() -> None:
         nonlocal failed
         suffix = "_light" if IS_LIGHT else ""
         targets = []
         if page_host is not None:
             targets.append((f"plugin_demo_settings{suffix}.png", page_host))
+        if timer_host is not None:
+            targets.append((f"plugin_timer_settings{suffix}.png", timer_host))
+        if spotlight_host is not None:
+            targets.append((f"plugin_spotlight_settings{suffix}.png", spotlight_host))
         if editor is not None:
             targets.append((f"plugin_editor_demo{suffix}.png", editor))
         if demo_window is not None:
             targets.append((f"plugin_demo_window{suffix}.png", demo_window))
+        names = [
+            f"plugin_timer_window{suffix}.png",
+            f"plugin_blackboard_window{suffix}.png",
+            f"plugin_spotlight_overlay{suffix}.png",
+        ]
+        for name, window in zip(names, plugin_windows):
+            if window is not None and not _grab(name, window):
+                failed = True
+        if plugin_top is not None and not _grab(
+            f"plugin_top_window{suffix}.png", plugin_top
+        ):
+            failed = True
         for name, window in targets:
             if not _grab(name, window):
                 failed = True

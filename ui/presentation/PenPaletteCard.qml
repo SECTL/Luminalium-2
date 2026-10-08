@@ -12,7 +12,7 @@ import Luminalium
 
     ## 版式（Fluent 2 flyout）
 
-    两段内容 + 中间一条 1px 分隔线，各段带 ``Caption`` 小标题（12px / 600，
+    三段内容 + 段间 1px 分隔线，各段带 ``Caption`` 小标题（12px / 600，
     Fluent 2 的分段标题档）::
 
         颜色                     ← Caption，secondary
@@ -20,8 +20,16 @@ import Luminalium
         ● ● ● ● ● ● ● ● ● ●
         ● ● ● ● ● ● ● ● ● ●
         ─────────────────────    ← 1px hairline（分区线不比卡片描边扎眼）
+        粗细                     ← 2026-10-07 用户指令：自建批注（presentation.pen.widths）
+        · • ● ⬤                  ← 与色点同尺寸的圆形热区，点径随档位递增、颜色随选色
+        ─────────────────────
         预览                     ← Caption，secondary
         ⌒⌒⌒⌒⌒⌒⌒⌒⌒⌒⌒           ← 次级底板（Subtle fill）上的波浪笔迹
+
+    「粗细」段在 ``widths`` 为空时连同它上面那条分隔线一起不出（翻页 pill 也挂着
+    本组件，那里不给档位）。选中档的读法与颜色相同：``selectedWidth`` 由调用方给，
+    卡片自己不存状态。com 引擎下这一行照样显示，但点了不生效（应用层忽略
+    ``pen_width:``，PowerPoint 的放映笔没有粗细接口）。
 
     动效照 Fluent 2 的 flyout enter：**淡入 + 从触发点外侧滑入**
     （卡片在条上方 → 从贴近条的位置向上浮），``OutQuint``（decelerate）；
@@ -42,6 +50,16 @@ import Luminalium
     ⚠️ 卡片**不进** dock 的 ``implicitWidth/Height``：dock 的尺寸一变，
     ``_position_dock`` 就要重摆，条会在「长大 / 归位」之间闪一帧。尺寸不动、
     纯靠绘制溢出，是这个交互最省事的形态。
+
+    ## 收起路径（2026-10-08 用户报告：自建批注）
+
+    * 再点一次「笔」= 开合切换（``PresentationDock.activateTool``）；点色点 /
+      粗细档**不收**（用户可能接着对比）；
+    * 换工具 / 退出放映自动收（``PresentationDock`` 底部的 Connections）；
+    * 卡开着时点画布空白：self 引擎笔/橡皮态下，第一按被 InkLayer 的起笔钩子
+      消费成「收起卡片」、不起笔，之后的按下正常落墨；com 引擎 / 穿透态下点击
+      进不了进程，退化为「光标离开控制条即收」。两条路都是 Python 侧调
+      ``PresentationDock.closeToolCards()``（``windows._dismiss_tool_cards``）。
 
     ## 选中态的读法
 
@@ -73,6 +91,19 @@ Item {
 
     /*! 点了一格色点 —— 交给调用方去落配置并驱动 PowerPoint。 */
     signal colorPicked(color value)
+
+    /*! 粗细档（逻辑 px 数组，``presentation.pen.widths``）。空数组 = 不出「粗细」
+        那一段（连同它上面的分隔线）。2026-10-07 用户指令：自建批注。 */
+    property var widths: []
+    property string titleWidth: qsTr("粗细")
+    /*! 当前选中的粗细（px）；0 = 没有任何一档点亮。与 ``selectedColor`` 同一个
+        读法：卡片自己不存状态，由调用方给（后端记着的值，没选过时是配置的
+        ``default_width``）。 */
+    property real selectedWidth: 0
+    /*! 点了一档粗细 —— 交给调用方经 Backend 发 ``pen_width:<px>``。 */
+    signal widthPicked(real value)
+    readonly property bool hasWidths: widths !== undefined && widths.length > 0
+    readonly property bool hasWidthSelection: selectedWidth > 0
 
     readonly property int shadowMargin: Lumi.dockPaletteShadowMargin
     readonly property int padding: Lumi.dockPalettePadding
@@ -285,6 +316,103 @@ Item {
                                     easing.type: Easing.OutQuint
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ========================================================== 粗细
+        // 2026-10-07 用户指令：自建批注 —— 自建墨迹第一次能在控制条上直接调粗细。
+        // 放在颜色与预览之间：选色 → 选粗细 → 看预览，是从上往下读的顺序。
+        // 每一档是与色点同尺寸的圆形热区，里面画一颗**实心圆点**，直径随档位
+        // 递增（不是真实 px —— 2px 的点在 30px 的热区里几乎看不见），颜色跟着
+        // 当前选色走，选中态 / hover 态与色点同一套环。
+        Rectangle {
+            objectName: "penPaletteWidthDivider"
+            visible: root.hasWidths
+            width: root.gridWidth
+            height: 1
+            color: Lumi.dockPaletteDivider
+        }
+
+        Column {
+            visible: root.hasWidths
+            spacing: root.titleGap
+
+            Rin.Text {
+                objectName: "penPaletteTitleWidth"
+                text: root.titleWidth
+                typography: Rin.Typography.Caption
+                color: Lumi.dockPaletteLabel
+            }
+
+            Row {
+                id: widthRow
+                objectName: "penPaletteWidthRow"
+                spacing: root.swatchSpacing
+
+                Repeater {
+                    model: root.hasWidths ? root.widths : []
+
+                    delegate: Rin.Clip {
+                        id: widthTile
+                        objectName: "penWidthTile"
+
+                        /*! 自检镜像（同色点：效果层 PySide 读不到）。 */
+                        readonly property real widthValue: Number(modelData)
+                        readonly property bool widthSelected: root.hasWidthSelection
+                            && Math.abs(widthValue - root.selectedWidth) < 0.01
+
+                        width: root.swatchSize
+                        height: width
+                        radius: width / 2
+                        color: "transparent"
+                        padding: 0
+                        hoverEnabled: true
+                        onClicked: root.widthPicked(widthValue)
+
+                        scale: widthTile.down ? 0.88 : 1.0
+                        Behavior on scale {
+                            NumberAnimation {
+                                duration: Lumi.dockPaletteFadeDuration
+                                easing.type: Easing.OutQuint
+                            }
+                        }
+
+                        Rectangle {
+                            objectName: "penWidthRing"
+                            visible: widthTile.widthSelected
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: Lumi.dockSwatchRingWidth
+                            border.color: Lumi.dockSwatchRingColor
+                        }
+
+                        Rectangle {
+                            objectName: "penWidthHoverRing"
+                            visible: widthTile.hovered && !widthTile.widthSelected
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: Lumi.dockSwatchHoverRingWidth
+                            border.color: Lumi.dockSwatchHoverRing
+                        }
+
+                        /*! 档位圆点：直径 = 档位 + 4，封顶到热区减掉选中环占位，
+                            于是最粗那档也不会顶到环。描边理由同色点（白/黑点与底色糊）。 */
+                        Rectangle {
+                            objectName: "penWidthDot"
+                            anchors.centerIn: parent
+                            width: Math.min(widthTile.widthValue + 4,
+                                            parent.width - (Lumi.dockSwatchRingWidth
+                                                            + Lumi.dockSwatchRingGap) * 2 - 2)
+                            height: width
+                            radius: width / 2
+                            color: root.strokeColor
+                            border.width: 1
+                            border.color: Lumi.dockPaletteBorder
                         }
                     }
                 }

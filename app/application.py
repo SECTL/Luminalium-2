@@ -26,6 +26,21 @@ loader 末尾会 ``registry.freeze()``，冻结后注册直接抛 RuntimeError�
 ``ppt_controller``（与 COM / 按键注入零接触），动作后的 ``refresh_now``
 补刷对它也不强制（插件自理）。内建动作的硬编码 if/elif 同步改为分发表，
 行为逐字不变；``state.active`` 门控对非 ``plugin:`` 动作不放宽。
+
+2026-10-07（计划 self-ink 第 6 项，用户决策 Q1）：``tool:`` / ``pen_color:`` /
+``clear_screen`` 不再只有 COM 一条路，按 ``presentation.ink.engine`` 分流 ——
+``self``（默认）交给自建墨迹窗口（PPT 指针保持 arrow，颜色 / 清屏不碰 COM），
+``com`` 走改造前的旧链路逐字不变。动机：COM 放映笔的手感不受我们控制，
+PowerPoint 与 WPS 两家表现不一致（WPS 连 PointerColor 都不认）；com 保留作兜底。
+放映中切换引擎经 ``Config.on_change`` 即时生效，见 ``_on_config_changed``。
+
+2026-10-07（计划 self-ink 第 9 项，用户指令：自建批注）：新增第四个特权
+前缀 ``pen_width:``（笔选单「粗细」一行）—— 与 ``pen_color:`` 同一条路，
+self 引擎落到 InkLayer.penWidth，com 引擎忽略（放映笔没有粗细接口）。
+
+2026-10-08（用户指令：自建批注）：第五个特权前缀 ``eraser_width:``（橡皮卡片
+「粗细」一行）—— 与 ``pen_width:`` 逐字同构，self 引擎落到
+InkLayer.eraserWidth，com 引擎忽略（橡皮交给演示软件自己）。
 """
 
 from __future__ import annotations
@@ -37,8 +52,8 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from PySide6.QtCore import QTimer
-from PySide6.QtGui import QCursor
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import QApplication, QMenu
 from RinUI import BackdropEffect, RinUIWindow, Theme
 from RinUI.core.config import is_win10, is_win11
@@ -107,6 +122,49 @@ SPLASH_STEP_MS = 420
 SPLASH_HOLD_MS = 520
 
 
+def _overflow_menu_qss(dark: bool) -> str:
+    """「⋯」溢出菜单的原生 QSS（按深浅主题取色）。
+
+    ⚠️ 这个名字曾以**常量**形态被 ``_show_overflow_menu`` 引用却从未被
+    定义（2026-10-05 控制条原型 4f22f90 起的潜伏 bug）：此前控制条动作
+    少、「⋯」按钮从未出现过，直到 2026-10-06 三个正式插件把动作区挤出
+    可视容量，第一次点「⋯」就 NameError 崩溃（错误报告窗接住）。改成
+    **函数**是为了让配色跟随主题 —— Python 侧读不到 RinUI 的 QML 单例，
+    深浅两套色值照抄 ``ui/Luminalium/Lumi.qml`` 的菜单语境令牌手工对齐。
+    """
+    if dark:
+        bg, border, text, text_dim = "#2B2B2B", "rgba(255,255,255,0.08)", "#FFFFFF", "rgba(255,255,255,0.36)"
+        hover, separator = "rgba(255,255,255,0.08)", "rgba(255,255,255,0.08)"
+    else:
+        bg, border, text, text_dim = "#F6F6F6", "rgba(0,0,0,0.06)", "#1A1A1A", "rgba(0,0,0,0.36)"
+        hover, separator = "rgba(0,0,0,0.05)", "rgba(0,0,0,0.08)"
+    return f"""
+QMenu {{
+    background-color: {bg};
+    border: 1px solid {border};
+    border-radius: 8px;
+    padding: 4px;
+}}
+QMenu::item {{
+    color: {text};
+    background: transparent;
+    padding: 7px 26px 7px 12px;
+    border-radius: 5px;
+}}
+QMenu::item:selected {{ background: {hover}; }}
+QMenu::item:disabled {{ color: {text_dim}; }}
+QMenu::separator {{
+    height: 1px;
+    background: {separator};
+    margin: 4px 8px;
+}}
+QMenu::right-arrow {{
+    width: 12px; height: 12px;
+    background: {text_dim};
+}}
+"""
+
+
 def setup_logging(level: str = "INFO") -> None:
     ensure_runtime_dirs()
     root = logging.getLogger()
@@ -161,7 +219,14 @@ class LuminaliumApplication:
         setup_logging(str(self.config.get("app.log_level", "INFO")))
         log.info("Luminalium 2 v%s 启动", __version__)
 
+        # 自建墨迹的输入前提：关高频指针事件合并（为什么前后各调一次见 configure_input_attributes
+        # 的 docstring——Qt 6.11/Windows 构造期间会把属性翻回 True，构造后再调才真正生效）
+        from .ink import configure_input_attributes
+        configure_input_attributes()
+
         self.qt_app = QApplication(argv)
+        configure_input_attributes()
+        self.qt_app.setApplicationName(APP_NAME)
         self.qt_app.setApplicationName(APP_NAME)
         self.qt_app.setApplicationDisplayName(str(self.config.get("app.name", APP_NAME)))
         self.qt_app.setQuitOnLastWindowClosed(False)
@@ -177,6 +242,11 @@ class LuminaliumApplication:
         i18n.install_translators(self.qt_app, language)
         i18n.apply_ui_font(self.qt_app, language)
         rinui_patch.apply()
+        # 自建墨迹的 QML 类型（Luminalium.Ink 1.0）必须赶在首次 rinui.load 之前
+        # 登记：引擎编译到 ``import Luminalium.Ink`` 时类型表里没有就直接报
+        # 「module not installed」，事后再注册救不回已失败的组件。
+        from .ink import register_qml_types
+        register_qml_types()
 
         # ---- 后端 ----
         # 先把 socket 栈预热掉：Windows 上进程内第一次网络调用可能被 Winsock
@@ -203,6 +273,15 @@ class LuminaliumApplication:
         self.backend.attach_slide_thumbs(self.slide_thumbs)
         # 「⋯」溢出菜单。必须持有引用，否则局部变量回收后菜单立即消失。
         self._overflow_menu: Optional[QMenu] = None
+        # 墨迹引擎改道的两份运行期状态（引擎本身**不**缓存，每次现读 config，
+        # 见 ``_ink_engine``）：
+        # * ``_current_tool``：最近一次选中的工具。放映中切换引擎时要把它重新
+        #   套到新引擎上，否则控制条显示「笔」、实际却谁都不画。
+        # * ``_ppt_pointer_is_arrow``：进入 self 模式后是否已把 PPT 指针复位成
+        #   arrow。只复位一次 —— 每点一次工具都往 COM 线程投一次 set_tool 是
+        #   白白的跨线程往返（还会让 WPS 的快捷键回退通道多按一次 Ctrl+A）。
+        self._current_tool = "arrow"
+        self._ppt_pointer_is_arrow = False
 
         # ---- RinUI 引擎（共享一个 engine，所有窗口共用主题）----
         self.rinui = RinUIWindow()
@@ -302,6 +381,15 @@ class LuminaliumApplication:
         self.backend.quitRequested.connect(self.quit)
         self.backend.themeChangeRequested.connect(self._apply_theme)
         self.backend.accentChangeRequested.connect(self._apply_accent)
+
+        # 墨迹引擎：放映中切换即时改道（Config 只有一处来源，监听它而不是另存一份）。
+        # self 模式下墨迹窗口的「意图」在启动时就登记好：WindowManager 只记意图，
+        # 真正露脸要等放映开始（show_docks 按 _ink_active 恢复）；当前工具是
+        # arrow 时窗口整窗穿透，不吃点击。
+        self.config.on_change(self._on_config_changed)
+        if self._ink_engine() == "self":
+            self.windows.set_ink_active(True)
+            self.windows.set_ink_tool(self._current_tool)
 
         # ---- 错误 / 崩溃报告 ----
         # 采集到报告 → 弹窗；「忽略」→ 收窗继续跑；「重新启动 / 退出程序」→
@@ -512,30 +600,97 @@ class LuminaliumApplication:
     def _on_action(self, action: str) -> None:
         """控制条动作分发。
 
-        三个特权前缀（``tool:`` / ``pen_color:`` / ``plugin:``）都先于
-        「在放映中吗」门控；其余动作查内建分发表，且要求 ``state.active``。
+        五个特权前缀（``tool:`` / ``pen_color:`` / ``pen_width:`` /
+        ``eraser_width:`` / ``plugin:``）都先于「在放映中吗」门控；其余动作查
+        内建分发表，且要求 ``state.active``。
         """
         state = self.ppt.state
         hwnd = state.window_handle
 
         if action.startswith("tool:"):
+            # 2026-10-07（计划 self-ink 第 6 项，用户决策 Q1）：按墨迹引擎分流。
+            # self：笔 / 橡皮交给自建墨迹窗口，PPT 指针保持 arrow；com：旧链路
+            # 逐字不变（COM 笔手感不受控、PowerPoint / WPS 两家不一致，只作兜底）。
             tool = action.split(":", 1)[1]
-            self.ppt.set_tool(tool, hwnd)
+            self._current_tool = tool
+            if self._ink_engine() == "self":
+                self._apply_tool_to_self_ink(tool, hwnd)
+            else:
+                self.windows.set_ink_active(False)
+                self.ppt.set_tool(tool, hwnd)
+                self._ppt_pointer_is_arrow = False
             log.info("切换工具: %s", tool)
             return
 
         if action.startswith("pen_color:"):
             # 笔选单里点了一格颜色（``#RRGGBB``）。和 ``tool:`` 一样**先于**
-            # 「在放映中吗」的判断 —— 颜色是在 COM 层生效的，不该被窗口探测
-            # 的时序挡住；控制条本来就只在放映中出现。
+            # 「在放映中吗」的判断 —— 颜色不该被窗口探测的时序挡住；控制条
+            # 本来就只在放映中出现。self 引擎下颜色只落到 InkLayer，**不碰 COM**
+            # （PointerColor 只有 PowerPoint 认，这正是改用自建墨迹的动机之一）。
             code = action.split(":", 1)[1].lstrip("#")
             try:
                 r, g, b = (int(code[i:i + 2], 16) for i in (0, 2, 4))
             except (ValueError, IndexError):
                 log.warning("无法解析墨迹颜色: %r", action)
                 return
-            self.ppt.set_pen_color(r, g, b, hwnd)
+            if self._ink_engine() == "self":
+                layer = self.windows.ink_layer()
+                if layer is None:
+                    log.info("墨迹层尚未创建，颜色待下次放映生效: #%s", code.upper())
+                else:
+                    layer.setProperty("penColor", QColor(r, g, b))
+            else:
+                self.ppt.set_pen_color(r, g, b, hwnd)
             log.info("切换墨迹颜色: #%s", code.upper())
+            return
+
+        if action.startswith("pen_width:"):
+            # 笔选单「粗细」一行点了一档（2026-10-07 计划 self-ink 第 9 项，
+            # 用户指令：自建批注）。与 ``pen_color:`` 同级：先于「在放映中吗」
+            # 门控。只有 self 引擎有粗细可言 —— PowerPoint / WPS 的放映笔
+            # 没有粗细接口（这正是自建墨迹的动机之一），com 下只记日志。
+            try:
+                width = float(action.split(":", 1)[1])
+            except (ValueError, IndexError):
+                log.warning("无法解析笔粗细: %r", action)
+                return
+            if not width > 0:
+                log.warning("非法笔粗细: %r", action)
+                return
+            if self._ink_engine() == "self":
+                layer = self.windows.ink_layer()
+                if layer is None:
+                    log.info("墨迹层尚未创建，粗细待下次放映生效: %g", width)
+                else:
+                    layer.setProperty("penWidth", width)
+            else:
+                log.debug("com 引擎无笔粗细接口，忽略: %g", width)
+                return
+            log.info("切换笔粗细: %g", width)
+            return
+
+        if action.startswith("eraser_width:"):
+            # 橡皮卡片「粗细」一行点了一档（2026-10-08 用户指令：自建批注）。
+            # 与 ``pen_width:`` 逐字同构：先于「在放映中吗」门控；只有 self 引擎
+            # 有橡皮粗细可言 —— com 下橡皮是演示软件自己的，只记日志。
+            try:
+                width = float(action.split(":", 1)[1])
+            except (ValueError, IndexError):
+                log.warning("无法解析橡皮粗细: %r", action)
+                return
+            if not width > 0:
+                log.warning("非法橡皮粗细: %r", action)
+                return
+            if self._ink_engine() == "self":
+                layer = self.windows.ink_layer()
+                if layer is None:
+                    log.info("墨迹层尚未创建，橡皮粗细待下次放映生效: %g", width)
+                else:
+                    layer.setProperty("eraserWidth", width)
+            else:
+                log.debug("com 引擎无橡皮粗细接口，忽略: %g", width)
+                return
+            log.info("切换橡皮粗细: %g", width)
             return
 
         if action.startswith("plugin:"):
@@ -571,7 +726,12 @@ class LuminaliumApplication:
                 "exit_presentation": lambda: self.ppt.exit_slideshow(hwnd),
                 "pager:next": lambda: self.ppt.next_slide(hwnd),
                 "pager:previous": lambda: self.ppt.previous_slide(hwnd),
-                "clear_screen": lambda: self.ppt.clear_screen(hwnd),
+                # 清屏按墨迹引擎分流：self 清自建墨迹的当前页，com 走旧 COM 清屏
+                "clear_screen": (
+                    self._clear_self_ink_page
+                    if self._ink_engine() == "self"
+                    else lambda: self.ppt.clear_screen(hwnd)
+                ),
                 "overflow": self._show_overflow_menu,
             }
             handler = handlers.get(action)
@@ -587,6 +747,83 @@ class LuminaliumApplication:
         QTimer.singleShot(90, self.ppt.refresh_now)
         QTimer.singleShot(320, self.ppt.refresh_now)
 
+    # ======================================================== 墨迹引擎改道
+
+    def _ink_engine(self) -> str:
+        """当前墨迹引擎：``self``（自建，默认）或 ``com``（PowerPoint / WPS 放映笔）。
+
+        每次现读 config、不另存一份：配置只有一处来源，设置页 / 手改
+        config.json 改了它，下一次动作就按新值走。未知值按默认 self 处理。
+        """
+        engine = str(self.config.get("presentation.ink.engine", "self")).lower()
+        return "com" if engine == "com" else "self"
+
+    def _ensure_ppt_arrow(self, hwnd: int) -> None:
+        """self 模式下把 PPT 指针复位成 arrow —— 只投递一次。
+
+        PPT 侧若停在笔态，放映窗口会和墨迹窗口抢着画；但每点一次工具都
+        投一次 set_tool 是白跑的 COM 往返，所以用 ``_ppt_pointer_is_arrow`` 记住。
+        """
+        if self._ppt_pointer_is_arrow:
+            return
+        self.ppt.set_tool("arrow", hwnd)
+        self._ppt_pointer_is_arrow = True
+
+    def _apply_tool_to_self_ink(self, tool: str, hwnd: int) -> None:
+        """把工具套到自建墨迹上：窗口始终在场，笔 / 橡皮吃输入、其余穿透。"""
+        self._ensure_ppt_arrow(hwnd)
+        self.windows.set_ink_active(True)
+        self.windows.set_ink_tool(tool if tool in ("pen", "eraser") else "arrow")
+
+    def _call_ink_layer(self, slot: str) -> None:
+        """调 InkLayer 上的一个无参槽（clearPage / clearAll）；层或槽缺失只记日志。
+
+        防御式取槽：这些槽由并行任务补进 InkLayer，旧层上没有时不能把动作分发带崩。
+        """
+        layer = self.windows.ink_layer()
+        if layer is None:
+            log.info("墨迹层尚未创建，跳过 %s", slot)
+            return
+        method = getattr(layer, slot, None)
+        if method is None:
+            log.warning("墨迹层缺少 %s 槽，跳过", slot)
+            return
+        method()
+
+    def _clear_self_ink_page(self) -> None:
+        self._call_ink_layer("clearPage")
+
+    def _on_config_changed(self, path: str, value: Any) -> None:
+        """放映中切换墨迹引擎即时生效（挂在 ``Config.on_change`` 上）。"""
+        if path == "presentation.ink.eraser_mode":
+            # 橡皮子模式（计划第 8 项）：控制条卡片写配置，这里推给在场的层；
+            # 层还没建的话 _apply_ink_config 会在建窗时补
+            layer = self.windows.ink_layer()
+            if layer is not None:
+                layer.setProperty("eraserMode", str(value) if str(value) in ("pixel", "stroke") else "pixel")
+            return
+        if path in ("presentation.ink.palm_erase", "presentation.ink.palm_threshold_mm"):
+            # 手掌擦除开关 / 阈值（计划第 8 项）：与上同理，实时推给在场的层
+            layer = self.windows.ink_layer()
+            if layer is not None:
+                layer.setProperty("palmEraseEnabled", bool(self.config.get("presentation.ink.palm_erase", True)))
+                layer.setProperty("palmThresholdMm", float(self.config.get("presentation.ink.palm_threshold_mm", 20)))
+            return
+        if path != "presentation.ink.engine":
+            return
+        hwnd = self.ppt.state.window_handle
+        if self._ink_engine() == "com":
+            # self→com：收起并清空自建墨迹，工具交还给 COM 放映笔
+            self._call_ink_layer("clearAll")
+            self.windows.set_ink_active(False)
+            self._ppt_pointer_is_arrow = False
+            self.ppt.set_tool(self._current_tool, hwnd)
+        else:
+            # com→self：PPT 指针复位 arrow（一次），再把当前工具套到墨迹窗口
+            self._ppt_pointer_is_arrow = False
+            self._apply_tool_to_self_ink(self._current_tool, hwnd)
+        log.info("墨迹引擎切换为: %s", self._ink_engine())
+
     def _show_overflow_menu(self) -> None:
         """控制条上「⋯」溢出菜单。
 
@@ -599,11 +836,18 @@ class LuminaliumApplication:
             self._overflow_menu.close()
 
         menu = QMenu()
-        menu.setStyleSheet(OVERFLOW_MENU_QSS)
+        # 半透明底 + 圆角 QSS：不设这个属性的话 QSS 的 border-radius 外面
+        # 会露出一圈方角黑底
+        menu.setAttribute(Qt.WA_TranslucentBackground, True)
+        menu.setStyleSheet(_overflow_menu_qss(self.windows._dark_theme()))
         menu.addAction(i18n.tr("Overflow", "上一页"), self.backend.previousSlide)
         menu.addAction(i18n.tr("Overflow", "下一页"), self.backend.nextSlide)
         menu.addSeparator()
-        for item in self.config.get("presentation.actions", []) or []:
+        # 动作列表镜像控制条本体：读 ``presentationConfig``（config 内建 ∪
+        # 插件 dock 动作，读取侧合并），**不能**只读 config 的
+        # ``presentation.actions`` —— 那样插件动作在条上、菜单里却缺席，
+        # 「⋯」恰恰是被插件动作挤出来的，不一致一眼可见。
+        for item in self.backend.presentationConfig.get("actions", []) or []:
             action_id = str(item.get("id", ""))
             label = str(item.get("label", action_id))
             menu.addAction(

@@ -88,6 +88,8 @@
     "margin_x": 20,
     "margin_y": 20,
     "screen_index": -1,
+    "//screen_name": "钉屏显示器的稳定 id（QScreen.name()，Windows 上是设备名或 EDID 型号串）。空串 = 走 screen_index 的旧语义（-1 跟随放映窗口、>=0 按枚举索引）。2026-10-08 新增：旧配置没有它，等价于空串，行为不变；非空时优先于 screen_index，找不到同名显示器（拔掉了）回退到 screen_index 语义",
+    "screen_name": "",
     "//pass_through": "除控制条以外的区域鼠标/触摸穿透。true=开启（推荐）；调试时设 false 可验证「是不是穿透代码把窗口弄没了」",
     "pass_through": true,
     "//region_padding": "区域塑形时给控制条表面留的余量（含投影）：区域外既不绘制也不参与命中测试，系统级穿透",
@@ -162,7 +164,26 @@
     "//label_preview": "预览那一段的小标题",
     "label_preview": "预览",
     "//radius": "选单卡片的圆角。**不是**胶囊（L1 的圆语言只用在控制条本体上）：这是一块独立浮出的大表面，走 Fluent 的 OverlayCornerRadius 一档",
-    "radius": 14
+    "radius": 14,
+    "//widths": "笔的粗细档（逻辑像素，自建墨迹 InkLayer.penWidth 的取值），顺序即笔选单「粗细」一行从左到右。2026-10-07 用户指令：自建批注 —— COM 笔的粗细只能走 PowerPoint 自己的 UI，自建墨迹才第一次能在控制条上直接调。四档覆盖「细字批注 / 常规书写 / 画重点 / 粗圈画」。com 引擎下这一行点了不生效（PowerPoint 的 PointerType 没有粗细接口）",
+    "widths": [2, 4, 7, 12],
+    "//default_width": "还没选过粗细时预点亮的那一档，**存的是值（px）不是下标** —— 改 widths 的顺序或增删档位时不会悄悄指到另一档；值不在 widths 里时没有任何一档点亮，InkLayer 仍按这个值画",
+    "default_width": 4
+  },
+  "ink": {
+    "//description": "放映墨迹（笔 / 橡皮 / 清屏 / 墨迹颜色）由谁来画。2026-10-07 用户决策 Q1：默认改用自建墨迹 —— COM 笔（View.PointerType=ppSlideShowPointerPen）的手感不受我们控制，PowerPoint 与 WPS 两家各不相同（WPS 连 PointerColor 都不认），同一套控制条在两家上表现不一致；自建墨迹叠在放映窗口上自己画，三家一致",
+    "//engine": "self = 自建墨迹（默认）：选笔 / 橡皮时由墨迹叠加窗口吃输入，PPT 侧指针始终保持 arrow，颜色与清屏都不再经过 COM；com = 旧链路（交给 PowerPoint / WPS 自己的放映笔，经 COM 切 PointerType / PointerColor、清屏走 COM），作为兜底保留，行为与改造前逐字一致。放映中切换立即生效：self→com 收起并清空自建墨迹，com→self 把 PPT 指针复位成 arrow",
+    "engine": "self",
+    "//eraser_mode": "橡皮的子模式（入口：控制条上橡皮已选中时再点一下橡皮 → 浮出卡片；2026-10-07 用户指令：自建批注）。stroke = 整笔擦除（碰到哪一笔就整笔删掉，适合改错字）；pixel = 像素擦除（默认，只擦掉划过的那一截，与 PowerPoint 自带橡皮的手感最接近）。只在 engine=self 下生效，com 模式交给演示软件自己的橡皮",
+    "eraser_mode": "pixel",
+    "//palm_erase": "手掌擦除（入口：设置 → 主界面 → 墨迹）。true（默认）= 触摸屏上接触面足够大（手掌 / 手背压上去）时临时切成像素擦除，抬起即还原原工具 —— 电子白板上用手掌抹掉一块是用户的本能动作。鼠标与笔输入永不触发；设备不上报接触直径时整个功能静默不生效",
+    "palm_erase": true,
+    "//palm_threshold_mm": "手掌判定阈值：触点接触直径（毫米）≥ 这个值才算手掌。20mm：成人指尖接触面约 8~12mm，手掌侧缘 / 掌心普遍 25mm 以上，取中间偏下一档，既不把粗手指误判成手掌、又能接住手掌侧缘轻抹。设置页滑块 10~60mm",
+    "palm_threshold_mm": 20,
+    "//eraser_widths": "像素橡皮的粗细档（逻辑像素，自建墨迹 InkLayer.eraserWidth 的取值），顺序即橡皮卡片「粗细」一行从左到右。2026-10-08 用户指令：自建批注 —— 像素擦除原先跟着笔宽走，擦一块大字标题要来回划好几趟；档位整体比笔粗一档（10~48 vs 笔的 2~12），橡皮的本职是快速抹掉一片。整笔擦除不读它（碰到哪笔删哪笔，命中半径跟着它走，见 InkLayer 头注释）。com 引擎下这一行点了不生效（交给演示软件自己的橡皮）",
+    "eraser_widths": [10, 18, 30, 48],
+    "//eraser_default_width": "还没选过橡皮粗细时预点亮的那一档，**存的是值（px）不是下标** —— 与 pen.default_width 同一个读法（改 eraser_widths 顺序 / 增删档位不会悄悄指到另一档）；值不在 eraser_widths 里时没有任何一档点亮，InkLayer 仍按这个值擦。⚠️ 选中值是**会话状态**（Backend._eraser_width，不落配置）—— 与笔宽同一个决策（todo 9：粗细是「画的时候随手切」的档，重启退回默认档是可接受的），别登记进 SETTING_PATHS",
+    "eraser_default_width": 18
   },
  "divider": {
   "//enabled": "组分隔线（动作 / 翻页 / 退出之间的细竖线）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（原放映页那个开关；放映页本身已于同日第四轮删除）—— 配置键仍然生效、默认 true，想关就在这里写 false；别的键（width / height / gap）也是纯配置项",

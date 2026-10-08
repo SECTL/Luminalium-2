@@ -99,7 +99,7 @@ Item {
     readonly property var toolsCfg: cfg.tools !== undefined ? cfg.tools : []
     readonly property var actionsCfg: cfg.actions !== undefined ? cfg.actions : []
     readonly property var penCfg: cfg.pen !== undefined ? cfg.pen : ({})
-
+    readonly property var inkCfg: cfg.ink !== undefined ? cfg.ink : ({})
     // ---- 尺寸（默认值就是 Lumi 里按实测比例定的那一档）----
     readonly property int barHeight: cfg.bar_height !== undefined ? cfg.bar_height : 56
     readonly property int surfacePaddingX: surfaceCfg.padding_x !== undefined
@@ -299,6 +299,52 @@ Item {
     /*! 选单展开着没有（``interactiveRect`` 与真机区域塑形都看它）。 */
     readonly property bool paletteOpened: penPalette.opened
 
+    // ---- 笔的粗细档（2026-10-07 用户指令：自建批注）----
+    // 与色板同一条链路：档位从 ``presentation.pen.widths`` 整块读（不登记
+    // SETTING_PATHS，理由见 bridge.py 对应注释），选中值是后端会话状态
+    // （``Backend.penWidth``，不落配置 —— 与笔色同一个读法）。
+    /*! 粗细档（``presentation.pen.widths``）。与色板同一条规矩：只有带工具组
+        的控制条才给 —— 翻页 pill 也挂着本组件，给了就是白建。空数组 →
+        卡片里「粗细」整段（连同分隔线）不出。 */
+    readonly property var penPaletteWidths: present("tools") && penCfg.widths !== undefined
+        ? penCfg.widths : []
+    /*! 还没选过粗细时预点亮的那一档（``presentation.pen.default_width``，
+        **存的是值不是下标**，见配置注释）。 */
+    readonly property real penDefaultWidth: penCfg.default_width !== undefined
+        ? Number(penCfg.default_width) : 0
+    /*! 选单该点亮哪一档：后端记着的粗细；没选过时用配置的默认档。
+        com 引擎下这一行照样显示，但点了应用层忽略（PowerPoint 的放映笔
+        没有粗细接口 —— 见 ``application.py::_on_action`` 的 ``pen_width:`` 分支）。 */
+    readonly property real penSelectedWidth: Backend.penWidth > 0
+        ? Backend.penWidth : penDefaultWidth
+
+    // ---- 橡皮子模式卡片（2026-10-07 用户指令：自建批注）----
+    // 与笔选单同一个交互习惯：工具已经是橡皮时再点一下「橡皮」→ 浮出
+    // 「整笔擦除 / 像素擦除」两行。选中值直接读写配置
+    // （``presentation_ink_eraser_mode``，持久 —— 与笔色/粗细的会话态不同：
+    // 子模式是用户偏好，重启后不该悄悄退回默认）。
+    /*! 橡皮子模式卡片展开着没有（``interactiveRect`` 与真机区域塑形都看它）。 */
+    readonly property bool eraserPaletteOpened: eraserPalette.opened
+
+    // ---- 像素橡皮的粗细档（2026-10-08 用户指令：自建批注）----
+    // 与笔的粗细档同一条链路：档位从 ``presentation.ink.eraser_widths`` 整块读
+    // （不登记 SETTING_PATHS，理由见 bridge.py 对应注释），选中值是后端会话
+    // 状态（``Backend.eraserWidth``，不落配置 —— 与笔色/粗细同一个读法）。
+    // 整笔擦除模式下卡片里整段不出（EraserModeCard 自己按 selectedMode 藏）。
+    /*! 粗细档（``presentation.ink.eraser_widths``）。与笔同一条规矩：只有带
+        工具组的控制条才给 —— 翻页 pill 也挂着本组件，给了就是白建。 */
+    readonly property var eraserPaletteWidths: present("tools") && inkCfg.eraser_widths !== undefined
+        ? inkCfg.eraser_widths : []
+    /*! 还没选过橡皮粗细时预点亮的那一档（``presentation.ink.eraser_default_width``，
+        **存的是值不是下标**，见配置注释）。 */
+    readonly property real eraserDefaultWidth: inkCfg.eraser_default_width !== undefined
+        ? Number(inkCfg.eraser_default_width) : 0
+    /*! 卡片该点亮哪一档：后端记着的粗细；没选过时用配置的默认档。
+        com 引擎下这一行照样显示，但点了应用层忽略（见
+        ``application.py::_on_action`` 的 ``eraser_width:`` 分支）。 */
+    readonly property real eraserSelectedWidth: Backend.eraserWidth > 0
+        ? Backend.eraserWidth : eraserDefaultWidth
+
     /*! 快速切页面板展开着没有 —— 与 ``paletteOpened`` 同一个用途（``interactiveRect``
         / 区域塑形），另外 Python 侧还靠它决定「光标移出控制条了要不要收面板」
         （见 ``windows.py::_watch_overlay``）。 */
@@ -347,6 +393,18 @@ Item {
         jumpPanel.opened = false
     }
 
+    /*! 收起两张工具卡（笔色板 / 橡皮子模式卡）。给 Python 侧的「点空白收起」
+        调 —— 2026-10-08 用户报告（自建批注）：卡开着时点画布空白不收起。
+        卡外的点击要么落在墨迹窗口（self 引擎笔/橡皮态，由 InkLayer 的起笔钩子
+        把第一按消费成收卡），要么系统级穿透（com 引擎 / 区域塑形之外，由
+        ``windows._dismiss_tool_cards_on_leave`` 按光标位置代判）—— 两条路上
+        QML 自己都收不到这个点击，只能由 Python 代为调用（与 ``closeJumpPanel``
+        同一个通道）。 */
+    function closeToolCards() {
+        penPalette.opened = false
+        eraserPalette.opened = false
+    }
+
     /*! 按下分页时选的是谁 —— ``clicked`` 落地时 TabBar 早把 ``currentIndex``
         换好了，那时再读 ``Backend.activeTool`` 分不清「切工具」和「再点一次」。 */
     property string toolBeforePress: ""
@@ -358,14 +416,22 @@ Item {
     function activateTool(toolId) {
         var was = toolBeforePress
         toolBeforePress = ""
-        if (toolId !== "pen" || was !== "pen") {
-            // 这一下是「切工具」（或点了别的），两个浮出层都跟着收起来 ——
+        // 有「二次点击选项卡」的工具：笔（色板/粗细）与橡皮（子模式）。
+        // 第一下点 = 切工具，已经切过去了再点一下才弹卡片（2026-10-07 起
+        // 橡皮也加入这个习惯，见 EraserModeCard.qml 头注释）。
+        if ((toolId !== "pen" && toolId !== "eraser") || was !== toolId) {
+            // 这一下是「切工具」（或点了别的），所有浮出层都跟着收起来 ——
             // 用户已经在做别的事了，面板再飘着就是挡路
             penPalette.opened = false
+            eraserPalette.opened = false
             jumpPanel.opened = false
             return
         }
-        penPalette.opened = !penPalette.opened
+        if (toolId === "pen") {
+            penPalette.opened = !penPalette.opened
+        } else {
+            eraserPalette.opened = !eraserPalette.opened
+        }
     }
 
     // ------------------------------------------------------------- 控制条本体
@@ -396,6 +462,13 @@ Item {
             left = Math.min(left, penPalette.x)
             right = Math.max(right, penPalette.x + penPalette.width * s)
             top = Math.min(top, penPalette.y)
+        }
+        // 橡皮子模式卡片与笔选单同一条命（2026-10-07 自建批注）：浮在 dock
+        // 包围盒之外，不包进来就既不画也点不动。
+        if (eraserPaletteOpened && eraserPalette.visible) {
+            left = Math.min(left, eraserPalette.x)
+            right = Math.max(right, eraserPalette.x + eraserPalette.width * s)
+            top = Math.min(top, eraserPalette.y)
         }
         // 快速切页面板是同一回事：它浮在条**上方**（条在屏幕下部），尺寸随页数
         // 变，必须整块包进来 —— 否则格子点不动（穿透到 PowerPoint 就变成在幻灯片
@@ -476,8 +549,10 @@ Item {
                     icon.name: modelData.icon !== undefined ? modelData.icon : ""
                     label: modelData.label !== undefined ? modelData.label : ""
                     showLabel: dock.showLabels
-                    // 选单正开着时给「笔」描一圈（见 ``expanded``）
-                    expanded: dock.paletteOpened && modelData.id === "pen"
+                    // 选单正开着时给对应工具描一圈（见 ``expanded``）：
+                    // 笔 ↔ 色板卡，橡皮 ↔ 子模式卡（2026-10-07 自建批注）。
+                    expanded: (dock.paletteOpened && modelData.id === "pen")
+                        || (dock.eraserPaletteOpened && modelData.id === "eraser")
                     // 按下时就记住「选的是谁」（见 ``noteToolPress``），
                     // 抬起后 ``clicked`` 里才判得出是切工具还是再点一次。
                     onPressed: dock.noteToolPress()
@@ -643,6 +718,9 @@ Item {
         palette: dock.penPaletteColors
         columns: dock.penPaletteColumns
         selectedColor: dock.penSelectedColor
+        // 粗细档（2026-10-07 自建批注）：空数组时卡片里整段不出（翻页 pill 那档）。
+        widths: dock.penPaletteWidths
+        selectedWidth: dock.penSelectedWidth
 
         // 与底板同倍率缩放 —— 整块选单跟着组件一起放大 / 缩小。
         // ``transformOrigin: TopLeft``：下面算的 x/y 是**根 Item 坐标**（未缩放
@@ -671,6 +749,66 @@ Item {
         onColorPicked: function (value) {
             // ⚠️ 必须转字符串：``color`` 直接喂给 ``@Slot(str)`` 过不了类型转换。
             Backend.setPenColor(value.toString())
+        }
+
+        onWidthPicked: function (value) {
+            // 与颜色同一条路：先落 Backend（QML 回显选中档），再发
+            // ``pen_width:<px>`` 给应用层 —— self 引擎落到 InkLayer.penWidth，
+            // com 引擎忽略（见 ``application.py::_on_action``）。
+            Backend.setPenWidth(value)
+        }
+    }
+
+    // ======================================== 橡皮子模式卡片（浮出层）
+    // 2026-10-07 用户指令：自建批注。与笔选单同一套约定（**不进** dock 的
+    // ``implicitWidth/Height``、摆位公式、缩放、hitRect 机制全镜像），
+    // 论证见 ``PenPaletteCard.qml`` / ``EraserModeCard.qml`` 头注释。
+    EraserModeCard {
+        id: eraserPalette
+        objectName: "eraserPalette"
+
+        opened: false
+        // 配置是唯一事实源（持久偏好，不是会话态）：写了之后
+        // ``application._on_config_changed`` 会实时推给在场的 InkLayer；
+        // 陌生值兜底按 pixel 显示（与 InkLayer 的默认值一致）。
+        selectedMode: Backend.settings.presentation_ink_eraser_mode === "stroke"
+            ? "stroke" : "pixel"
+        // 像素橡皮的粗细档（2026-10-08 自建批注）：空数组时卡片里整段不出
+        // （翻页 pill 那档）；整笔擦除模式下卡片自己把这段藏起来。
+        widths: dock.eraserPaletteWidths
+        selectedWidth: dock.eraserSelectedWidth
+
+        // 与底板同倍率缩放（同笔选单：x/y 是根 Item 坐标，缩放围绕左上角）。
+        scale: dock.scaleFactor
+        transformOrigin: Item.TopLeft
+
+        // 摆位公式与笔选单逐字一致：贴着工具栏底板上沿往上摆、左沿与底板
+        // 左沿对齐、屏幕右沿放不下时整块往左收。卡片小（两行），左对齐与
+        // 笔选单摆在同一垂线上，用户认得「这是同一个位置的选项卡」。
+        y: (bar.y + bar.margin - Lumi.dockPaletteGap
+            - eraserPalette.shadowMargin - eraserPalette.cardHeight) * dock.scaleFactor
+        x: {
+            var s = dock.scaleFactor
+            var want = (bar.margin - eraserPalette.shadowMargin) * s
+            var limit = dock.parent ? dock.parent.width - dock.x : 0
+            if (limit > 0 && want + eraserPalette.width * s > limit) {
+                want = limit - eraserPalette.width * s
+            }
+            return want
+        }
+
+        onModePicked: function (mode) {
+            // 落配置（持久）；层在不在场由应用层操心（``_on_config_changed``
+            // 推在场的层，建窗时 ``_apply_ink_config`` 补）。卡片保持展开 ——
+            // 与笔选单「点完颜色不收」同一个手感，用户可能接着换回来对比。
+            Backend.setSetting("presentation_ink_eraser_mode", mode)
+        }
+
+        onWidthPicked: function (value) {
+            // 与笔的粗细同一条路：先落 Backend（QML 回显选中档），再发
+            // ``eraser_width:<px>`` 给应用层 —— self 引擎落到 InkLayer.eraserWidth，
+            // com 引擎忽略（见 ``application.py::_on_action``）。
+            Backend.setEraserWidth(value)
         }
     }
 
@@ -743,17 +881,22 @@ Item {
                 toolSegment.currentIndex = index
             }
             // 选单属于「笔」这个工位：换成指针 / 橡皮就收起来（否则它会跟着
-            // 挂在条上方，而那时已经没有「笔的选项」可言了）。
+            // 挂在条上方，而那时已经没有「笔的选项」可言了）。橡皮子模式卡片
+            // 同理（2026-10-07 自建批注）—— 它属于「橡皮」这个工位。
             if (Backend.activeTool !== "pen") {
                 penPalette.opened = false
             }
+            if (Backend.activeTool !== "eraser") {
+                eraserPalette.opened = false
+            }
         }
 
-        // 退出放映 → 收起浮出层（笔选单 / 快速切页面板）：下一次放映进来时
-        // 不该看到上次遗留的一块卡片。
+        // 退出放映 → 收起浮出层（笔选单 / 橡皮子模式卡片 / 快速切页面板）：
+        // 下一次放映进来时不该看到上次遗留的一块卡片。
         function onPresentationActiveChanged() {
             if (!Backend.presentationActive) {
                 penPalette.opened = false
+                eraserPalette.opened = false
                 jumpPanel.opened = false
             }
         }

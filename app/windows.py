@@ -34,6 +34,15 @@
   一点关闭按钮就把应用打死，见 ``_bind_panel`` 的注释）。
 * 窗口一律懒创建、只藏不销毁（splash 是唯一例外）。
 
+叠加窗口（2026-10-06，聚光灯一类「整屏遮罩 + 镂空」）：与放映顶层窗口
+同族的另一类，走 :meth:`WindowManager.register_overlay`（唯一合法途径，
+同样幂等）→ :class:`RegisteredOverlay`。与自管窗口的差别：**不做** RinUI
+接管（理由同 TopWindow）、QML 根项是带
+``Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool |
+Qt.WindowDoesNotAcceptFocus`` 的透明 ``Window``（这里的 Frameless 是
+必须的 —— 它不是 RinUI 接管的 FluentWindow，不受上一条约束）、镂空由
+Python 按 ``SetWindowRgn`` 塑形（插件经句柄 ``set_hole`` 喂洞）。
+
 ----------------------------------------------------------------------
 角落组 → dock QML 解析规则（2026-10-05 插件系统 Wave 2 任务 8）：
 
@@ -75,6 +84,7 @@ from PySide6.QtGui import QCursor, QGuiApplication, QScreen
 from PySide6.QtQml import QQmlComponent
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 
+from . import monitors
 from .config import Config
 from .paths import UI_DIR
 from .plugins import registry
@@ -300,6 +310,8 @@ GW_HWNDNEXT = 2
 GW_HWNDPREV = 3
 GW_OWNER = 4
 RGN_OR = 2
+RGN_DIFF = 4
+HWND_NOTOPMOST = -2
 DWMWA_CLOAKED = 14
 
 # ---- DWM 系统背景材质（Win11 22H2 / build 22621 起可用）----
@@ -438,6 +450,34 @@ def _build_region(rects: list[tuple[int, int, int, int]]) -> Optional[int]:
     return result
 
 
+def _build_region_with_hole(
+    width: float, height: float, hole: tuple[float, float, float]
+) -> Optional[int]:
+    """「整窗矩形 − 圆形」的 HRGN（聚光灯一类遮罩的镂空），失败返回 ``None``。
+
+    ``(cx, cy, r)`` 是**已按坐标倍率换算好**的窗口局部物理像素圆心与半径；
+    调用方负责换算（见 :meth:`RegisteredOverlay._sync_region`）。椭圆区域用
+    ``CreateEllipticRgn``（外接矩形式 API），从整窗矩形里 ``RGN_DIFF`` 掉。
+    """
+    if not hasattr(ctypes, "windll"):
+        return None
+    gdi32 = ctypes.windll.gdi32
+    cx, cy, radius = hole
+    base = gdi32.CreateRectRgn(0, 0, int(round(width)), int(round(height)))
+    if not base:
+        return None
+    hole_rgn = gdi32.CreateEllipticRgn(
+        int(round(cx - radius)), int(round(cy - radius)),
+        int(round(cx + radius)), int(round(cy + radius)),
+    )
+    if not hole_rgn:
+        gdi32.DeleteObject(base)
+        return None
+    gdi32.CombineRgn(base, base, hole_rgn, RGN_DIFF)
+    gdi32.DeleteObject(hole_rgn)
+    return base
+
+
 def _set_window_region(hwnd: int, hrgn: Optional[int]) -> bool:
     """挂 / 摘窗口区域。``hrgn`` 为 ``None`` 表示恢复矩形窗口。"""
     if not hwnd or not hasattr(ctypes, "windll"):
@@ -522,6 +562,9 @@ FULLSCREEN_SNAP_RATIO = 0.97
 #: 「快速切页面板点外部收起」的判定余量（逻辑像素）。面板贴屏幕边时，光标压在
 #: 它的边缘上稍微抖一下就会被判成「出去了」→ 面板一闪一闪。四边各放这么宽。
 JUMP_DISMISS_SLACK = 6
+
+#: 墨迹窗口「整窗吃输入」的工具（2026-10-07 self-ink）；其余工具一律整窗穿透。
+INK_INPUT_TOOLS = ("pen", "eraser")
 
 
 def _window_pid(hwnd: int) -> int:
@@ -731,6 +774,199 @@ class RegisteredWindow:
             setattr(self._manager, self._name, None)
 
 
+class RegisteredOverlay:
+    """全屏叠加窗口句柄（聚光灯这类「整屏遮罩 + 镂空」窗口的登记句柄）。
+
+    与 :class:`RegisteredWindow`（RinUI 接管的 FluentWindow）不同族：叠加
+    窗口与放映顶层窗口（``TopWindow``）同类 —— 无边框、置顶、不抢焦点、
+    窗口区域由 Python 塑形，**刻意不做** RinUI 接管（RinUI 的非客户区处理
+    会和全屏穿透窗口打架，理由见 ``_attach_to_rinui`` 尾段）。创建仍走
+    :meth:`WindowManager.register_overlay` —— 插件不许自建 QQuickWindow，
+    这条铁律对叠加窗口同样有效。
+
+    职责边界：本类只管「懒创建 / 全屏摆放 / NOACTIVATE 样式 / 圆形镂空的
+    区域塑形（含 SetWindowRgn 坐标倍率校准）」；洞跟谁走、多大是插件自己的
+    业务，插件经 :meth:`set_hole` 每拍喂进来（光标轮询由插件侧定时器驱动，
+    别把「遮罩用途」写死在窗口管理器里）。
+
+    与 TopWindow 的两点刻意差异：
+
+    * **不加** ``WS_EX_TRANSPARENT`` —— 遮罩要吃点击（遮罩上的控件才可点、
+      光标圈外才是「聚焦」语义），镂空里的点击经区域塑形自然穿透；
+    * 显示后若放映顶层窗口可见，立刻替它重申一次置顶 —— 两只窗口都在
+      置顶带里，后显示的在上；不压回去，遮罩会把控制条盖住、吃掉它的点击。
+    """
+
+    def __init__(
+        self,
+        manager: "WindowManager",
+        name: str,
+        qml_path,
+        *,
+        label: Optional[str] = None,
+    ) -> None:
+        self._manager = manager
+        self._name = name
+        self._qml_path = qml_path if isinstance(qml_path, Path) else Path(qml_path)
+        self._label = label or name
+        self._window: Optional[QQuickWindow] = None
+        #: 镂空圆 ``(cx, cy, r)``——窗口局部**逻辑**坐标（set_hole 的入参原样存，
+        #: 换算成物理像素在 _sync_region 里做）
+        self._hole: Optional[tuple[int, int, int]] = None
+        self._screen: Optional[QScreen] = None
+        #: SetWindowRgn 的坐标单位倍率（与 WindowManager._region_scale 同义，
+        #: 各窗口各有一份 —— 不同屏的 DPR 可以不同）
+        self._region_scale: Optional[float] = None
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def window(self) -> Optional[QQuickWindow]:
+        """底层窗口对象；尚未懒创建时为 ``None``。"""
+        return self._window
+
+    def is_visible(self) -> bool:
+        return self._window is not None and self._window.isVisible()
+
+    def show(self) -> None:
+        """全屏铺到光标所在显示器（多屏时聚哪块屏由光标决定，不猜配置）。"""
+        window = self._ensure_created()
+        if window is None:
+            log.info("%s 不可用", self._label)
+            return
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        if screen is not None:
+            try:
+                window.setScreen(screen)
+                window.setGeometry(screen.geometry())
+            except Exception:  # pragma: no cover - 平台差异
+                log.debug("%s 定屏失败", self._label, exc_info=True)
+            self._screen = screen
+        window.show()
+        window.raise_()
+        self._apply_styles()
+        self._sync_region()
+        # 放映顶层窗口可见时替它重申置顶（本句柄刚把自己顶到了置顶带顶端）
+        if self._manager.overlay is not None and self._manager.overlay.isVisible():
+            self._manager._assert_topmost()
+
+    def hide(self) -> None:
+        if not self.is_visible():
+            return
+        # 先摘区域再藏窗口：区域留着的话，下次 show() 的第一帧仍是旧镂空
+        try:
+            _set_window_region(int(self._window.winId()), None)
+        except (RuntimeError, OSError):  # pragma: no cover - 窗口已释放
+            pass
+        self._hole = None
+        self._window.hide()
+
+    def toggle(self) -> None:
+        if self.is_visible():
+            self.hide()
+        else:
+            self.show()
+
+    def set_hole(self, cx: int, cy: int, radius: int) -> None:
+        """更新镂空圆（窗口局部逻辑坐标），遮罩可见时立刻重新塑形。"""
+        self._hole = (int(cx), int(cy), max(8, int(radius)))
+        if self.is_visible():
+            self._sync_region()
+
+    def _ensure_created(self) -> Optional[QQuickWindow]:
+        """懒创建叠加窗口。不走 RinUI 接管（理由见类头注释），失败仅记日志。"""
+        if self._window is not None:
+            return self._window
+        if not self._qml_path.exists():
+            log.warning("%s不存在，跳过: %s", self._label, self._qml_path)
+            return None
+        try:
+            root = self._manager._create(self._qml_path, {"visible": False})
+        except RuntimeError as exc:
+            log.error("%s创建失败: %s（%s）", self._label, self._qml_path, exc)
+            return None
+        if root is None:
+            log.error("%s创建失败: %s", self._label, self._qml_path)
+            return None
+        self._window = root
+        return root
+
+    def _apply_styles(self) -> None:
+        """补 ``WS_EX_NOACTIVATE``（点击遮罩不抢前台焦点，方向键仍归放映窗口）。
+
+        ⚠️ 与 ``_apply_overlay_base_styles`` 同款纪律：只加不减，
+        ``WS_EX_LAYERED`` 一个 bit 都不能动。
+        """
+        if self._window is None:
+            return
+        try:
+            hwnd = int(self._window.winId())
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return
+        if not hwnd:
+            return
+        style = _window_ex_style(hwnd)
+        _set_window_ex_style(hwnd, style | WS_EX_NOACTIVATE)
+
+    def _sync_region(self) -> None:
+        """把窗口塑形为「整屏 − 镂空圆」。
+
+        ``SetWindowRgn`` 的坐标单位（逻辑 vs 物理）不猜：按候选倍率各试一次，
+        用 ``GetWindowRgn + GetRgnBox`` 读回外接矩形对照 —— 「整屏减圆」的
+        外接矩形就是整窗矩形，尺寸随倍率线性变，正好当校准判据（与
+        ``WindowManager._update_overlay_region`` 同一招）。倍率校准成功后
+        缓存复用，之后每次只是重建区域。
+        """
+        if self._window is None or not self._window.isVisible() or self._hole is None:
+            return
+        try:
+            hwnd = int(self._window.winId())
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return
+        if not hwnd or not hasattr(ctypes, "windll"):
+            return
+        width = float(self._window.width())
+        height = float(self._window.height())
+        if width <= 0 or height <= 0:
+            return
+        cx, cy, radius = self._hole
+        dpr = self._window.devicePixelRatio() or 1.0
+        candidates = [self._region_scale, dpr, 1.0]
+        seen: set[float] = set()
+        for scale in candidates:
+            if not scale or scale <= 0 or scale in seen:
+                continue
+            seen.add(scale)
+            hrgn = _build_region_with_hole(
+                width * scale, height * scale,
+                (cx * scale, cy * scale, radius * scale),
+            )
+            if hrgn is None:
+                continue
+            if not _set_window_region(hwnd, hrgn):
+                ctypes.windll.gdi32.DeleteObject(hrgn)
+                continue
+            actual = _region_box(hwnd)
+            expected_w = int(round(width * scale))
+            expected_h = int(round(height * scale))
+            if actual is None or abs(actual[2] - expected_w) > 2 \
+                    or abs(actual[3] - expected_h) > 2:
+                # SetWindowRgn 成功后区域已归系统所有，绝不能再 DeleteObject
+                # （下一次 SetWindowRgn 会换掉它），直接试下一个候选。
+                continue
+            self._region_scale = scale
+            try:
+                self._window.requestUpdate()
+            except (AttributeError, RuntimeError):  # pragma: no cover
+                pass
+            return
+        # 塑形全失败：遮罩没有洞（整屏变暗），但遮罩上的关闭按钮仍可点，
+        # 用户能自己退出去 —— 记 error 别静默。
+        log.error("%s 区域塑形失败（坐标单位未校准），遮罩暂时没有镂空", self._label)
+
+
 class WindowManager(QObject):
     """集中管理所有顶层窗口。"""
 
@@ -772,9 +1008,34 @@ class WindowManager(QObject):
         self.error_report: Optional[QQuickWindow] = None
         #: 已注册的自管窗口句柄：名字 -> :class:`RegisteredWindow`
         self._registered_windows: Dict[str, RegisteredWindow] = {}
+        #: 已注册的全屏叠加窗口句柄：名字 -> :class:`RegisteredOverlay`
+        #: （聚光灯一类；面板被遮罩盖住时要把面板顶进置顶带，见
+        #: :meth:`_push_panel_above_overlays`）
+        self._registered_overlays: Dict[str, RegisteredOverlay] = {}
         #: 窗口对象 -> post_reattach 回调（``_refresh_rinui_handle`` 按窗口查）
         self._reattach_callbacks: Dict[Any, Any] = {}
         self.overlay: Optional[QQuickWindow] = None
+        #: 自建墨迹叠加窗口（2026-10-07 计划 self-ink 第 3 项）：由
+        #: :meth:`_ensure_ink_window` 懒创建、只藏不销毁，几何由
+        #: :meth:`_apply_ink_geometry` 跟随 TopWindow 同一份 ``_overlay_rect``，
+        #: z 序由 :meth:`_place_ink_below_top` 夹在放映窗口与 TopWindow 之间。
+        self.ink_window: Optional[QQuickWindow] = None
+        #: 调用方要求「放映中显示墨迹窗口」（set_ink_active）；放映结束不清它，
+        #: 只把窗口藏起来 —— 下一次放映开始时由 show_docks 按它恢复。
+        self._ink_active = False
+        #: 当前墨迹页键（2026-10-07 计划 self-ink 第 7 项）：放映期间由
+        #: _sync_ink_page 按 slide_index 维护；None = 不在放映/还没同步过页键。
+        #: 键 0 = 基线**待定**（首次同步时 COM 还没读出页码），之后读到真实页码
+        #: 即升级为按页记忆（2026-10-08 修复：此前键 0 会锁死整场，翻页永不换
+        #: 墨迹快照）；基线确立后 slide_index=0 一律忽略 —— COM 瞬时读不到页码
+        #: 不该把用户踢回空页。
+        self._ink_page_key: Optional[int] = None
+        #: 基线待定（COM 读不到页码，先共用键 0）只记一次日志
+        self._ink_single_page_logged = False
+        #: 当前墨迹工具：pen / eraser 整窗吃输入，其余（arrow）整窗穿透
+        self._ink_tool = "arrow"
+        #: 墨迹窗口当前所在屏（逻辑↔物理换算要它自己的 DPR，同 _overlay_screen）
+        self._ink_screen: Optional[QScreen] = None
         self._docks: Dict[str, QQuickItem] = {}
         self._components: List[QQmlComponent] = []
 
@@ -1232,6 +1493,32 @@ class WindowManager(QObject):
         self._registered_windows[name] = handle
         return handle
 
+    def register_overlay(
+        self,
+        name: str,
+        qml_path,
+        *,
+        label: Optional[str] = None,
+    ) -> RegisteredOverlay:
+        """注册一只全屏叠加窗口（聚光灯一类），返回 :class:`RegisteredOverlay`。
+
+        这是叠加窗口的**唯一合法创建途径**（与 :meth:`register_window`
+        同一条铁律的叠加窗口分支）：懒创建、全屏摆放、NOACTIVATE 样式、
+        圆形镂空的区域塑形全封装在句柄里；插件不得自建 QQuickWindow。
+        与 ``register_window`` 的差别（为什么不是同一张表）：叠加窗口刻意
+        不做 RinUI 接管、不参与 ``_reattach_callbacks``，生命周期完全独立
+        （见 :class:`RegisteredOverlay` 头注释）。
+
+        **幂等**：同名重复注册返回既有句柄，与 :meth:`register_window` 同款。
+        """
+        existing = self._registered_overlays.get(name)
+        if existing is not None:
+            log.warning("叠加窗口 %s 重复注册，返回既有句柄（幂等）", name)
+            return existing
+        handle = RegisteredOverlay(self, name, qml_path, label=label)
+        self._registered_overlays[name] = handle
+        return handle
+
     def _register_builtin_groups(self) -> None:
         """把四个内建编辑器分组登记进 ``registry.editor_groups()``。
 
@@ -1291,6 +1578,13 @@ class WindowManager(QObject):
         # 翻页组件位置切换 → 换了一组角落（不只是挪位置），要重建
         self._backend.docksRebuildRequested.connect(self.rebuild_docks)
         self._ppt.stateChanged.connect(self._on_presentation_state)
+        # 「目标显示器」变更 → 放映中立刻换屏，不等 200ms 看护一拍（且
+        # ``follow_window_rect=false`` 时看护根本不跑几何那段，不接线就永远
+        # 不挪）。信号是整块放映配置粒度的（改边距等也会跟着发），槽里按几何
+        # 前后比对，没变就空转。
+        self._backend.presentationScreenChanged.connect(
+            self._on_presentation_screen_changed
+        )
 
     def _on_presentation_state(self, state) -> None:
         # 状态只往两处去：bridge（QML 侧读 presentationActive / 页码）与控制条显隐。
@@ -1301,6 +1595,32 @@ class WindowManager(QObject):
             self.show_docks()
         else:
             self.hide_docks()
+        # 按页墨迹（计划 self-ink 第 7 项）要放在 show/hide_docks **之后**：
+        # 第一次 active 状态到达时墨迹窗口可能还没建，show_docks 按意图
+        # 建好之后这里才拿得到层。
+        self._sync_ink_page(state)
+
+    def _on_presentation_screen_changed(self) -> None:
+        """钉屏显示器变更 → 遮罩立刻重铺（放映中换「目标显示器」即时生效）。
+
+        2026-10-08 之前 ``presentationScreenChanged`` 只有主界面编辑器的画布
+        在读：设置里换钉屏后，控制条要等下一次 ``show_docks``（退出放映再进，
+        或靠 200ms 看护捡上）才挪窝。未放映时遮罩本来就藏着，什么都不用做，
+        下一次 ``show_docks`` 自会按新钉屏铺。
+        """
+        if self.overlay is None or not self.overlay.isVisible():
+            return
+        before = self._overlay_rect
+        after = self._apply_overlay_geometry()
+        if before == after:
+            return
+        # 与 _watch_overlay 的几何变更分支同一份清单：区域矩形集作废 +
+        # 重摆控制条 + 重算穿透 + 墨迹窗口同走（它与遮罩共用 _overlay_rect）
+        self._last_region_rects = None
+        for name in self._docks:
+            self._position_dock(name)
+        self._sync_input_mode()
+        self._apply_ink_geometry()
 
     # ================================================================== 面板
 
@@ -1319,10 +1639,42 @@ class WindowManager(QObject):
         self.panel.show()
         self.panel.raise_()
         self.panel.requestActivate()
+        # 有全屏遮罩（聚光灯一类）开着时，面板要顶进置顶带才看得见
+        self._push_panel_above_overlays()
 
     def hide_panel(self) -> None:
         if self.panel is not None and self.panel.isVisible():
             self.panel.hide()
+        self._push_panel_above_overlays()
+
+    def _push_panel_above_overlays(self) -> None:
+        """面板与全屏遮罩的 z 序协调。
+
+        快捷面板是普通带的窗口；聚光灯这类全屏置顶遮罩显示时，面板
+        ``show() + raise_()`` 只在普通带里升 —— 顶不穿遮罩，用户看到的是
+        「托盘点了没反应」。遮罩可见时用原生 ``SetWindowPos`` 把面板临时
+        推进置顶带，遮罩都收了再放回普通带。走原生调用而不是改 Qt 的
+        ``flags``：改 flags 会触发 Qt 重建原生窗口，RinUI 按 hwnd 登记的
+        三份清单（``_attach_to_rinui``）就全断了。
+        """
+        if self.panel is None or not hasattr(ctypes, "windll"):
+            return
+        try:
+            hwnd = int(self.panel.winId())
+        except (RuntimeError, AttributeError):  # pragma: no cover - 窗口未建
+            return
+        if not hwnd:
+            return
+        overlay_up = any(h.is_visible() for h in self._registered_overlays.values())
+        band = HWND_TOPMOST if overlay_up else HWND_NOTOPMOST
+        try:
+            ctypes.windll.user32.SetWindowPos(
+                wintypes.HWND(hwnd), wintypes.HWND(band),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        except OSError:  # pragma: no cover
+            log.debug("调整面板 z 序失败", exc_info=True)
 
     def _position_panel(self, pos: Optional[QPoint] = None) -> None:
         """把面板摆到**光标**附近。
@@ -1748,6 +2100,9 @@ class WindowManager(QObject):
         self.overlay.show()
         self._overlay_ever_shown = True
         self._apply_overlay_base_styles(transparent=False)
+        # 墨迹意图跨放映保留（set_ink_active）：放映开始时按它恢复墨迹窗口
+        if self._ink_active:
+            self._show_ink_window()
         self._assert_topmost()
         self._sync_input_mode()
 
@@ -1785,6 +2140,8 @@ class WindowManager(QObject):
 
     def hide_docks(self) -> None:
         """放映结束：收起顶层窗口（穿透状态复位，轮询停止）。"""
+        # 墨迹窗口随放映一起藏（只藏不销毁；_ink_active 意图保留到下次放映）
+        self._hide_ink_window()
         self._hit_timer.stop()
         self._topmost_timer.stop()
         self._watch_timer.stop()
@@ -1806,6 +2163,275 @@ class WindowManager(QObject):
         for name in self._docks:
             self._position_dock(name)
         self._sync_input_mode()
+
+    # ------------------------------------------------------- 墨迹叠加窗口
+    # 2026-10-07 计划 self-ink 第 3 项。为什么墨迹要单独一只窗口：TopWindow 被
+    # SetWindowRgn 裁成「只剩控制条几块」，区域外不绘制也不命中，墨迹画在它里面
+    # 等于画在看不见的地方。z 序：放映窗口 < 墨迹 < （聚光灯一类叠加窗口）< TopWindow。
+
+    def _ensure_ink_window(self) -> Optional[QQuickWindow]:
+        """懒创建墨迹窗口（进程内只建一次、只藏不销毁）；失败记日志返回 None。
+
+        与 :class:`RegisteredOverlay` 同族：**不做** RinUI 接管（全屏穿透窗口和
+        RinUI 的非客户区处理会打架，理由见 ``_attach_to_rinui`` 尾段）。这里
+        不走 ``register_overlay``：那套句柄自带「全屏铺光标屏 + 圆形镂空」语义，
+        墨迹要的是「跟随放映窗口矩形 + 整窗穿透开关」，硬套只会两头别扭。
+
+        QML 类型注册是幂等的（``app.ink`` 模块级旗标），application.py 先调过
+        也无妨；这里补一次是为了让「先建窗口、后装配」的调用次序也不炸。
+        """
+        if self.ink_window is not None:
+            return self.ink_window
+        qml_path = UI_DIR / "ink" / "InkOverlay.qml"
+        if not qml_path.exists():
+            log.warning("墨迹窗口不存在，跳过: %s", qml_path)
+            return None
+        try:
+            from . import ink as _ink
+
+            _ink.register_qml_types()
+        except Exception:
+            # 墨迹是附加能力：注册失败只让墨迹不可用，不许把放映控制条带崩
+            log.error("墨迹 QML 类型注册失败，墨迹不可用", exc_info=True)
+            return None
+        try:
+            root = self._create(qml_path, {"visible": False})
+        except RuntimeError as exc:
+            log.error("墨迹窗口创建失败: %s（%s）", qml_path, exc)
+            return None
+        if root is None:
+            log.error("墨迹窗口创建失败: %s", qml_path)
+            return None
+        self.ink_window = root
+        # 窗口建出来之前调用方可能已经切过工具：补一次，别让 QML 侧停在默认值
+        layer = self.ink_layer()
+        if layer is not None:
+            layer.setProperty("tool", self._ink_layer_tool())
+            self._apply_ink_config(layer)
+            # 工具卡「点空白收起」的起笔钩子（2026-10-08 自建批注）：
+            # 层起笔前问一遍，有卡开着就把这一按消费成收卡（见 _dismiss_tool_cards）
+            layer.card_dismiss_hook = self._dismiss_tool_cards
+        return root
+
+    def _apply_ink_config(self, layer: QQuickItem) -> None:
+        """把墨迹相关配置套到层上（2026-10-07 计划 self-ink 第 8 项）。
+
+        层是懒创建的：设置改动发生时它多半还不存在，所以建窗这一刻要从配置把
+        手掌擦除参数 / 橡皮子模式补齐；运行中的改动由 application 的
+        ``Config.on_change`` 再推一遍（两处读的是同一个配置源，键在
+        bridge.SETTING_PATHS）。"""
+        layer.setProperty("eraserMode", str(self._config.get("presentation.ink.eraser_mode", "pixel")))
+        layer.setProperty("palmEraseEnabled", bool(self._config.get("presentation.ink.palm_erase", True)))
+        layer.setProperty("palmThresholdMm", float(self._config.get("presentation.ink.palm_threshold_mm", 20)))
+
+    def ink_layer(self) -> Optional[QQuickItem]:
+        """墨迹窗口里的 InkLayer（按 objectName ``inkLayer`` 找）；没建 / 找不到返回 None。
+
+        按 objectName 找而不是按类名：QML 派生类型的类名带 ``_QMLTYPE_<n>``。
+        """
+        window = self.ink_window
+        if window is None:
+            return None
+        try:
+            layer = window.findChild(QQuickItem, "inkLayer")
+            if layer is None:
+                content = window.contentItem()
+                if content is not None:
+                    layer = content.findChild(QQuickItem, "inkLayer")
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return None
+        return layer
+
+    def set_ink_active(self, active: bool) -> None:
+        """要求「放映中显示墨迹窗口」与否。
+
+        只记意图、不强行显示：没在放映（TopWindow 没露脸）时只存 ``_ink_active``，
+        等 :meth:`show_docks` 按它恢复 —— 墨迹窗口脱离放映单独挂在桌面上，
+        就是一块盖住全屏的透明玻璃。
+        """
+        self._ink_active = bool(active)
+        if not self._ink_active:
+            self._hide_ink_window()
+            return
+        if self.overlay is None or not self.overlay.isVisible():
+            return
+        self._show_ink_window()
+
+    def set_ink_tool(self, tool: str) -> None:
+        """切墨迹工具：pen / eraser 整窗吃输入，其余（arrow 等）整窗穿透。
+
+        穿透只靠加减 ``WS_EX_TRANSPARENT``（见 :meth:`_apply_ink_styles`），
+        QML 侧不挂 MouseArea —— 穿透态下事件根本进不了进程。
+        """
+        self._ink_tool = str(tool)
+        layer = self.ink_layer()
+        if layer is not None:
+            layer.setProperty("tool", self._ink_layer_tool())
+        self._apply_ink_styles()
+
+    def _ink_layer_tool(self) -> str:
+        """交给 InkLayer 的工具名：非笔 / 橡皮一律折成 ``arrow``。
+
+        InkLayer 只认 arrow / pen / eraser，收到别的（laser 等）会拒收并**停在
+        上一个工具**（2026-10-07 实测停在 pen）—— 窗口已整窗穿透、层却还以为
+        在笔态，两边状态对不上。折成 arrow 让层与穿透状态永远一致。
+        """
+        return self._ink_tool if self._ink_tool in INK_INPUT_TOOLS else "arrow"
+
+    def _sync_ink_page(self, state) -> None:
+        """按页墨迹（2026-10-07 计划 self-ink 第 7 项）：放映状态流驱动 InkLayer 换页。
+
+        页键规则（用户决策 Q2：按页记忆、退出清空、不写回 PPT）：
+
+        - 页键只认 >0 的 slide_index。放映首次同步若 COM 还没读出页码（恒 0），
+          基线**待定**：先共用键 0、记一次日志；之后读到真实页码立即升级为按页
+          记忆（2026-10-08 修复：窗口探测比 COM attach 快，首次同步常拿到 0，
+          旧逻辑把它当单页锁死，整场翻页永不换墨迹快照）。整场都读不到页码
+          （WPS 无 COM 之类）则自然等价于旧的单页退化，语义不变。
+        - 基线确立之后再收到 0 一律忽略（COM 瞬时抽风不该把用户踢回空页）。
+        - 同页键内的状态变化（黑屏 / 白屏 / 切换动画）不碰墨迹：页键变了才
+          ``setPage``，干纹理重建在 InkLayer 里做。
+        - active→False 边沿清空全部墨迹并把层拨回键 0，下次放映从干净状态开始。
+          待定期间落在键 0 的墨也随退出清空（Q2「退出清空」决策不变）。
+        """
+        layer = self.ink_layer()
+        if layer is None:
+            return
+        if not state.active:
+            if self._ink_page_key is not None:
+                # 放映中 → 退出的边沿；hide_docks 已藏窗口，这里只管清数据。
+                # 退出态的状态更新可能来好几条，靠 _ink_page_key=None 只清一次。
+                layer.clearAll()
+                layer.setPage(0)
+                self._ink_page_key = None
+                self._ink_single_page_logged = False
+            return
+        slide = int(state.slide_index or 0)
+        if self._ink_page_key is None:
+            # 首次同步：确立本次放映的页键基线
+            if slide > 0:
+                self._ink_page_key = slide
+            else:
+                # COM 还没读出页码：基线待定，先共用键 0。之后读到真实页码走
+                # 下面的升级分支；整场读不到就自然等价于单页退化。
+                self._ink_page_key = 0
+                if not self._ink_single_page_logged:
+                    log.warning("COM 暂未读到页码：墨迹先落在公共页键 0（单页模式），读到真实页码后自动按页切换")
+                    self._ink_single_page_logged = True
+            if layer.currentPage != self._ink_page_key:
+                layer.setPage(self._ink_page_key)
+        elif self._ink_page_key == 0:
+            # 基线待定：真实页码一到达就升级为按页记忆。待定期间落在键 0 的墨
+            # 不迁页 —— 落墨时页码尚未揭晓、归属无从断定；留在键 0，退出时清空。
+            if slide > 0:
+                self._ink_page_key = slide
+                layer.setPage(slide)
+                log.info("COM 已读到页码，墨迹切换为按页记忆（页键 %s）", slide)
+        elif slide > 0 and slide != self._ink_page_key:
+            layer.setPage(slide)
+            self._ink_page_key = slide
+
+    def _show_ink_window(self) -> None:
+        window = self._ensure_ink_window()
+        if window is None:
+            return
+        self._apply_ink_geometry()
+        if not window.isVisible():
+            window.show()
+        # 样式要在 show() 之后补：原生窗口首次展示时 Qt 会重新应用一遍 exstyle
+        self._apply_ink_styles()
+        # 墨迹刚显示时排在置顶带最上面，会盖住控制条 —— 立刻让 TopWindow 压回去
+        self._assert_topmost()
+
+    def _hide_ink_window(self) -> None:
+        if self.ink_window is not None and self.ink_window.isVisible():
+            self.ink_window.hide()
+        # 与 hide_docks 复位 _overlay_screen 同理：下次显示重新定屏
+        self._ink_screen = None
+
+    def _apply_ink_geometry(self) -> None:
+        """墨迹窗口铺到与 TopWindow **同一份** ``_overlay_rect`` 上。
+
+        不自己再算一遍放映窗口矩形：物理↔逻辑换算、全屏吸附、多屏 DPR
+        全在 :meth:`_apply_overlay_geometry` 里，两只窗口各算一份迟早对不齐
+        （墨迹和控制条错位几个像素，用户会以为笔画偏了）。
+        """
+        window = self.ink_window
+        rect = self._overlay_rect
+        screen = self._overlay_screen
+        if window is None or rect is None or screen is None:
+            return
+        if self._ink_screen is not screen:
+            try:
+                window.setScreen(screen)
+            except Exception:  # pragma: no cover - 平台差异
+                log.debug("墨迹窗口 setScreen 失败", exc_info=True)
+            self._ink_screen = screen
+        if window.geometry() != rect:
+            window.setGeometry(rect)
+
+    def _apply_ink_styles(self) -> None:
+        """按工具加减 ``WS_EX_TRANSPARENT``，并补 ``WS_EX_NOACTIVATE``。
+
+        ⚠️ ``WS_EX_LAYERED`` 一个 bit 都不能动（Qt 透明窗口自带，动了整窗隐形）。
+        放映窗口不在前台（TopWindow 临时隐去）时强制穿透：笔态的墨迹窗口
+        留在别的程序上面就是一堵吃点击的墙（聚光灯的教训）。
+        """
+        window = self.ink_window
+        if window is None:
+            return
+        try:
+            hwnd = int(window.winId())
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return
+        if not hwnd:
+            return
+        style = _window_ex_style(hwnd)
+        new_style = style | WS_EX_NOACTIVATE
+        if self._ink_tool in INK_INPUT_TOOLS and not self._suppressed:
+            new_style &= ~WS_EX_TRANSPARENT
+        else:
+            new_style |= WS_EX_TRANSPARENT
+        if new_style != style:
+            _set_window_ex_style(hwnd, new_style)
+
+    def _place_ink_below_top(self) -> None:
+        """把墨迹窗口插到「TopWindow 与可见叠加窗口里最低的那只」正下方。
+
+        用 ``SetWindowPos(ink, anchor)``（插在 anchor 之下）而不是 HWND_TOPMOST：
+        后者会把墨迹顶到置顶带最上面，压住控制条和聚光灯。anchor 本身已在
+        置顶带里，插在它下面墨迹仍是 TOPMOST，于是仍压得住放映窗口。
+        """
+        window = self.ink_window
+        if window is None or not window.isVisible() or self.overlay is None:
+            return
+        if not hasattr(ctypes, "windll"):
+            return
+        try:
+            ink_hwnd = int(window.winId())
+            anchor = int(self.overlay.winId())
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return
+        if not ink_hwnd or not anchor:
+            return
+        for handle in self._registered_overlays.values():
+            if not handle.is_visible() or handle.window is None:
+                continue
+            try:
+                other = int(handle.window.winId())
+            except RuntimeError:  # pragma: no cover
+                continue
+            # 现 anchor 在它之上 → 它更低，换它当 anchor（不改聚光灯与 TopWindow 的相对序）
+            if other and other != anchor and _zorder_above(anchor, other):
+                anchor = other
+        try:
+            ctypes.windll.user32.SetWindowPos(
+                wintypes.HWND(ink_hwnd), wintypes.HWND(anchor),
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            )
+        except OSError:  # pragma: no cover
+            log.debug("调整墨迹窗口 z 序失败", exc_info=True)
 
     # ------------------------------------------------- 遮罩跟随放映窗口 / 前台
 
@@ -1829,7 +2455,11 @@ class WindowManager(QObject):
             return None
 
         rect: Optional[QRect] = None
-        if self._config.get("presentation.follow_window_rect", True):
+        # 钉了目标显示器就不跟窗口矩形走：遮罩铺满钉的那块整屏。否则窗口化
+        # 放映时矩形是按放映窗口所在屏算的，贴到另一块屏上会错位。
+        if self._config.get("presentation.follow_window_rect", True) and (
+            self._screen_pin() is None
+        ):
             rect = self._slideshow_logical_rect(screen)
         if rect is None or rect.width() <= 0 or rect.height() <= 0:
             rect = QRect(screen.geometry())
@@ -1916,10 +2546,15 @@ class WindowManager(QObject):
                 for name in self._docks:
                     self._position_dock(name)
                 self._sync_input_mode()
+                # 墨迹窗口与遮罩共用 _overlay_rect，放映窗口一动就跟着走
+                self._apply_ink_geometry()
         # 快速切页面板的「点外部收起」—— 见 _dismiss_jump_panels。
         # ⚠️ 必须放在下面 ``_manual_shown`` 的提前 return **之前**：手动显示
         #    （托盘菜单叫出控制条）时这条路径会被跳过，面板就再也收不掉了。
         self._dismiss_jump_panels()
+        # 工具卡（笔色板 / 橡皮卡）的穿透态收起同理（2026-10-08 自建批注）——
+        # self 引擎笔/橡皮态下它自己跳过，那一路由 InkLayer 起笔钩子负责
+        self._dismiss_tool_cards_on_leave()
         # 手动显示（托盘菜单）时不隐去：那条路径本来就没有放映窗口可依，
         # 而且用户刚点完托盘菜单，前台窗口是开始菜单 / 托盘，隐去等于白点。
         if self._manual_shown:
@@ -1970,6 +2605,71 @@ class WindowManager(QObject):
         except Exception:  # pragma: no cover - QML 侧没实现 / 对象已销毁
             log.debug("控制条缺 closeJumpPanel()", exc_info=True)
 
+    def _dismiss_tool_cards(self) -> bool:
+        """收起所有开着的工具卡（笔色板卡 / 橡皮子模式卡）；有卡被收返回 True。
+
+        2026-10-08 用户报告：自建批注 —— 笔/橡皮的二级卡开着时点画布空白不收起。
+        两个调用方共用这一条：
+
+        * InkLayer 的起笔钩子（self 引擎笔/橡皮态，画布上的按下落在墨迹窗口）：
+          返回 True 时那一按被消费成「收起卡片」、不起笔，之后的按下正常落墨；
+        * :meth:`_dismiss_tool_cards_on_leave`（com 引擎等穿透态，点击进不了
+          进程）：按「光标离开即收」代为调用。
+
+        卡片开合是 QML 侧状态，关闭走 ``closeToolCards()`` —— 与 closeJumpPanel
+        同一个通道，不另发明一条路。QML 缺函数 / 组件已释放只记日志：这个
+        调用点在事件与定时器路径上，抛出去会把事件循环带崩。
+        """
+        dismissed = False
+        for dock in self._docks.values():
+            try:
+                opened = bool(dock.property("paletteOpened")) or bool(dock.property("eraserPaletteOpened"))
+            except (RuntimeError, TypeError):  # pragma: no cover - 组件已释放 / 没这个属性
+                continue
+            if not opened:
+                continue
+            try:
+                QMetaObject.invokeMethod(dock, "closeToolCards")
+            except Exception:  # pragma: no cover - QML 侧没实现 / 对象已销毁
+                log.debug("控制条缺 closeToolCards()", exc_info=True)
+            dismissed = True
+        return dismissed
+
+    def _dismiss_tool_cards_on_leave(self) -> None:
+        """穿透态下的工具卡收起：光标离开控制条即收（与切页面板同一个判据、
+        同一班看护）。2026-10-08 用户报告：自建批注。
+
+        com 引擎（或放映窗口不在前台）时画布上的点击穿透到放映程序，进程内
+        谁也收不到，「点空白收起」只能退化为这个轮询判据。
+
+        ⚠️ 墨迹窗口正在吃输入（self 引擎的笔/橡皮态）时**必须跳过**：那条路上
+        「第一按 = 收起卡片」由 InkLayer 的起笔钩子消费（见 _dismiss_tool_cards），
+        这里再按光标位置抢收，用户把光标从卡片移向画布时卡就先关了，
+        「第一按消费成收卡」的约定就永远轮不到。"""
+        if self._suppressed:
+            # 临时隐去期间内容本来就看不见（容器淡成 0），不必管（同切页面板）
+            return
+        if self.overlay is None or not self.overlay.isVisible():
+            return
+        window = self.ink_window
+        if (window is not None and window.isVisible()
+                and self._ink_tool in INK_INPUT_TOOLS):
+            return
+        cursor = QCursor.pos()
+        for dock in self._docks.values():
+            try:
+                opened = bool(dock.property("paletteOpened")) or bool(dock.property("eraserPaletteOpened"))
+            except (RuntimeError, TypeError):  # pragma: no cover - 组件已释放 / 没这个属性
+                continue
+            if not opened:
+                continue
+            rect = self._dock_global_rect(dock).adjusted(
+                -JUMP_DISMISS_SLACK, -JUMP_DISMISS_SLACK,
+                JUMP_DISMISS_SLACK, JUMP_DISMISS_SLACK)
+            if not rect.contains(cursor):
+                self._dismiss_tool_cards()
+                return
+
     def _set_overlay_suppressed(self, suppressed: bool) -> None:
         """临时隐去 / 恢复遮罩（放映窗口不在前台时）。
 
@@ -1993,6 +2693,8 @@ class WindowManager(QObject):
             self._apply_overlay_base_styles(transparent=False)
             self._last_region_rects = None
             self._sync_input_mode()
+        # 隐去期间墨迹窗口强制穿透，恢复时按工具复原（见 _apply_ink_styles）
+        self._apply_ink_styles()
         log.info(
             "顶层窗口已%s（放映窗口%s前台）",
             "临时隐去" if suppressed else "恢复显示",
@@ -2117,6 +2819,8 @@ class WindowManager(QObject):
             )
         except OSError:  # pragma: no cover
             log.debug("SetWindowPos 重申置顶失败", exc_info=True)
+        # TopWindow 刚顶到最上：墨迹插回它（及可见叠加窗口）之下、放映窗口之上
+        self._place_ink_below_top()
         self._check_zorder()
         self._sync_input_mode()
         self._verify_overlay(verbose=False)
@@ -2450,13 +3154,23 @@ class WindowManager(QObject):
         """遮罩**应该**落在的物理矩形（对照实际窗口用）。
 
         基准是**放映窗口**而不是显示器 —— 窗口化放映时两者本来就不是一回事，
-        拿显示器当期望值会判成「位置不对」再纠正回去。
+        拿显示器当期望值会判成「位置不对」再纠正回去。**例外：钉了目标显示器
+        时期望值是钉屏的整屏**（与 ``_apply_overlay_geometry`` 的钉屏分支同一份
+        结论，且与遮罩当前在哪无关 —— 取 ``_overlay_rect`` 现值会让自检对
+        「窗口根本没在钉屏上」失明）。2026-10-08 之前这里漏判钉屏：看护
+        （200ms 一拍）刚按钉屏把遮罩搬走，置顶自检（``_assert_topmost`` 里那拍）
+        又按放映窗口矩形把它 ``SetWindowPos`` 拽回来，两只定时器来回拔河 ——
+        控制条在两屏之间闪，且多数时间被拽在放映窗口那屏（用户看到的
+        「钉屏不生效 + 主界面闪」）。
 
         ⚠️ 每次**现读**放映窗口，不要用 ``_overlay_rect`` 那份最多 200ms 前的
         缓存：``_verify_overlay`` 一旦发现不符就 ``SetWindowPos`` 硬纠正，用缓存
         的话用户拖放映窗口时会被 800ms 一拍的纠正**拽回旧位置**、再由看护拉回来，
         一路抖。
         """
+        pinned = self._screen_pin()
+        if pinned is not None:
+            return _native_window_rect_for(pinned)
         if self._config.get("presentation.follow_window_rect", True):
             native = self._slideshow_native_rect()
             if native is not None:
@@ -2499,14 +3213,36 @@ class WindowManager(QObject):
             log.info("顶层窗口自检: %s", self.overlay_report())
         return ok
 
+    def _screen_pin(self) -> Optional[QScreen]:
+        """用户在「目标显示器」里钉的那块屏；没钉（跟随放映窗口）返回 None。
+
+        判定与 ``bridge.py::_get_presentation_screen`` 共用
+        ``app/monitors.py::resolve_screen``（名称优先、索引兜底）。钉屏找不到
+        同名显示器（拔掉了）时按索引语义落，索引也不中返回 None —— 调用方
+        继续走跟随 / 主屏兜底，不会僵住。
+        """
+        return monitors.resolve_screen(
+            str(self._config.get("presentation.screen_name", "") or ""),
+            int(self._config.get("presentation.screen_index", -1)),
+            QGuiApplication.screens(),
+        )
+
     def _presentation_screen(self) -> Optional[QScreen]:
-        """优先跟随放映窗口所在显示器，其次按配置索引，最后回退主屏。
+        """优先钉屏（配置了目标显示器），否则跟随放映窗口，最后回退主屏。
 
         窗口类是**物理**三角形给出的（``MonitorFromWindow`` 的 ``MONITORINFO``），
         Qt 侧则是逻辑矩形；混用会错位。这里把每块屏的逻辑矩形换算回物理再去比，
         而不是拿主屏的 DPR 去除 —— 多屏不同缩放倍率时后者会打偏到别的屏幕，
         控制条就被画到你看不见的地方去了。
+
+        ⚠️ 2026-10-08 之前是「跟随优先、索引兜底」：放映窗口在时 ``screen_index``
+        永远不生效，「固定在主显示器上」名存实亡。现在钉屏（名称或索引）先判，
+        钉了就不跟窗口走；``screen_index == -1``（默认）时行为与旧版逐字节一致。
         """
+        pinned = self._screen_pin()
+        if pinned is not None:
+            return pinned
+
         rect = monitor_rect_for_window(self._ppt.state.window_handle)
         if rect is not None:
             screens = QGuiApplication.screens()
@@ -2521,10 +3257,6 @@ class WindowManager(QObject):
                 if x <= center_x < x + width and y <= center_y < y + height:
                     return screen
 
-        index = int(self._config.get("presentation.screen_index", -1))
-        screens = QGuiApplication.screens()
-        if 0 <= index < len(screens):
-            return screens[index]
         return QGuiApplication.primaryScreen()
 
     # ================================================================== 收尾
@@ -2536,6 +3268,8 @@ class WindowManager(QObject):
         # 错误报告窗口不走注册封装（见 _register_builtin_windows），单独收。
         for handle in self._registered_windows.values():
             handle.hide()
+        for handle in self._registered_overlays.values():
+            handle.hide()
         self.hide_error_report()
         self.hide_docks()
         self._docks.clear()
@@ -2543,5 +3277,6 @@ class WindowManager(QObject):
         self.panel = None
         for handle in self._registered_windows.values():
             handle._reset()
+        self._registered_overlays.clear()
         self.error_report = None
         self.overlay = None

@@ -49,6 +49,15 @@ PresentationDock 的 Repeater 本就遍历这两个数组，插件贡献自动�
 懒创建只藏不销毁，实时反注册与这两个架构前提直接打架，所以本进程内
 永不触碰已加载的插件。架构原因同步写在 ``ui/settings/Plugins.qml``
 头注释里。
+
+2026-10-06（用户指令「给插件系统添加外部导入插件功能」）：管理页再加
+外部插件的「导入 / 删除」。导入 = 用户经原生文件对话框选中插件文件夹 /
+zip，由 ``app/plugins/external.py`` 校验后拷贝进用户插件目录 —— 校验
+阶段就会执行插件顶层代码（META 无法静态读，见该文件头注释第 3 条），
+本进程不做任何注册，重启后由 loader 扫描加载，与启用 / 禁用同语义。
+删除 = 只删用户插件目录里的安装副本（用户手里的原始文件不动），并清掉
+``plugins.<id>`` 配置子树防残留。结果统一经 ``pluginManageResult`` 信号
+回 QML 显示。
 """
 
 from __future__ import annotations
@@ -65,10 +74,11 @@ from PySide6.QtGui import QGuiApplication
 
 from . import autostart
 from . import i18n
+from . import monitors
 from . import update_checker
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
-from .plugins import loader, registry
+from .plugins import external, loader, registry
 from .ppt_controller import PresentationState
 
 log = logging.getLogger(__name__)
@@ -107,6 +117,10 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_buttons_show_labels": "presentation.buttons.show_labels",
     "presentation_pager_position": "presentation.pager.position",
     "presentation_screen_index": "presentation.screen_index",
+    # 钉屏显示器的稳定 id（``QScreen.name()``）。空串 = 走 ``screen_index`` 的旧
+    # 语义（-1 跟随 / >=0 索引）；非空时优先。2026-10-08 新增，见
+    # ``app/monitors.py`` 与 ``default_config.json`` 的 ``//screen_name``。
+    "presentation_screen_name": "presentation.screen_name",
     "presentation_shadow_enabled": "presentation.surface.shadow.enabled",
     "presentation_surface_opacity": "presentation.surface.opacity",
     # ⚠️ ``presentation.divider.enabled`` / ``presentation.pager.enabled`` **没有**
@@ -114,6 +128,23 @@ SETTING_PATHS: Dict[str, str] = {
     #    生效、默认 true，只是改成纯配置项 —— 想关就在 config/config.json 里写）。
     #    登记进来的话 QML 侧会多一份没人读的代理属性，反而看不出它已经没有界面。
     "presentation_exit_style": "presentation.exit.style",
+    # 墨迹引擎（self = 自建墨迹 / com = PowerPoint·WPS 自带放映笔）。值变了由
+    # ``application.py`` 挂在 ``Config.on_change`` 上的监听器即时改道（放映中
+    # 切换也生效），这里只负责让 QML 能读写；设置页入口在计划 self-ink 第 9 项。
+    "presentation_ink_engine": "presentation.ink.engine",
+    # 橡皮子模式（stroke = 整笔 / pixel = 像素）与手掌擦除开关、阈值（毫米）。
+    # 2026-10-07 自建批注（计划 self-ink 第 9 项）：控制条橡皮卡片写前一个，设置页
+    # 「主界面 → 墨迹」写后两个；擦除行为本身由第 8 项在 InkLayer 侧消费。
+    "presentation_ink_eraser_mode": "presentation.ink.eraser_mode",
+    "presentation_ink_palm_erase": "presentation.ink.palm_erase",
+    "presentation_ink_palm_threshold_mm": "presentation.ink.palm_threshold_mm",
+    # ⚠️ ``presentation.pen.widths`` / ``default_width``（2026-10-07 自建批注的
+    #    笔粗细档）与 ``presentation.ink.eraser_widths`` / ``eraser_default_width``
+    #    （2026-10-08 的像素橡皮粗细档）刻意**不**登记：与 ``pen.palette`` 同一条
+    #    链路 —— QML 经 ``presentationConfig`` 整块读，选中值是**会话状态**
+    #    （``_pen_width`` / ``_eraser_width``，不落配置，与 ``_pen_color`` 同读法）。
+    #    登记进来只会多一份没人写的代理属性（上面 ``presentation.divider.enabled``
+    #    的反面教材）。
     # 只在调试窗口出现（隐藏入口：设置标题连点 10 次），普通用户看不到水印开关
     "dev_watermark": "app.dev_watermark",
     # 更新模式 / 更新通道（设置 → 更新 → 更新设置）。⚠️ ``update.`` 段里其余的键
@@ -259,6 +290,10 @@ class Backend(QObject):
     activeToolChanged = Signal()
     #: 墨迹颜色变了（QML 侧的笔选单靠它回显选中的那一格）
     penColorChanged = Signal()
+    #: 笔的粗细变了（笔选单「粗细」一行靠它回显选中的那一档；2026-10-07 自建批注）
+    penWidthChanged = Signal()
+    #: 像素橡皮的粗细变了（橡皮卡片「粗细」一行靠它回显；2026-10-08 自建批注）
+    eraserWidthChanged = Signal()
     shortcutsChanged = Signal()
     presentationConfigChanged = Signal()
     #: 编辑器分组清单变了（注册表 ``editor_groups()`` 的列表视图）。
@@ -267,6 +302,9 @@ class Backend(QObject):
     #: 运行期注册，再由任务 11 补发这个信号。
     presentationGroupsChanged = Signal()
     presentationScreenChanged = Signal()
+    #: 显示器名单变了（热插拔）。``monitorList`` 属性现算现读，只在插拔时
+    #: 需要喊一声让下拉重取（2026-10-08「目标显示器」逐台列出）。
+    monitorListChanged = Signal()
     quickPanelConfigChanged = Signal()
     settingsChanged = Signal()
     #: 设置窗口导航清单变了（插件设置页注册进 ``registry.settings_pages()``）。
@@ -277,6 +315,9 @@ class Backend(QObject):
     #: 之后发）。加载清单本身只在加载期产生一次，运行期唯一会变的就是
     #: 各项的 ``enabled``，所以只有这个槽会发它。
     pluginItemsChanged = Signal()
+    #: 插件导入 / 删除的结果（``ok, 人话消息``）—— ``importPluginFolder`` /
+    #: ``importPluginZip`` / ``removePlugin`` 统一经它回 QML 显示。
+    pluginManageResult = Signal(bool, str)
     statusChanged = Signal()
     #: 启动画面的进度 / 阶段文字变了
     splashChanged = Signal()
@@ -335,6 +376,13 @@ class Backend(QObject):
         #: 墨迹颜色（``#RRGGBB``）。空串 = 还没有选过 —— QML 侧据此决定
         #: 哪一格点亮（见 :meth:`setPenColor`）。
         self._pen_color = ""
+        #: 笔的粗细（逻辑 px）。0 = 还没选过 —— QML 侧此时点亮配置里的
+        #: ``presentation.pen.default_width``（见 :meth:`setPenWidth`）。
+        self._pen_width = 0.0
+        #: 像素橡皮的粗细（逻辑 px）。0 = 还没选过 —— QML 侧此时点亮配置里的
+        #: ``presentation.ink.eraser_default_width``（见 :meth:`setEraserWidth`，
+        #: 2026-10-08 自建批注）。与笔宽同为会话状态，不落配置。
+        self._eraser_width = 0.0
         self._status_text = ""
 
         #: 有没有「改了但要重启才生效」的设置（见 ``RESTART_REQUIRED_KEYS``）。
@@ -368,6 +416,14 @@ class Backend(QObject):
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(self._SAVE_DEBOUNCE_MS)
         self._save_timer.timeout.connect(self._config.save)
+
+        # 显示器热插拔：作废 ``app/monitors.py`` 的枚举缓存并喊一声，让
+        # 「目标显示器」下拉重取名单。QGuiApplication 尚未建好（纯脚本宿主）
+        # 时跳过 —— 那种宿主本来也读不到显示器。
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.screenAdded.connect(self._on_monitors_changed)
+            app.screenRemoved.connect(self._on_monitors_changed)
 
         #: 「关于」页两条**异步**链路的后台线程（取回声洞句子 / 采集诊断信息）。
         #: 只为「同一件事不并发第二次」而持有；线程本身是 daemon，退出即回收。
@@ -840,6 +896,19 @@ class Backend(QObject):
     #: 降级分支，这个坑本项目在 ``licenseText`` 上踩过一次。
     penColor = Property(str, _get_pen_color, notify=penColorChanged)
 
+    def _get_pen_width(self) -> float:
+        return self._pen_width
+
+    #: 当前笔的粗细（逻辑 px，0 = 还没选过）。与 ``penColor`` 同一条理由必须是 Property。
+    penWidth = Property(float, _get_pen_width, notify=penWidthChanged)
+
+    def _get_eraser_width(self) -> float:
+        return self._eraser_width
+
+    #: 当前像素橡皮的粗细（逻辑 px，0 = 还没选过；2026-10-08 自建批注）。
+    #: 与 ``penWidth`` 同一条理由必须是 Property。
+    eraserWidth = Property(float, _get_eraser_width, notify=eraserWidthChanged)
+
     def _get_status_text(self) -> str:
         return self._status_text
 
@@ -946,8 +1015,9 @@ class Backend(QObject):
         """放映所在显示器的**逻辑**几何 —— 主界面编辑器画布的坐标基准。
 
         优先用 :meth:`syncPresentationScreen` 推来的真实结果（放映窗口在哪块屏
-        就报哪块）；还没放映过时退回「配置索引 → 主屏」，与
-        ``windows.py::_presentation_screen`` 的兜底分支同源。
+        就报哪块）；还没放映过时退回「钉屏名称 → 配置索引 → 主屏」，与
+        ``windows.py::_presentation_screen`` 的兜底分支同源（2026-10-08 起
+        多了 ``presentation.screen_name`` 这一跳，见 ``app/monitors.py``）。
 
         ⚠️ 不能用 QML 的 ``Screen`` attached property 代替：那说的是**本窗口**
         所在显示器。双屏时编辑器在主屏、放映在副屏，画布比例会整个错掉。
@@ -958,8 +1028,11 @@ class Backend(QObject):
             screens = QGuiApplication.screens()
         except Exception:  # pragma: no cover - QApplication 尚未建好
             screens = []
-        index = int(self._config.get("presentation.screen_index", -1))
-        screen = screens[index] if 0 <= index < len(screens) else None
+        screen = monitors.resolve_screen(
+            str(self._config.get("presentation.screen_name", "") or ""),
+            int(self._config.get("presentation.screen_index", -1)),
+            screens,
+        )
         if screen is None:
             screen = QGuiApplication.primaryScreen()
         if screen is None:  # pragma: no cover - 极端情况（无显示器）
@@ -977,6 +1050,25 @@ class Backend(QObject):
     presentationScreen = Property(
         "QVariantMap", _get_presentation_screen, notify=presentationScreenChanged
     )
+
+    # ------------------------------------------------- 显示器名单（目标显示器下拉）
+
+    def _get_monitor_list(self) -> List[Dict[str, Any]]:
+        """当前接入的显示器名单（``app/monitors.py::enumerate_monitors``）。
+
+        每项 ``{name, label, primary}``：``name`` 是钉屏用的稳定 id，
+        ``label`` 是厂商+型号（读不到 EDID 时为空串，由 QML 翻成「显示器 N」）。
+        """
+        return monitors.enumerate_monitors()
+
+    monitorList = Property(
+        "QVariantList", _get_monitor_list, notify=monitorListChanged
+    )
+
+    def _on_monitors_changed(self, _screen) -> None:
+        """显示器热插拔：作废枚举缓存并通知 QML 重取名单。"""
+        monitors.invalidate()
+        self.monitorListChanged.emit()
 
     @Slot(int, int, str, float)
     def syncPresentationScreen(
@@ -1238,6 +1330,7 @@ class Backend(QObject):
                         self._config.get(f"plugins.{pid}.enabled", True)
                     ),
                     "debug": bool(entry.get("debug", False)),
+                    "external": bool(entry.get("external", False)),
                     "loaded": bool(entry.get("loaded", False)),
                     "reason": entry.get("reason"),
                 }
@@ -1273,6 +1366,76 @@ class Backend(QObject):
         self._save_timer.start()
         log.info("插件 %s 启用开关改为 %s（重启后生效）", plugin_id, enabled)
         self.pluginItemsChanged.emit()
+
+    # ------------------------------------------------ 外部插件的导入 / 删除
+
+    def _import_plugin_from_dialog(self, pick) -> None:
+        """导入插件的公共尾段：弹对话框 → 校验安装 → 结果信号回 QML。
+
+        ``pick`` 是 ``QFileDialog`` 的静态调用（返回 ``(路径, 过滤器)`` 或
+        ``(空串, _)``），对话框本体是模态原生窗口；用户取消就安静返回，
+        不发结果信号（发一条「已取消」反而像出了错）。
+        """
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _filter = pick()
+        if not path:
+            return
+        ok, message = external.install_from_path(path)
+        log.info("插件导入结果: ok=%s 消息=%s", ok, message)
+        self.pluginManageResult.emit(ok, message)
+
+    @Slot()
+    def importPluginFolder(self) -> None:
+        """弹原生目录选择框导入插件文件夹（``plugin.py`` 直在其下）。"""
+        from PySide6.QtWidgets import QFileDialog
+
+        self._import_plugin_from_dialog(
+            lambda: (
+                QFileDialog.getExistingDirectory(
+                    None,
+                    i18n.tr("Plugins", "选择插件文件夹"),
+                    str(external.user_plugins_dir()),
+                    QFileDialog.Option.ShowDirsOnly,
+                ),
+                "",
+            ),
+        )
+
+    @Slot()
+    def importPluginZip(self) -> None:
+        """弹原生文件选择框导入 .zip 插件包。"""
+        from PySide6.QtWidgets import QFileDialog
+
+        self._import_plugin_from_dialog(
+            lambda: QFileDialog.getOpenFileName(
+                None,
+                i18n.tr("Plugins", "选择插件包"),
+                "",
+                i18n.tr("Plugins", "插件包 (*.zip);;所有文件 (*)"),
+            ),
+        )
+
+    @Slot(str)
+    def removePlugin(self, plugin_id: str) -> None:
+        """删除一个外部插件的安装副本，并清掉它的 ``plugins.<id>`` 配置。
+
+        只动用户插件目录里的**安装副本**（用户导入时的原始文件不动）。
+        配置子树照删：插件都没了，``plugins.<id>.enabled`` 留着就是死条目
+        （注册表头注释第 1 条骂的正是这种残留）。加载清单是启动时刻的
+        快照，本进程内它仍显示在列表里、贡献也仍生效 —— 与启用 / 禁用
+        一样重启后才是新世界。
+        """
+        plugin_id = str(plugin_id).strip()
+        if not plugin_id:
+            log.warning("removePlugin 被拒绝（插件 id 为空）")
+            return
+        ok, message = external.uninstall(plugin_id)
+        if ok:
+            self._config.remove(f"plugins.{plugin_id}")
+            self.pluginItemsChanged.emit()
+        log.info("插件删除结果: ok=%s 消息=%s", ok, message)
+        self.pluginManageResult.emit(ok, message)
 
     @Slot(str, "QVariant")
     def setSetting(self, key: str, value: Any) -> None:
@@ -1481,7 +1644,8 @@ class Backend(QObject):
 
         ``color`` 是 ``#RRGGBB``（可带 alpha，``#AARRGGBB`` 也认，取后六位）。
         先落进本对象（QML 靠它回显选中格），再经 ``actionTriggered`` 交给
-        应用层调 PowerPoint 的 ``View.PointerColor``。
+        应用层：墨迹引擎为 self（默认）时落到自建墨迹的 InkLayer，为 com 时
+        才调 PowerPoint 的 ``View.PointerColor``（见 ``application.py::_on_action``）。
 
         ⚠️ 非法串**直接丢弃**且不改状态：选单里的格子全来自配置，正常不会
         走到这儿，但这里是 QML 能直接调到的公开槽，别让它把 ``penColor``
@@ -1498,6 +1662,54 @@ class Backend(QObject):
             self._pen_color = hex_color
             self.penColorChanged.emit()
         self.actionTriggered.emit(f"pen_color:{hex_color}")
+
+    @Slot(float)
+    def setPenWidth(self, width: float) -> None:
+        """选笔的粗细（笔选单「粗细」一行点一档，2026-10-07 自建批注）。
+
+        与 :meth:`setPenColor` 同一条路：先落进本对象（QML 回显选中档），再发
+        ``pen_width:<px>`` 交给应用层 —— self 引擎落到 InkLayer.penWidth，com
+        引擎忽略（PowerPoint 的放映笔没有粗细接口）。
+
+        ⚠️ 非正数 / 非数字直接丢弃：这是 QML 能直接调到的公开槽，别让一个 0
+        把笔画成看不见的线。
+        """
+        try:
+            value = float(width)
+        except (TypeError, ValueError):
+            log.warning("忽略非法的笔粗细: %r", width)
+            return
+        if not (value > 0) or value != value:
+            log.warning("忽略非法的笔粗细: %r", width)
+            return
+        if value != self._pen_width:
+            self._pen_width = value
+            self.penWidthChanged.emit()
+        self.actionTriggered.emit(f"pen_width:{value:g}")
+
+    @Slot(float)
+    def setEraserWidth(self, width: float) -> None:
+        """选像素橡皮的粗细（橡皮卡片「粗细」一行点一档，2026-10-08 自建批注）。
+
+        与 :meth:`setPenWidth` 同一条路：先落进本对象（QML 回显选中档），再发
+        ``eraser_width:<px>`` 交给应用层 —— self 引擎落到 InkLayer.eraserWidth，
+        com 引擎忽略（橡皮交给演示软件自己，没有粗细接口）。
+
+        ⚠️ 非正数 / 非数字直接丢弃（同 setPenWidth 的防线：这是 QML 能直接
+        调到的公开槽，别让一个 0 把橡皮变成擦不动的空气）。
+        """
+        try:
+            value = float(width)
+        except (TypeError, ValueError):
+            log.warning("忽略非法的橡皮粗细: %r", width)
+            return
+        if not (value > 0) or value != value:
+            log.warning("忽略非法的橡皮粗细: %r", width)
+            return
+        if value != self._eraser_width:
+            self._eraser_width = value
+            self.eraserWidthChanged.emit()
+        self.actionTriggered.emit(f"eraser_width:{value:g}")
 
     @Slot(str)
     def triggerAction(self, action_id: str) -> None:

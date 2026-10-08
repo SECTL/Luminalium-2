@@ -8,6 +8,10 @@
 注意只做**编译**检查：不创建对象实例，所以「缺 context property」「运行期
 ReferenceError」这类问题仍需 ``preview.py`` / ``smoke.py`` 覆盖。
 
+主题副作用（2026-10-07 自建批注 todo 11）：固定钉深色编译会碰
+``RinUI/config/rin_ui.json``，跑完按**文件字节**快照还原（finally），
+内存 toggle 之外再兜一层，任何中断路径都不漏主题。
+
 用法::
 
     .venv\\Scripts\\python.exe tools\\check_qml.py
@@ -40,7 +44,34 @@ SKIP_DIRS = {"Luminalium"}
 
 
 def main() -> int:
+    # 2026-10-07 自建批注 todo 11：在内存 toggle 还原主题（见下方原注释）之外，
+    # 再把 ``RinUI/config/rin_ui.json`` 的**文件内容**按字节快照、finally 里写回。
+    # 内存还原兜不住的情形：编译中途崩溃 / 异常跳过了 toggle、RinConfig 在退出
+    # 时序里再落一次盘 —— 本脚本是三层验证里跑得最勤的一环，任何一次主题泄漏
+    # 都会污染后续所有预览工具的「原值」。
+    rin_ui_cfg = ROOT / "RinUI" / "config" / "rin_ui.json"
+    snapshot = rin_ui_cfg.read_bytes() if rin_ui_cfg.exists() else None
+    try:
+        return _compile_all()
+    finally:
+        if snapshot is None:
+            # 跑之前文件不存在：RinUI 在运行中建了它，删掉才算真正还原
+            if rin_ui_cfg.exists():
+                rin_ui_cfg.unlink()
+        else:
+            rin_ui_cfg.write_bytes(snapshot)
+
+
+def _compile_all() -> int:
+    # 墨迹输入前提：关高频事件合并（前后各调一次，原因见 configure_input_attributes docstring）
+    from app.ink import configure_input_attributes
+    configure_input_attributes()
     qt_app = QApplication(sys.argv)
+    configure_input_attributes()
+    # 自建墨迹的 Python 类型（Luminalium.Ink 1.0）要在编译任何 QML 之前登记，
+    # 否则 ui/ink/ 下 import 它的文件会被误报为编译失败（与 application.py 同一时序）。
+    from app.ink import register_qml_types
+    register_qml_types()
 
     rinui = RinUIWindow()
     # ``RinUIWindow.load()`` 才把 RinUI 模块目录塞进 importPathList；

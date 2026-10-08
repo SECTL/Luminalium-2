@@ -1739,7 +1739,7 @@ class _ComThread(QThread):
             log.debug("保存墨迹失败", exc_info=True)
 
     def _cmd_clear(self, hwnd: int, kind: str = "") -> None:
-        """清屏。
+        """清屏（仅 ``presentation.ink.engine=com`` 链路用；self 引擎清的是 PageStore 当前页）。
 
         ⚠️ PowerPoint 的 ``View.EraseDrawing()`` 是「**隐藏**墨迹」不是「删除」
         —— Microsoft Q&A 实锤的已知 bug（隐藏态会被**下一笔 undo 回来**，
@@ -1760,6 +1760,9 @@ class _ComThread(QThread):
 
     def _cmd_tool(self, hwnd: int, tool: str, kind: str = "") -> None:
         """切换笔 / 橡皮 / 指针 —— 腿的**顺序照 Luminalium 1 ``set_pointer_type``**。
+
+        仅 ``presentation.ink.engine=com`` 链路（2026-10-07 自建批注）：self 引擎下
+        笔 / 橡皮由自建墨迹窗口接管、放映指针恒为 arrow，不会投递到这里。
 
         L1 的实测经验：光写一次 ``view.PointerType`` 经常「看起来成功了但没换」。
         它用的是**递进式重试**：先直写 COM（第 0 次带一次箭头复位），不行再写一次、
@@ -2333,12 +2336,11 @@ class PptController(QObject):
         self._com.request("export", int(index), str(path), int(width), int(height))
         return True
 
-    def exit_slideshow(self, hwnd: int = 0) -> bool:
-        self._com.request("exit", int(hwnd or 0))
-        return True
-
     def set_tool(self, tool: str, hwnd: int = 0) -> bool:
         """切换笔 / 橡皮 / 箭头。``tool`` 取 ``pen``/``eraser``/``arrow``/``none``。
+
+        仅 ``presentation.ink.engine=com`` 时被调用（2026-10-07 自建批注，application.py
+        按引擎分流）；默认 self 引擎下 ``tool:`` 动作改道自建墨迹窗口，不走这里。
 
         带上当前放映的 **kind** 一起投递 —— COM 线程靠它选快捷键回退通道
         （PowerPoint / WPS 用 Ctrl+P/E/A，永中只发 E/A）。
@@ -2352,6 +2354,9 @@ class PptController(QObject):
     def set_pen_color(self, r: int, g: int, b: int, hwnd: int = 0) -> bool:
         """设置墨迹颜色（``View.PointerColor``，L1 ``set_pen_color``）。
 
+        仅 ``presentation.ink.engine=com`` 时被调用（2026-10-07 自建批注）；self 引擎
+        下颜色落到 InkLayer.penColor，不碰 COM。
+
         只有 PowerPoint 走得通；WPS / 永中会直接返回失败（不报错，也不假装成功）。
         """
         for channel, value in (("r", r), ("g", g), ("b", b)):
@@ -2361,13 +2366,14 @@ class PptController(QObject):
         self._com.request("pen_color", int(r), int(g), int(b), self._state.kind)
         return True
 
+    # 2026-10-07：删除重复定义的 exit_slideshow（后定义覆盖前定义，保留实际生效的那份）
     def exit_slideshow(self, hwnd: int = 0, keep_ink: bool = False) -> bool:
         """退出放映。``keep_ink=True`` 时先留墨迹再退（PowerPoint 专属）。"""
         self._com.request("exit", int(hwnd or 0), bool(keep_ink), self._state.kind)
         return True
 
     def clear_screen(self, hwnd: int = 0) -> bool:
-        """清屏：擦除本页墨迹。"""
+        """清屏：擦除本页墨迹（仅 engine=com 链路；self 引擎清的是 PageStore 当前页）。"""
         self._com.request("clear", int(hwnd or 0), self._state.kind)
         return True
 

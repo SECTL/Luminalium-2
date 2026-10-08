@@ -18,6 +18,16 @@ import Luminalium
       放映窗口的方向键 / 滚轮照常工作。
     * flags 这里声明 FramelessWindowHint 是**必须的**：这不是 RinUI 接管的
       FluentWindow，AGENTS.md「禁 Frameless」那条约束的是被接管的窗口。
+    * 2026-10-08：胶囊 ``pill`` 把自身几何（窗口局部逻辑坐标）经
+      ``plugin:spotlight:pill-rect:<x>,<y>,<w>,<h>`` 上报给插件 ——
+      光斑跟着光标走，光标一靠近胶囊，胶囊就掉进镂空里被 SetWindowRgn
+      一起裁掉（✕ 按钮失联的上线实锤）；Python 塑形时把这个矩形
+      RGN_OR 补回，任何光斑位置下胶囊都可见可点。开场提示（hint）
+      **刻意不**保留 —— 它只是提示，被裁可接受。
+    * 2026-10-08：hint 文案补上「光斑外点击被遮住」「+ / − 全局生效」——
+      遮罩吃点击但没有任何说明时，用户把这堵看不见的点击墙当成
+      「电脑卡死」（设置页滑条下限同日注释同源）。第一次开聚光灯就必须
+      让人知道这两条，否则放映中超链接 / 触发器全灭且无从归因。
 
     浓度直读 ``plugins_spotlight_dim`` 设置键（settingsChanged 会推重读，
     设置页拖滑条遮罩实时变深浅）。光斑位置 / 大小由 Python 轮询喂
@@ -61,6 +71,22 @@ Window {
             color: Qt.rgba(1, 1, 1, 0.13)
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.26)
+
+            // 上报自身几何给插件做「镂空保留矩形」（缘由见文件头注释）。
+            // 父项就是填满窗口的遮罩矩形，x/y 即窗口局部逻辑坐标；几何只在
+            // 窗口resize 时变，不需要节流。preview 等无 Backend 的宿主下静默跳过
+            function reportGeometry() {
+                if (typeof Backend === "undefined")
+                    return
+                Backend.triggerAction("plugin:spotlight:pill-rect:"
+                                      + Math.round(x) + "," + Math.round(y) + ","
+                                      + Math.round(width) + "," + Math.round(height))
+            }
+            Component.onCompleted: reportGeometry()
+            onXChanged: reportGeometry()
+            onYChanged: reportGeometry()
+            onWidthChanged: reportGeometry()
+            onHeightChanged: reportGeometry()
 
             Row {
                 id: pillRow
@@ -117,7 +143,7 @@ Window {
             id: hint
             anchors.horizontalCenter: parent.horizontalCenter
             y: pill.y + pill.height + 10
-            text: qsTr("光斑跟随鼠标 · 键盘 + / − 或胶囊按钮调大小 · 点 ✕ 退出")
+            text: qsTr("光斑跟随鼠标 · 光斑外点击被遮住 · 键盘 + / − 或胶囊按钮调大小 · 点 ✕ 退出")
             font.pixelSize: 13
             color: Qt.rgba(1, 1, 1, 0.82)
 

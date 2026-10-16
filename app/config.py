@@ -112,7 +112,11 @@ class Config:
         target = self._path_override
         try:
             CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            with open(target, "w", encoding="utf-8") as handle:
+            # newline="\n"：文本模式在 Windows 上默认把 \n 写成 \r\n，
+            # 同一份内容两次落盘字节就不同 —— smoke 的铁律断言做的是
+            # **字节级**对比，「没改任何东西却变了 4 个字节」全是这条
+            # 隐式翻译干的（2026-10-06 iron-off 场景实锤）。
+            with open(target, "w", encoding="utf-8", newline="\n") as handle:
                 json.dump(diff, handle, ensure_ascii=False, indent=2)
         except OSError as exc:
             log.warning("写入配置失败 %s: %s", target, exc)
@@ -159,6 +163,27 @@ class Config:
                 log.exception("配置监听器异常: %s", path)
         if persist:
             self.save()
+
+    def remove(self, path: str, persist: bool = True) -> bool:
+        """从用户数据里删掉一个点号路径子树（外部插件卸载时清残留用）。
+
+        只动 ``_data`` 不动 ``_defaults`` —— 被删插件的默认值要等下次启动
+        才会从默认层消失，而这正合适：期间 diff 落盘不会把「默认层有、
+        用户层没有」的键写出来，用户文件不会留死条目。路径不存在返回
+        ``False``（幂等，卸载一个从没改过设置的插件时就是这条空路径）。
+        """
+        parts = path.split(".")
+        node = self._data
+        for part in parts[:-1]:
+            if not isinstance(node, dict) or part not in node:
+                return False
+            node = node[part]
+        if not isinstance(node, dict) or parts[-1] not in node:
+            return False
+        del node[parts[-1]]
+        if persist:
+            self.save()
+        return True
 
     def update(self, values: Dict[str, Any], persist: bool = True) -> None:
         for path, value in values.items():

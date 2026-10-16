@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="en_US">
 <!--
   Luminalium 2 English translations (Python side).
 
@@ -11,6 +10,8 @@
   重新生成 .qm:
       .venv/Scripts/pyside6-lrelease.exe translations/luminalium_py_en_US.ts -qm translations/luminalium_py_en_US.qm
 -->
+<TS version="2.1" language="en_US">
+
 <context>
     <name>Splash</name>
     <message>
@@ -168,25 +169,21 @@
     <message>
         <source>这条报告来自调试窗口的「手动报错」，程序本身并没有出错。
 用途：核对错误报告窗的版式、表情图与主按钮（忽略）。</source>
-        <translation>This report came from &quot;Trigger an error&quot; in the debug window; the app did not actually fail.
-Purpose: check the layout, emoji, and primary button (&quot;Ignore&quot;) of the error report window.</translation>
+        <translation>This report came from "Trigger an error" in the debug window; the app did not actually fail.
+Purpose: check the layout, emoji, and primary button ("Ignore") of the error report window.</translation>
     </message>
 </context>
 <context>
     <name>Plugins</name>
-    <!-- 任务 15（2026-10-05）探针条目：验证 Python 侧手工维护的 ts 经
-         lrelease 合并后 app.i18n.tr 能命中。保留作回归样例。 -->
+    
     <message>
         <source>演示插件</source>
         <translation>Demo plugin</translation>
     </message>
-</context>
+<message><source>选择插件文件夹</source><translation type="finished">Choose a plugin folder</translation></message><message><source>选择插件包</source><translation type="finished">Choose a plugin package</translation></message><message><source>插件包 (*.zip);;所有文件 (*)</source><translation type="finished">Plugin packages (*.zip);;All files (*)</translation></message></context>
 <context>
     <name>Settings</name>
-    <!-- 任务 7（2026-10-05）：设置窗口导航项从 QML 硬编码搬进 Python
-         （app/bridge.py::_BUILTIN_SETTINGS_NAV），标题改走 app.i18n.tr。
-         context 沿用原 QML 侧的 Settings，译文从 luminalium_en_US.ts 平移；
-         lupdate 重扫后 QML 侧这六条会消失，由本文件承接。 -->
+    
     <message>
         <source>主页</source>
         <translation>Home</translation>
@@ -204,7 +201,7 @@ Purpose: check the layout, emoji, and primary button (&quot;Ignore&quot;) of the
         <translation>Main interface</translation>
     </message>
     <message>
-        <!-- 任务 17（2026-10-05）：内建「插件」管理页加入 _BUILTIN_SETTINGS_NAV。 -->
+        
         <source>插件</source>
         <translation>Plugins</translation>
     </message>
@@ -217,4 +214,4 @@ Purpose: check the layout, emoji, and primary button (&quot;Ignore&quot;) of the
         <translation>Update</translation>
     </message>
 </context>
-</TS>
+<context><name>timer</name><message><source>计时器</source><translation type="finished">Timer</translation></message><message><source>打开 / 收起计时器</source><translation type="finished">Toggle the timer</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation type="finished">Mini Blackboard</translation></message><message><source>打开 / 收起小黑板</source><translation type="finished">Toggle the mini blackboard</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation type="finished">Spotlight</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation type="finished">Toggle the spotlight mask</translation></message><message><source>聚光灯遮罩</source><translation type="finished">Spotlight mask</translation></message></context></TS>

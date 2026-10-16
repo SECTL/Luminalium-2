@@ -140,6 +140,39 @@
     </message>
 </context>
 <context>
+    <name>BlackboardWindow</name>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="29"/>
+        <source>小黑板</source>
+        <translation>Mini Blackboard</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="203"/>
+        <source>橡皮</source>
+        <translation>Eraser</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="211"/>
+        <source>撤销</source>
+        <translation>Undo</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="217"/>
+        <source>清空</source>
+        <translation>Clear</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="224"/>
+        <source>橡皮模式</source>
+        <translation>Eraser mode</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="224"/>
+        <source>粉笔模式</source>
+        <translation>Chalk mode</translation>
+    </message>
+</context>
+<context>
     <name>DebugWindow</name>
     <message>
         <location filename="../ui/DebugWindow.qml" line="26"/>
@@ -268,6 +301,39 @@
         <location filename="../ui/Luminalium/EditorZoomBar.qml" line="183"/>
         <source>手动档位</source>
         <translation>Manual level</translation>
+    </message>
+</context>
+<context>
+    <name>EraserModeCard</name>
+    <message>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="78"/>
+        <source>橡皮</source>
+        <translation>Eraser</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="90"/>
+        <source>粗细</source>
+        <translation>Thickness</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="195"/>
+        <source>整笔擦除</source>
+        <translation>Stroke eraser</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="196"/>
+        <source>碰到哪一笔就整笔删掉</source>
+        <translation>Removes the whole stroke you touch</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="201"/>
+        <source>像素擦除</source>
+        <translation>Pixel eraser</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="202"/>
+        <source>只擦掉划过的那一截</source>
+        <translation>Erases only the part you drag over</translation>
     </message>
 </context>
 <context>
@@ -435,113 +501,183 @@
     </message>
 </context>
 <context>
+    <name>InkOverlay</name>
+    <message>
+        <location filename="../ui/ink/InkOverlay.qml" line="30"/>
+        <source>墨迹</source>
+        <translation>Ink</translation>
+    </message>
+</context>
+<context>
     <name>MainInterface</name>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="34"/>
+        <location filename="../ui/settings/MainInterface.qml" line="51"/>
         <source>主界面</source>
         <translation>Main interface</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="90"/>
+        <location filename="../ui/settings/MainInterface.qml" line="107"/>
         <source>编辑主界面的新方式</source>
         <translation>A new way to edit the main interface</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="95"/>
+        <location filename="../ui/settings/MainInterface.qml" line="112"/>
         <source>右键托盘图标或唤出快捷面板，点「主界面编辑器」即可体验：
 点击任意组件聚焦放大，右侧面板里调整它的设置。</source>
         <translation>Right-click the tray icon or open the quick panel and click &quot;Main Interface Editor&quot; to try it:
 Click any component to focus and zoom in, then adjust its settings in the panel on the right.</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="105"/>
+        <location filename="../ui/settings/MainInterface.qml" line="122"/>
         <source>打开主界面编辑器</source>
         <translation>Open Main Interface Editor</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="124"/>
+        <location filename="../ui/settings/MainInterface.qml" line="141"/>
         <source>缩放</source>
         <translation>Scale</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="131"/>
+        <location filename="../ui/settings/MainInterface.qml" line="148"/>
         <source>缩放大小</source>
         <translation>Scale</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="132"/>
+        <location filename="../ui/settings/MainInterface.qml" line="149"/>
         <source>整体放大或缩小控制条上的组件；位置与边距不受影响</source>
         <translation>Scale the control-bar components as a whole; position and margins are unaffected</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="156"/>
+        <location filename="../ui/settings/MainInterface.qml" line="173"/>
         <source>位置</source>
         <translation>Position</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="163"/>
+        <location filename="../ui/settings/MainInterface.qml" line="180"/>
         <source>水平边距</source>
         <translation>Horizontal margin</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="167"/>
+        <location filename="../ui/settings/MainInterface.qml" line="184"/>
         <source>控制条距放映窗口左右边缘的距离（全屏放映时即屏幕边缘）</source>
         <translation>Distance from the control bar to the slideshow window&apos;s left/right edges (the screen edges when presenting full screen)</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="188"/>
+        <location filename="../ui/settings/MainInterface.qml" line="205"/>
         <source>垂直边距</source>
         <translation>Vertical margin</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="190"/>
+        <location filename="../ui/settings/MainInterface.qml" line="207"/>
         <source>控制条距放映窗口上下边缘的距离（全屏放映时即屏幕边缘）</source>
         <translation>Distance from the control bar to the slideshow window&apos;s top/bottom edges (the screen edges when presenting full screen)</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="209"/>
+        <location filename="../ui/settings/MainInterface.qml" line="226"/>
         <source>目标显示器</source>
         <translation>Target monitor</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="210"/>
-        <source>控制条跟着放映窗口走，还是固定在主显示器上</source>
-        <translation>Whether the control bar follows the slideshow window or stays on the primary monitor</translation>
+        <location filename="../ui/settings/MainInterface.qml" line="228"/>
+        <source>控制条跟着放映窗口走，或固定在某台显示器上</source>
+        <translation>Whether the control bar follows the slideshow window or stays pinned to a specific monitor</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="215"/>
+        <location filename="../ui/settings/MainInterface.qml" line="245"/>
+        <source>显示器 %1</source>
+        <translation>Monitor %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="247"/>
+        <source>（主显示器）</source>
+        <translation> (Primary)</translation>
+    </message>
+    <message>
+        <source>控制条跟着放映窗口走，还是固定在主显示器上</source>
+        <translation type="vanished">Whether the control bar follows the slideshow window or stays on the primary monitor</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="242"/>
         <source>跟随放映窗口</source>
         <translation>Follow slideshow window</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="215"/>
         <source>主显示器</source>
-        <translation>Primary monitor</translation>
+        <translation type="vanished">Primary monitor</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="226"/>
+        <location filename="../ui/settings/MainInterface.qml" line="294"/>
         <source>外观</source>
         <translation>Appearance</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="233"/>
+        <location filename="../ui/settings/MainInterface.qml" line="301"/>
         <source>底板不透明度</source>
         <translation>Base plate opacity</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="234"/>
+        <location filename="../ui/settings/MainInterface.qml" line="302"/>
         <source>越透明，放映画面透出来越多，边缘高光也越明显</source>
         <translation>The more transparent, the more the slideshow shows through and the more visible the edge highlights</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="254"/>
+        <location filename="../ui/settings/MainInterface.qml" line="322"/>
         <source>阴影</source>
         <translation>Shadow</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="255"/>
+        <location filename="../ui/settings/MainInterface.qml" line="323"/>
         <source>底板下方的柔和投影；纯色背景下关掉更清爽</source>
         <translation>Soft shadow beneath the base plate; turn it off on solid-color backgrounds</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="344"/>
+        <source>墨迹</source>
+        <translation>Ink</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="351"/>
+        <source>墨迹引擎</source>
+        <translation>Ink engine</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="352"/>
+        <source>自建批注在放映画面上自己画，两家一致；COM 交给演示软件（兜底）</source>
+        <translation>Built-in ink draws over the slideshow itself, consistent across both apps; COM leaves it to the presentation software (fallback)</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="358"/>
+        <source>自建批注</source>
+        <translation>Built-in ink</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="358"/>
+        <source>COM画笔</source>
+        <translation>COM pen</translation>
+    </message>
+    <message>
+        <source>PowerPoint·WPS 自带 (COM)</source>
+        <translation type="vanished">PowerPoint·WPS built-in (COM)</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="373"/>
+        <source>手掌擦除</source>
+        <translation>Palm eraser</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="374"/>
+        <source>触摸屏上手掌或手背压上去时临时切成像素擦除，抬起即还原；仅在使用自建批注时生效</source>
+        <translation>On touch screens, pressing your palm or the back of your hand temporarily switches to pixel erase and restores on lift; only applies to built-in ink</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="393"/>
+        <source>手掌判定阈值</source>
+        <translation>Palm detection threshold</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="394"/>
+        <source>接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上</source>
+        <translation>A contact counts as a palm once its diameter reaches this value; fingertips are ~8-12 mm, palms usually 25 mm or more</translation>
     </message>
 </context>
 <context>
@@ -648,14 +784,19 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
 <context>
     <name>PenPaletteCard</name>
     <message>
-        <location filename="../ui/presentation/PenPaletteCard.qml" line="66"/>
+        <location filename="../ui/presentation/PenPaletteCard.qml" line="84"/>
         <source>颜色</source>
         <translation>Color</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PenPaletteCard.qml" line="67"/>
+        <location filename="../ui/presentation/PenPaletteCard.qml" line="85"/>
         <source>预览</source>
         <translation>Preview</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PenPaletteCard.qml" line="98"/>
+        <source>粗细</source>
+        <translation>Thickness</translation>
     </message>
 </context>
 <context>
@@ -704,47 +845,106 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
 <context>
     <name>Plugins</name>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="39"/>
+        <location filename="../ui/settings/Plugins.qml" line="55"/>
         <source>插件</source>
         <translation>Plugins</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="49"/>
+        <location filename="../ui/settings/Plugins.qml" line="71"/>
         <source>调试插件</source>
         <translation>Debug plugin</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="52"/>
+        <location filename="../ui/settings/Plugins.qml" line="74"/>
+        <source>外部导入</source>
+        <translation>Imported</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="77"/>
         <source>已加载</source>
         <translation>Loaded</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="54"/>
+        <location filename="../ui/settings/Plugins.qml" line="79"/>
         <source>未加载：%1</source>
         <translation>Not loaded: %1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="56"/>
+        <location filename="../ui/settings/Plugins.qml" line="81"/>
         <source>未加载</source>
         <translation>Not loaded</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="59"/>
+        <location filename="../ui/settings/Plugins.qml" line="84"/>
         <source>已禁用</source>
         <translation>Disabled</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="70"/>
+        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <source>操作成功</source>
+        <translation>Done</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <source>操作失败</source>
+        <translation>Failed</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="119"/>
         <source>更改将在重启应用后生效</source>
         <translation>Changes will take effect after restarting the app</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="71"/>
-        <source>插件的启用状态只在启动时读取，本进程内不会动态加载或卸载</source>
-        <translation>Plugin enabled states are only read at startup; nothing is loaded or unloaded at runtime</translation>
+        <location filename="../ui/settings/Plugins.qml" line="120"/>
+        <source>插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载</source>
+        <translation>Plugin enablement and import/removal are read at startup only; nothing is loaded or unloaded dynamically in this session</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="97"/>
+        <location filename="../ui/settings/Plugins.qml" line="131"/>
+        <source>导入插件（.zip 包）</source>
+        <translation>Import plugin (.zip)</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="132"/>
+        <source>导入即拷贝安装，重启应用后生效；插件将在本机运行，请只导入可信来源</source>
+        <translation>Importing copies and installs the plugin; it takes effect after restarting the app. Plugins run on your machine — only import from trusted sources</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="136"/>
+        <source>选择 zip 包</source>
+        <translation>Choose zip…</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="145"/>
+        <source>导入插件（文件夹）</source>
+        <translation>Import plugin (folder)</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="146"/>
+        <source>选择包含 plugin.py 的插件文件夹；导入即拷贝安装，重启应用后生效</source>
+        <translation>Pick a plugin folder containing plugin.py; importing copies and installs it, effective after restart</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="150"/>
+        <source>选择文件夹</source>
+        <translation>Choose folder…</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="224"/>
+        <source>确认删除</source>
+        <translation>Confirm delete</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="224"/>
+        <source>删除</source>
+        <translation>Delete</translation>
+    </message>
+    <message>
+        <source>插件的启用状态只在启动时读取，本进程内不会动态加载或卸载</source>
+        <translation type="vanished">Plugin enabled states are only read at startup; nothing is loaded or unloaded at runtime</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="177"/>
         <source>没有已安装的插件</source>
         <translation>No plugins installed</translation>
     </message>
@@ -762,12 +962,12 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <translation>Exit slideshow</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="543"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="618"/>
         <source>上一页</source>
         <translation>Previous</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="601"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="676"/>
         <source>下一页</source>
         <translation>Next</translation>
     </message>
@@ -918,6 +1118,205 @@ Click any component to focus and zoom in, then adjust its settings in the panel 
         <location filename="../ui/ErrorReport/SplitActionButton.qml" line="204"/>
         <source>忽略</source>
         <translation>Ignore</translation>
+    </message>
+</context>
+<context>
+    <name>SpotlightOverlay</name>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="30"/>
+        <source>聚光灯</source>
+        <translation>Spotlight</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="74"/>
+        <source>缩小光斑</source>
+        <translation>Shrink spot</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="75"/>
+        <source>退出聚光灯</source>
+        <translation>Exit spotlight</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="76"/>
+        <source>放大光斑</source>
+        <translation>Enlarge spot</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="120"/>
+        <source>光斑跟随鼠标 · 键盘 + / − 或胶囊按钮调大小 · 点 ✕ 退出</source>
+        <translation>The spot follows the mouse · + / − keys or the pill buttons resize it · ✕ to exit</translation>
+    </message>
+</context>
+<context>
+    <name>SpotlightSettings</name>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="24"/>
+        <source>聚光灯</source>
+        <translation>Spotlight</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="31"/>
+        <source>遮罩浓度</source>
+        <translation>Mask darkness</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="32"/>
+        <source>光斑之外压暗的程度；开着的遮罩上拖动即刻生效</source>
+        <translation>How dark the area outside the spot gets; dragging on an open mask applies instantly</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="50"/>
+        <source>光斑大小</source>
+        <translation>Spot size</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="51"/>
+        <source>光斑半径占屏幕短边的百分比；遮罩开着时拖动即刻生效</source>
+        <translation>Spot radius as a percentage of the screen&apos;s short side; dragging while the mask is open applies instantly</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="65"/>
+        <source>怎么退出</source>
+        <translation>How to exit</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="66"/>
+        <source>遮罩顶部的 ✕ 胶囊按钮、快捷面板磁贴或放映控制条动作都可关闭；方向键与滚轮始终归放映窗口</source>
+        <translation>Close via the ✕ pill on the mask, the quick-panel tile, or the control-bar action; arrow keys and the scroll wheel always stay with the slideshow</translation>
+    </message>
+</context>
+<context>
+    <name>TimerSettings</name>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="21"/>
+        <source>计时器</source>
+        <translation>Timer</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="28"/>
+        <source>提示音</source>
+        <translation>Sound alerts</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="29"/>
+        <source>倒计时结束响起铃声并循环，最多 3 分钟；最后 3 秒逐秒提示</source>
+        <translation>The alarm rings on countdown finish and loops for up to 3 minutes; the last 3 seconds tick each second</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="48"/>
+        <source>试听铃声</source>
+        <translation>Preview alarm</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="49"/>
+        <source>播放一遍结束铃声（不循环）</source>
+        <translation>Play the finish alarm once (no loop)</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="53"/>
+        <source>播放</source>
+        <translation>Play</translation>
+    </message>
+</context>
+<context>
+    <name>TimerWindow</name>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="36"/>
+        <source>计时器</source>
+        <translation>Timer</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="131"/>
+        <source>倒计时</source>
+        <translation>Countdown</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="132"/>
+        <source>正计时</source>
+        <translation>Stopwatch</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="133"/>
+        <source>时钟</source>
+        <translation>Clock</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="197"/>
+        <source>时间到</source>
+        <translation>Time&apos;s up</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="206"/>
+        <source>已暂停</source>
+        <translation>Paused</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="233"/>
+        <source>时</source>
+        <translation>h</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="248"/>
+        <source>分</source>
+        <translation>m</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="262"/>
+        <source>秒</source>
+        <translation>s</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="279"/>
+        <source> 分</source>
+        <translation> min</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="294"/>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="382"/>
+        <source>开始</source>
+        <translation>Start</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="320"/>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="382"/>
+        <source>暂停</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="320"/>
+        <source>继续</source>
+        <translation>Resume</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="329"/>
+        <source>+1 分钟</source>
+        <translation>+1 min</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="335"/>
+        <source>知道了</source>
+        <translation>Dismiss</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="335"/>
+        <source>停止</source>
+        <translation>Stop</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="368"/>
+        <source>计时中</source>
+        <translation>Running</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="368"/>
+        <source>已停止</source>
+        <translation>Stopped</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerWindow.qml" line="392"/>
+        <source>重置</source>
+        <translation>Reset</translation>
     </message>
 </context>
 <context>

@@ -70,6 +70,15 @@ datas = [
 # ``RinUI/...``（collect_data_files 默认就是这样）。
 datas += collect_data_files("RinUI")
 
+# 正式插件的资产（2026-10-06 计时器插件）：app/plugins/<id>/ 下的数据文件
+# PyInstaller 不会自动带，必须显式列。目标路径要和插件运行时的取法对齐 ——
+# plugin.py 用 ``Path(__file__).parent / "assets"``，冻结后 __file__ 落在
+# ``_MEIPASS/app/plugins/<id>/``，所以第二段保持同样的相对结构。
+datas += [
+    (str(ROOT / "app" / "plugins" / "timer" / "assets"),
+     os.path.join("app", "plugins", "timer", "assets")),
+]
+
 # ------------------------------------------------------------------ 隐藏导入
 
 # pywin32 的 COM 子模块是**运行时按名字**加载的（PPT 控制器走 win32com），
@@ -86,6 +95,20 @@ hiddenimports = [
     "win32com.client",
     "win32com.shell",
     "win32com.shell.shellcon",
+    # 正式插件是 loader 用 importlib 按 ``app.plugins.<id>.plugin`` **动态**
+    # 导入的（app/plugins/__init__.py 的 PLUGINS 表只是 id 字符串），静态分析
+    # 看不到这层引用 —— 不列出来打包后所有正式插件都会「导入失败」跳过。
+    # 新增正式插件时这里要同步加一行。
+    "app.plugins.timer.plugin",
+    "app.plugins.blackboard.plugin",
+    "app.plugins.spotlight.plugin",
+    # 自建墨迹包（2026-10-07）：application.py / 工具脚本都是在函数体里
+    # 延迟导入（``from .ink import register_qml_types``），PyInstaller 的静态
+    # 分析可能扫不到这层引用；漏带的话打包后 QML 里 ``import Luminalium.Ink``
+    # 直接报模块未安装、整个批注层加载失败，所以显式列出。
+    "app.ink",
+    "app.ink.layer",
+    "app.ink.model",
 ]
 
 a = Analysis(

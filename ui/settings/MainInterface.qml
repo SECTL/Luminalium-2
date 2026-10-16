@@ -20,6 +20,23 @@ import Luminalium
        —— 即下面「缩放」组的「缩放大小」卡：整块等比放大 / 缩小控制条组件
        （配置键 ``presentation.scale``，落在 ``PresentationDock`` / ``SidePager``
        的 ``scaleFactor`` 上）。
+    5. 2026-10-07 用户指令：自建批注 —— 末尾新增「墨迹」组：引擎选择
+       （自建批注 / COM画笔）、手掌擦除开关、手掌判定阈值。
+       它们调的是**放映时谁在屏幕上画墨迹**，行为主体是主界面上那层叠加窗，
+       归这一页（放映页已删，见上）。橡皮子模式的入口不在这里 —— 它在控制条
+       上（橡皮已选中时再点一下橡皮，见 ``EraserModeCard.qml``）。
+    6. 2026-10-08 用户指令：引擎下拉第二项改名「COM画笔」（原
+       「PowerPoint·WPS 自带 (COM)」）；手掌擦除两张卡只在自建引擎下
+       **显示**（``visible`` 绑 ``presentation_ink_engine``）—— COM 引擎下
+       它们本来也不生效（InkLayer 不在场），留着只会让用户以为能调。
+       设置页现有惯例就是裸 ``visible:`` 绑定（见 Plugins.qml / Update.qml），
+       不做收起动画。
+    7. 2026-10-08 用户反馈「目标显示器认不出显示器」：下拉从「跟随 /
+       主显示器」两项改成「跟随 + 逐台显示器（厂商+型号，EDID）」，
+       名单来自 ``Backend.monitorList``（``app/monitors.py``，做法移植自
+       Luminalium 1 ``webview_runner.py::get_screen_list``）。钉屏存
+       ``presentation.screen_name``（稳定 id），旧配置 ``screen_index``
+       语义保留兼容。「主显示器」项折叠成主屏那台的「（主显示器）」后缀。
 
     主界面的**可视化编辑**走独立窗口 ``ui/MainInterfaceEditor.qml``
     （入口之一就是这张卡上的按钮），单个按钮的样式（如退出键样式）在那边的
@@ -207,14 +224,65 @@ Rin.FluentPage {
 
         Layout.fillWidth: true
         title: qsTr("目标显示器")
-        description: qsTr("控制条跟着放映窗口走，还是固定在主显示器上")
+        // 2026-10-08 改口：不再只有「跟随 / 主显示器」两项，逐台列出。
+        description: qsTr("控制条跟着放映窗口走，或固定在某台显示器上")
         icon.name: "ic_fluent_desktop_20_regular"
 
         Rin.ComboBox {
-            Layout.preferredWidth: 150
-            model: [qsTr("跟随放映窗口"), qsTr("主显示器")]
-            currentIndex: Backend.settings.presentation_screen_index === -1 ? 0 : 1
-            onActivated: Backend.setSetting("presentation_screen_index", currentIndex === 0 ? -1 : 0)
+            Layout.preferredWidth: 240
+
+            // 名单 = 「跟随放映窗口」+ 每台显示器（厂商+型号，来自
+            // ``Backend.monitorList`` → ``app/monitors.py``，Qt 从 EDID 解出；
+            // 读不到的回退「显示器 N」）。「主显示器」不单独占位 —— 折叠成
+            // 主屏那台的「（主显示器）」后缀：钉主屏与选主屏那台是同一件事，
+            // 两个入口只会让用户分不清（2026-10-08）。
+            property var monitorEntries: Backend.monitorList
+
+            model: {
+                var items = [qsTr("跟随放映窗口")]
+                for (var i = 0; i < monitorEntries.length; i++) {
+                    var entry = monitorEntries[i]
+                    var label = entry.label ? entry.label : qsTr("显示器 %1").arg(i + 1)
+                    if (entry.primary)
+                        label += qsTr("（主显示器）")
+                    items.push(label)
+                }
+                return items
+            }
+
+            // 钉屏存的是 ``presentation.screen_name``（稳定 id）；旧配置的
+            // ``screen_index >= 0``（原「主显示器」写的 0）按枚举索引映射回
+            // 对应那台 —— 行为不变，只是显示成了带名字的那一项。
+            currentIndex: {
+                var name = Backend.settings.presentation_screen_name
+                if (name) {
+                    for (var i = 0; i < monitorEntries.length; i++) {
+                        if (monitorEntries[i].name === name)
+                            return i + 1
+                    }
+                    // 钉的那台被拔掉了：Python 侧回退跟随，这里也显示「跟随」
+                    return 0
+                }
+                var index = Backend.settings.presentation_screen_index
+                if (index >= 0 && index < monitorEntries.length)
+                    return index + 1
+                return 0
+            }
+
+            // 选具体某台时把索引复位成 -1：钉屏名称优先于索引，留着旧索引
+            // 只会在显示器被拔掉时多一层没人记得的兜底。
+            onActivated: {
+                if (currentIndex === 0) {
+                    Backend.setSetting("presentation_screen_name", "")
+                    Backend.setSetting("presentation_screen_index", -1)
+                } else {
+                    Backend.setSetting("presentation_screen_index", -1)
+                    Backend.setSetting(
+                        "presentation_screen_name",
+                        monitorEntries[currentIndex - 1].name
+                    )
+                }
+            }
         }
     }
 
@@ -259,6 +327,83 @@ Rin.FluentPage {
             primaryColor: Lumi.accent
             checked: Backend.settings.presentation_shadow_enabled === true
             onToggled: Backend.setSetting("presentation_shadow_enabled", checked)
+        }
+    }
+
+    // ------------------------------------------------------------------ 墨迹
+    //
+    // 2026-10-07 用户指令：自建批注（计划 self-ink 第 9 项）。这一组管
+    // 「放映时谁在屏幕上画墨迹」：引擎选择（默认自建）、触摸屏手掌擦除。
+    // 值变了由 ``application._on_config_changed`` 即时改道（放映中切换
+    // 也生效），这里只负责读写配置。橡皮子模式（整笔 / 像素）的入口刻意
+    // 不放这里 —— 它是「画的时候随手切」的档，入口在控制条橡皮卡片上。
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: 10
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("墨迹")
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfaceInkEngine"
+
+        Layout.fillWidth: true
+        title: qsTr("墨迹引擎")
+        description: qsTr("自建批注在放映画面上自己画，两家一致；COM 交给演示软件（兜底）")
+        icon.name: "ic_fluent_pen_20_regular"
+
+        Rin.ComboBox {
+            Layout.preferredWidth: 210
+            // 2026-10-08 用户指令：第二项改名「COM画笔」（原「PowerPoint·WPS 自带 (COM)」）。
+            model: [qsTr("自建批注"), qsTr("COM画笔")]
+            // 未知值按自建显示（与 ``application._ink_engine()`` 的兜底一致）。
+            currentIndex: Backend.settings.presentation_ink_engine === "com" ? 1 : 0
+            onActivated: Backend.setSetting(
+                "presentation_ink_engine", currentIndex === 1 ? "com" : "self")
+        }
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfaceInkPalmErase"
+
+        Layout.fillWidth: true
+        // 2026-10-08 用户指令：仅自建引擎下显示（COM 画笔时 InkLayer 不在场，
+        // 这两项无的放矢）。``Backend.settings`` 是响应式的，切引擎立即收起。
+        visible: Backend.settings.presentation_ink_engine !== "com"
+        title: qsTr("手掌擦除")
+        description: qsTr("触摸屏上手掌或手背压上去时临时切成像素擦除，抬起即还原；"
+                          + "仅在使用自建批注时生效")
+        icon.name: "ic_fluent_hand_left_20_regular"
+
+        Rin.Switch {
+            primaryColor: Lumi.accent
+            // 默认 true（缺键 / 被改成 false 之外的值都按开处理，
+            // 与 default_config.json 的 palm_erase 注释一致）。
+            checked: Backend.settings.presentation_ink_palm_erase !== false
+            onToggled: Backend.setSetting("presentation_ink_palm_erase", checked)
+        }
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfaceInkPalmThreshold"
+
+        Layout.fillWidth: true
+        // 与「手掌擦除」卡同一条显隐规则（2026-10-08 用户指令），理由见上。
+        visible: Backend.settings.presentation_ink_engine !== "com"
+        title: qsTr("手掌判定阈值")
+        description: qsTr("接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上")
+        icon.name: "ic_fluent_resize_20_regular"
+
+        // 档位 10~60mm（default_config.json 的 palm_threshold_mm 注释定档）。
+        SettingSlider {
+            primaryColor: Lumi.accent
+            from: 10
+            to: 60
+            stepSize: 1
+            suffix: " mm"
+            value: Backend.settings.presentation_ink_palm_threshold_mm !== undefined
+                ? Backend.settings.presentation_ink_palm_threshold_mm : 20
+            onMoved: Backend.setSetting("presentation_ink_palm_threshold_mm", Math.round(value))
         }
     }
 }

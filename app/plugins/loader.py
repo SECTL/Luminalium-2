@@ -20,13 +20,18 @@ JSON 损坏一律按默认 ``true`` 处理）；阶段二拿到正式 Config 后
 被外部改动的兜底）。**禁用的插件两阶段都跳过** —— 阶段一不注入默认值，
 阶段二不 import、不 register、零贡献。
 
-发现机制（计划明令，勿扩展）：
+发现机制（2026-10-06 起，见 ``external.py``；原「计划明令，勿扩展」的目录
+扫描禁令只约束 ``app/plugins/`` 包内 —— 外部导入是用户显式动作，禁令不适用）：
 
-* 正式插件 = ``app.plugins.PLUGINS`` 显式 id 列表（唯一来源，无目录扫描）；
+* 正式插件 = ``app.plugins.PLUGINS`` 显式 id 列表（无目录扫描）；
 * 调试插件 = ``app/plugins/`` 下目录名以单下划线 ``_`` 开头且含
   ``plugin.py`` 的目录（``_demo`` / ``_demo_dep`` 这类验收夹具），只在
   ``load_plugins(..., include_debug=True)`` 时追加加载，**永不进 PLUGINS**，
-  其默认值也不走阶段一注入（调试夹具不该污染正式配置默认层）。
+  其默认值也不走阶段一注入（调试夹具不该污染正式配置默认层）；
+* **外部插件** = 用户插件目录（``external.user_plugins_dir()``，即数据根下
+  ``plugins/``）里含 ``plugin.py`` 的目录，经设置页「导入插件」装进来，
+  永远排在正式插件之后加载（同 id 时内建胜出 —— 导入侧已拦冲突，这里是
+  兜底），默认值照走阶段一注入，加载清单里带 ``external`` 标记。
 
 插件模块约定：``app/plugins/<id>/plugin.py`` 暴露 ——
 
@@ -58,7 +63,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import paths
-from . import context, registry
+from . import context, external, registry
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +74,13 @@ _report: List[Dict[str, Any]] = []
 
 
 def loaded_plugins() -> List[Dict[str, Any]]:
-    """返回最近一次加载的结果清单（id / META / 启用状态 / 是否加载成功 / 跳过原因）。"""
+    """返回最近一次加载的结果清单。
+
+    每项 ``{id, meta, debug, external, enabled, loaded, reason}``：
+    ``debug`` = ``_`` 前缀调试夹具；``external`` = 用户导入的外部插件
+    （设置页据此显示「外部导入」标记与删除按钮）；``reason`` 是跳过原因
+    （未跳过为 None）。
+    """
     return [dict(entry) for entry in _report]
 
 
@@ -112,19 +123,23 @@ def _discover_debug_ids() -> List[str]:
     return found
 
 
-def _import_plugin(plugin_id: str) -> Any:
-    """导入 ``app.plugins.<id>.plugin`` 并做形状校验，返回模块对象。"""
-    module = importlib.import_module(f"app.plugins.{plugin_id}.plugin")
-    meta = getattr(module, "META", None)
-    if not isinstance(meta, dict) or meta.get("id") != plugin_id:
+def _import_plugin(plugin_id: str, *, external_dir: Optional[Path] = None) -> Any:
+    """导入插件模块并做形状校验，返回模块对象。
+
+    ``external_dir`` 为 ``None`` 走内建包（``app.plugins.<id>.plugin``）；
+    否则走外部合成包（``external.import_plugin_module``，目录名即 id）。
+    两条路共用 ``external.validate_module`` 的模块契约校验，``META.id``
+    必须与目录名一致。
+    """
+    if external_dir is None:
+        module = importlib.import_module(f"app.plugins.{plugin_id}.plugin")
+    else:
+        module = external.import_plugin_module(plugin_id)
+    meta_id = external.validate_module(module)
+    if meta_id != plugin_id:
         raise ValueError(
-            f"插件 {plugin_id!r} 的 META 缺失或 META.id 与目录名不一致: {meta!r}"
+            f"插件 {plugin_id!r} 的 META.id 与目录名不一致: {meta_id!r}"
         )
-    depends = meta.get("depends", [])
-    if not isinstance(depends, list) or not all(isinstance(d, str) for d in depends):
-        raise ValueError(f"插件 {plugin_id!r} 的 META.depends 必须是 list[str]: {depends!r}")
-    if not callable(getattr(module, "register", None)):
-        raise ValueError(f"插件 {plugin_id!r} 缺少可调用的 register(ctx)")
     return module
 
 
@@ -257,7 +272,8 @@ def collect_defaults() -> Dict[str, Any]:
 
     幂等：重复调用时已在 registry 里的插件不重复登记（registry 对重复
     id 抛 ValueError）。调试插件（``_`` 前缀目录）不走这里 —— 它们不该
-    污染正式配置默认层。
+    污染正式配置默认层。**外部插件**（用户插件目录）也在这里聚合默认值，
+    排在正式插件之后。
     """
     for pid in _formal_ids():
         if pid in registry.plugin_defaults()["plugins"]:
@@ -274,6 +290,25 @@ def collect_defaults() -> Dict[str, Any]:
         defaults.setdefault("enabled", True)
         context.register_plugin_defaults(pid, defaults)
         log.info("插件 %s 默认值已聚合: %s", pid, sorted(defaults))
+    # 外部插件：同样补 enabled 默认值并注入默认层；导入失败的模块在阶段二
+    # 的加载清单里报原因，这里静默跳过（阶段一没有清单可记）。
+    for pid in external.discover():
+        if pid in registry.plugin_defaults()["plugins"]:
+            continue
+        try:
+            module = _import_plugin(
+                pid, external_dir=external.user_plugins_dir() / pid
+            )
+        except Exception:
+            log.exception("外部插件 %s 阶段一导入失败，跳过默认值注入", pid)
+            continue
+        if not _enabled_from_raw_config(pid):
+            log.info("外部插件 %s 已禁用，跳过默认值注入", pid)
+            continue
+        defaults = dict(getattr(module, "DEFAULTS", None) or {})
+        defaults.setdefault("enabled", True)
+        context.register_plugin_defaults(pid, defaults)
+        log.info("外部插件 %s 默认值已聚合: %s", pid, sorted(defaults))
     return registry.plugin_defaults()
 
 
@@ -291,6 +326,12 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
     global _report
     formal_ids = _formal_ids()  # 重复 id 在这里 raise（启动硬失败）
     debug_ids = [pid for pid in _discover_debug_ids() if pid not in formal_ids] if include_debug else []
+    # 外部插件：与正式 / 调试同场加载，排在最后；同 id 冲突时内建胜出
+    # （导入侧已拦，这里是目录被手工动过之后的兜底）。
+    external_ids = [
+        pid for pid in sorted(external.discover())
+        if pid not in formal_ids and pid not in debug_ids
+    ]
 
     # Backend 持有正式 Config 的引用（bridge.Backend._config，同仓库内部
     # 通道；loader 与 bridge 同属装配层，不另开 getter）。
@@ -301,11 +342,12 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
     modules: Dict[str, Any] = {}
     unavailable: Dict[str, str] = {}
 
-    for pid in formal_ids + debug_ids:
+    for pid in formal_ids + debug_ids + external_ids:
         entry: Dict[str, Any] = {
             "id": pid,
             "meta": None,
             "debug": pid in debug_ids,
+            "external": pid in external_ids,
             "enabled": True,
             "loaded": False,
             "reason": None,
@@ -320,7 +362,10 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
             log.info("插件 %s 已禁用，跳过加载", pid)
             continue
         try:
-            modules[pid] = _import_plugin(pid)
+            modules[pid] = _import_plugin(
+                pid, external_dir=(external.user_plugins_dir() / pid)
+                if pid in external_ids else None,
+            )
         except Exception as exc:
             entry["reason"] = f"导入失败: {exc}"
             unavailable[pid] = f"导入失败（{exc}）"
@@ -356,6 +401,11 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
                 log.exception("插件 %s register 抛异常，已跳过（其依赖者将连带跳过）", pid)
                 continue
             by_id[pid]["loaded"] = True
+            # 重拍 meta 快照：插件按约定在 register() 里才把 META["name"]
+            # 换成已翻译文案（import 期翻译器未装，见 timer/plugin.py 的
+            # register 注释）—— 上面那份是 register 前的旧值，不重拍的话
+            # 插件管理页永远显示中文原文。
+            by_id[pid]["meta"] = dict(modules[pid].META)
             log.info("插件已加载: %s%s", pid, "（调试）" if by_id[pid]["debug"] else "")
     finally:
         context.end_load()

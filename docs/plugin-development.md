@@ -1,14 +1,18 @@
 # Luminalium 2 插件开发指南
 
 写给想给 Luminalium 2 写插件的人。不需要读过任何内部计划，只需要这份文档、
-两个活的范例插件（`app/plugins/_demo/` 与 `app/plugins/_demo_dep/`），再加上
-仓库根目录 `AGENTS.md` 里的通用约定（界面文案中文、QML 头注释习惯、窗口不
-加 `Qt.FramelessWindowHint` 等，本文不再重复，直接去读它）。
+三个正式插件（`app/plugins/timer/`、`app/plugins/blackboard/`、
+`app/plugins/spotlight/`，2026-10-06 落地的活范例，比夹具复杂得多，照着
+实物抄最快）、两个验收夹具（`app/plugins/_demo/` 与
+`app/plugins/_demo_dep/`），再加上仓库根目录 `AGENTS.md` 里的通用约定
+（界面文案中文、QML 头注释习惯、窗口不加 `Qt.FramelessWindowHint` 等，
+本文不再重复，直接去读它）。
 
 插件能做什么：往快捷面板加磁贴、往放映控制条加工具和动作、往设置窗口加
-整页、注册自己的设置键、往主界面编辑器加分组、开自己的窗口，以及通过一条
-进程内消息总线和其他插件对话。插件不能做什么：没有 unregister、没有热重载，
-一切贡献在启动时一次注册完就冻结（为什么这么定，见下文「两阶段加载」）。
+整页、注册自己的设置键、往主界面编辑器加分组、开自己的窗口、开自己的
+全屏叠加窗口，以及通过一条进程内消息总线和其他插件对话。插件不能做什么：
+没有 unregister、没有热重载，一切贡献在启动时一次注册完就冻结（为什么
+这么定，见下文「两阶段加载」）。
 
 ---
 
@@ -35,17 +39,30 @@ def register(ctx) -> None:                     # 必填，加载期回调
     ctx.add_shortcut(...)
 ```
 
-发现机制刻意不做目录扫描，分两类：
+发现机制分三类（2026-10-06 起目录扫描禁令只约束 `app/plugins/` 包内）：
 
 * **正式插件**：把 id 加进 `app/plugins/__init__.py` 里的 `PLUGINS` 列表。
   显式枚举让启用集合一眼可查，避免「丢个文件夹进去就默默生效」。表内重复
   id 会在启动时直接硬失败（两个插件抢同一个命名空间属于装配错误，不能
-  静默放过）。
+  静默放过）。⚠️ 打包（PyInstaller）时新正式插件要同步加进
+  `Luminalium.spec` 的 `hiddenimports`（loader 是 importlib 按名字动态
+  导入的，静态分析看不到）。
 * **调试插件**：目录名以单下划线 `_` 开头（如 `_demo`），**永不进 PLUGINS**，
   只在配置键 `app.debug = true` 时追加加载。`app.debug` 没有界面开关，
   手改 `config/config.json` 写 `"app": {"debug": true}` 后重启生效。
   调试插件的 `DEFAULTS` 也不注入正式配置默认层，关调试时它连默认值都
   不存在。写新插件时建议先用 `_` 前缀目录调试，定型后再转正。
+* **外部插件**（2026-10-06 用户指令新增）：用户从设置「插件」页导入，
+  拷贝安装到数据根的 `plugins/` 目录（开发环境即项目根的 `plugins/`，
+  打包后是 exe 同级目录），由 loader 扫描加载，与正式插件同一套加载
+  链路与启用语义。目录名即插件 id，须匹配 `^[a-z][a-z0-9_]*$`（小写
+  开头、不含 `_` 前缀——那是调试夹具的保留约定），不得与内建插件撞名。
+  **plugin.py 须自包含**（顶层不要相对导入），兄弟模块经合成包
+  `lumi_user_plugins.<id>` 在运行期可用。导入在校验阶段就会执行
+  plugin.py 的顶层代码（META 无法静态读），这一点在导入 UI 文案里向
+  用户明示了。导入 / 删除都重启生效，删除只删安装副本并清掉
+  `plugins.<id>` 配置子树。机制与校验细则见 `app/plugins/external.py`
+  头注释。
 
 ---
 
@@ -54,7 +71,7 @@ def register(ctx) -> None:                     # 必填，加载期回调
 | 字段 | 必填 | 类型 | 用途 |
 |---|---|---|---|
 | `id` | 是 | str | 唯一标识，必须与目录名一致，不一致启动时按导入失败跳过 |
-| `name` | 否 | str | 设置窗口「插件」管理页的显示名；不填回落成 id（管理页总得有个能给人看的名字） |
+| `name` | 否 | str | 设置窗口「插件」管理页的显示名；不填回落成 id（管理页总得有个能给人看的名字）。⚠️ 顶层写中文源文即可，翻译在 `register()` 里重写（见「翻译约定」） |
 | `version` | 否 | str | 管理页标题栏显示为 `名称  v<version>`；不填不显示 |
 | `depends` | 否 | list[str] | 依赖的其他插件 id，详见「依赖与故障语义」 |
 
@@ -259,7 +276,7 @@ ctx.register_setting(
   落盘之后、发信号之前调用。
 
 **Python 侧怎么感知 / 读取设置值**：`PluginContext` 刻意不提供公共的
-Backend 访问器（插件与宿主的通道收束到这 8 个 API），所以没有「随时读
+Backend 访问器（插件与宿主的通道收束到这 9 个 API），所以没有「随时读
 一个键」的通用入口。设计上插件应该是**变更驱动**的：在 `side_effect`
 回调里接收新值并更新自己的内部状态，而不是需要时去查。`_demo` 夹具走
 内部引用写键只是验收脚本的特权做法，真实插件不要学。
@@ -375,7 +392,30 @@ handle = ctx.register_window(name: str, qml_path, **options) -> RegisteredWindow
   然后插件的动作处理器里 `handle.hide()`。这是唯一不依赖 Backend 专用槽
   的通用关窗通道，不要自己发明别的关窗路径。
 
-### 8. publish / subscribe：进程内消息总线
+### 8. register_overlay：全屏叠加窗口（聚光灯一族）
+
+```python
+handle = ctx.register_overlay(name: str, qml_path, *, label=None) -> RegisteredOverlay
+```
+
+注册一只「整屏遮罩 + 镂空」的全屏叠加窗口（2026-10-06 随聚光灯插件
+新增，目前唯一用户是 `spotlight`）。与 `register_window` 不同族：窗口
+是透明的置顶 `Window`（`FramelessWindowHint` 在这里是**必须的**——它
+不是 RinUI 接管的 FluentWindow）、`WindowDoesNotAcceptFocus` 不抢焦点、
+不做 RinUI 非客户区接管（理由同放映顶层窗口）。
+
+句柄除了 `show() / hide() / toggle() / is_visible()` 外还有
+`set_hole(cx, cy, radius)`：插件自己的 `QTimer` 轮询光标，把镂空圆
+（**窗口局部逻辑坐标**）一拍一拍喂进来，窗口区域塑形（含
+`SetWindowRgn` 坐标倍率校准）由 `app/windows.py` 统一做 —— 圆内既不
+绘制也不命中，点击自然穿透到下层窗口。铁律不变：插件仍然不得自建
+QQuickWindow，叠加窗口也必须走这里登记。
+
+活范例：`app/plugins/spotlight/plugin.py`（光标跟随、键盘 `+`/`-`
+调大小、遮罩上的控制胶囊全在里面）与
+`ui/plugins/spotlight/SpotlightOverlay.qml`。
+
+### 9. publish / subscribe：进程内消息总线
 
 ```python
 ctx.publish(topic: str, payload: Any = None) -> None
@@ -470,6 +510,14 @@ ctx.subscribe(topic: str, handler: Callable[[Any], None]) -> None
 注意 `qsTr` 只认字面量，动态标题塞不进去，这就是动态字符串必须绕行
 Python tr 的原因。
 
+⚠️ **tr 必须在 `register(ctx)` 内现场调用，不能在模块顶层调用**（2026-10-07
+插件巡检实锤）：模块 import 发生在阶段一 `collect_defaults`（`Config()`
+构造之前），那时翻译器一个都没装，`i18n.tr` 只能回中文原文 —— 英文 /
+日文界面下磁贴、设置导航、管理页名称会永远是中文。`register` 跑在
+`install_translators` 之后，那里现场 tr 才是真译文。`META["name"]` 同理：
+顶层保持中文源文，在 `register()` 开头重写为 `META["name"] = tr(...)`
+（loader 会在 register 成功后重拍 meta 快照，管理页拿到的就是译文）。
+
 ---
 
 ## 参考范例：_demo 与 _demo_dep
@@ -480,10 +528,13 @@ Python tr 的原因。
 
 | 文件 | 演示了什么 |
 |---|---|
-| `_demo/plugin.py` | 8 个 ctx API 各调一遍（顺序即验收清单顺序）、模块级句柄存窗口、动作处理器按后缀分发、总线订阅 |
+| `_demo/plugin.py` | 窗口一族 ctx API 各调一遍（顺序即验收清单顺序；叠加窗口 `register_overlay` 不在其列）、模块级句柄存窗口、动作处理器按后缀分发、总线订阅 |
 | `_demo_dep/plugin.py` | `META.depends` 依赖声明、register 期 publish、拓扑序保证 |
 | `ui/plugins/_demo/DemoWindow.qml` | 插件窗口标准写法：Rin.FluentWindow、visible:false、onClosing 关窗链路 |
 | `ui/plugins/_demo/DemoSettings.qml` | 插件设置页：Rin.FluentPage、SettingCard、开关绑 `Backend.settings.<key>`、`Qt.binding` 重装绑定的坑 |
+| `app/plugins/timer/plugin.py` | **正式插件**：Python 侧状态引擎（藏在窗口背后继续走）、动作串带参（`start:300000`）、设置键 side_effect、winsound 铃声 |
+| `ui/plugins/timer/TimerWindow.qml` | 正式插件的窗口写法：Python 推状态、QML 纯绑定、全按钮走动作通道 |
+| `app/plugins/spotlight/plugin.py` | 叠加窗口 + 光标轮询 + 全局键轮询（`GetAsyncKeyState`）+ 叠加窗口的 `set_hole` 喂洞 |
 
 上手路径建议：开 `app.debug` 把这两个夹具跑起来，设置「插件」页里能看到
 它们（带「调试插件」标记），快捷面板「+」浮层里有「演示」磁贴，放映控制

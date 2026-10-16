@@ -126,15 +126,12 @@ Item {
         y: surface.y + root.paddingY
         spacing: root.contentSpacing
         flow: root.vertical ? Flow.TopToBottom : Flow.LeftToRight
-        // ⚠️ Flow **不自带**合适的内容尺寸：``implicitWidth`` 在 TopToBottom 下
-        // 取「最宽子项的 implicitWidth」，可子项里有靠容器宽算尺寸的（Segmented
-        // 的 contentWidth），两边互等 → 收敛到偏小值 → 子项被默默截断
-        // （2026-10-07 实测：3 个工具钮只排得下 2 个）。
-        //
-        // 修法是**横竖各写一个 Flow**：横版的 implicitWidth/Height 由 Qt 自己算
-        // （LeftToRight 下 implicitWidth = 累加，implicitHeight = 最高项，没问题）；
-        // 竖版则沿轴方向累加、横向取「最高子项的高」—— 都写成具体表达式，
-        // 绝不写 ``: implicitWidth`` 自引用（绑定循环，Qt 静默作废）。
+        // ⚠️ **这里不能自己算 implicitWidth**（2026-10-07 实测）：竖版下
+        // ``implicitWidth`` 取「最宽子项的 implicitWidth」正是要的效果，而子项里
+        // 有靠容器宽反算自身尺寸的（``Rin.Segmented`` 的 ``contentWidth``）——
+        // 谁在这里显式给宽，就和那个子项互等 → 收敛到偏小值 → 钮被默默截断。
+        // 解法在子项那侧：``ToolSegment`` 竖版自己按项数算宽（见其文件注释），
+        // 这里保持 Flow 默认行为、一行尺寸绑定都不写。
     }
 
     /*! 按 ``objectName`` 在**内容层**（``inner``）里找一项 —— 用 ``id`` 是不行的：

@@ -194,6 +194,9 @@ if PREVIEW_PAGER not in ("", "side", "bottom"):
 #: 笔的选单（PenPaletteCard）预览：把工具切到「笔」并展开选单，输出
 #: ``top_window_pen.png``。同样只改内存。
 PREVIEW_PEN = os.environ.get("LUMI_PREVIEW_PEN", "") not in ("", "0")
+#: 几何诊断档：把每个控制条的**内部**几何打印出来（区块 / 竖版工具段 /
+#: 尺寸链）。查「某个区块不见了 / 位置不对」时用它，比看图猜快得多。
+DOCK_GEOM = os.environ.get("LUMI_PREVIEW_DOCK_GEOM", "") not in ("", "0")
 #: 选单预览里预点亮的颜色（``presentation.pen.default`` 之外另挑一个，
 #: 好把「选中环 + 预览笔迹跟着变」一起看掉）。
 PREVIEW_PEN_COLOR = os.environ.get("LUMI_PREVIEW_PEN_COLOR", "#EC4899")
@@ -573,6 +576,28 @@ def main() -> int:
         else:
             dock.setY(PREVIEW_H - dock.height() - margin_y + shadow)
         dock.setX(x)
+
+        # 几何诊断档：把每个控制条的**内部**几何打出来（区块 / 竖版工具段 /
+        # 尺寸链）。查「某个区块不见了 / 位置不对」时用它，比看图猜快。
+        if DOCK_GEOM:
+            print(f"[GEOM] {corner}: isVertical={dock.property('isVertical')} "
+                  f"contentHeight={dock.property('contentHeight')} "
+                  f"barWidth={dock.property('barWidth')} "
+                  f"dockW={dock.property('width'):.0f} "
+                  f"dockH={dock.property('height'):.0f}")
+            for nm in ("dockTool_arrow", "dockTool_pen", "dockTool_eraser",
+                       "dockZoomButton", "dockPagerPrev", "dockPagerHit",
+                       "dockPagerNext"):
+                it = _find_by_name(dock, nm)
+                if it is None:
+                    print(f"[GEOM]   {nm}: <null>")
+                    continue
+                par = it.parentItem()
+                pn = par.property("objectName") or par.metaObject().className()
+                print(f"[GEOM]   {nm}: vis={it.property('visible')} "
+                      f"w={float(it.property('width') or 0):.0f} "
+                      f"h={float(it.property('height') or 0):.0f} "
+                      f"parent={pn}")
 
     # 笔的选单预览：把工具切到「笔」（分段高亮成笔）并展开底中那条工具栏上的
     # 选单 —— 一并设好一个「已选中的颜色」，好把「选中环 + 预览笔迹同色」看掉。

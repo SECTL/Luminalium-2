@@ -178,6 +178,9 @@ Item {
     readonly property int dividerHeight: dividerCfg.height !== undefined ? dividerCfg.height : 20
     readonly property int dividerGap: dividerCfg.gap !== undefined ? dividerCfg.gap : 14
 
+    /*! 翻页的**竖版**那一档配置（``presentation.pager.side``）—— SidePager 与
+        竖版合并 dock 共用：朝向（上下 chevron）、沿轴留白都从这里读。 */
+    readonly property var pagerSideCfg: pagerCfg.side !== undefined ? pagerCfg.side : ({})
     readonly property int pagerWidth: pagerCfg.width !== undefined ? pagerCfg.width : 48
     readonly property int pagerSpacing: pagerCfg.spacing !== undefined ? pagerCfg.spacing : 14
     readonly property int pagerPillPaddingX: pagerCfg.surface_padding_x !== undefined
@@ -198,14 +201,22 @@ Item {
         ? segmentCfg.padding_x : Lumi.dockSegmentPadding
     readonly property int segmentSpacing: segmentCfg.spacing !== undefined
         ? segmentCfg.spacing : Lumi.dockSegmentSpacing
+    /*! 横版工具段实例（在 ``toolSegmentLoader`` 里，竖版 / 未启用工具组时为
+        null）。2026-10-16：横版那段搬进了 Loader（TabBar 的 contentModel 与
+        visible 无关，见 ``toolSegmentLoader`` 处注释），外部这 4 个自检属性与
+        放大镜那处同步都改成走这个转发。 */
+    readonly property var toolSegment: toolSegmentLoader.item
+
     /*! 分段胶囊的**实际**圆角（= 高/2，钳制后）。自检读这个值。 */
-    readonly property real segmentPillRadius: present("tools")
+    readonly property real segmentPillRadius:
+        (toolSegment !== null && toolSegment !== undefined)
         ? toolSegment.effectiveRadius : 0
     /*! 当前分页数（自检用；没启用工具组时为 0）。 */
     readonly property int segmentItemCount: present("tools") ? toolsCfg.length : 0
     /*! ``TabBar.count`` —— Repeater 的项**真的进了**容器的 contentModel
         （配置长度只能证明 model 有几条，这条才证明接线成立）。 */
-    readonly property int segmentPageCount: present("tools") ? toolSegment.count : 0
+    readonly property int segmentPageCount:
+        (toolSegment !== null && toolSegment !== undefined) ? toolSegment.count : 0
     /*! 分段当前选中页的下标（自检用；没启用工具组时为 -1）。
 
         为什么要挂一份：``toolSegment.currentIndex`` 挂在 ``ToolSegment`` 里，
@@ -213,7 +224,8 @@ Item {
         ``ToolSegment`` 没给名字），所以镜像到根Item 上。
         自检拿它盯「切到放大镜时分段选中页不动」—— 那个 bug（2026-10-06）就是
         这里被悄悄拉回 0，进而把工具切回指针。 */
-    readonly property int segmentCurrentIndex: present("tools")
+    readonly property int segmentCurrentIndex:
+        (toolSegment !== null && toolSegment !== undefined)
         ? toolSegment.currentIndex : -1
 
     // ---- 开关 ----
@@ -237,10 +249,19 @@ Item {
         ? overflowCfg.icon : "ic_fluent_more_horizontal_20_filled"
     readonly property string overflowTooltip: overflowCfg.tooltip !== undefined
         ? overflowCfg.tooltip : qsTr("更多操作")
-    readonly property string pagerIconPrev: pagerCfg.icon_prev !== undefined
-        ? pagerCfg.icon_prev : "ic_fluent_chevron_left_20_filled"
-    readonly property string pagerIconNext: pagerCfg.icon_next !== undefined
-        ? pagerCfg.icon_next : "ic_fluent_chevron_right_20_filled"
+    /*! 翻页箭头的图标。竖版合并布局走 ``pager.side.icon_prev/next``（上下朝向，
+        与 SidePager 同一份配置）—— 横版那对左右 chevron 在竖条里指着屏幕外，
+        完全不对（2026-10-16 用户指令：翻页区有现成的竖版样式，复用它）。 */
+    readonly property string pagerIconPrev: isVertical
+        ? (pagerSideCfg.icon_prev !== undefined
+           ? pagerSideCfg.icon_prev : "ic_fluent_chevron_up_20_filled")
+        : (pagerCfg.icon_prev !== undefined
+           ? pagerCfg.icon_prev : "ic_fluent_chevron_left_20_filled")
+    readonly property string pagerIconNext: isVertical
+        ? (pagerSideCfg.icon_next !== undefined
+           ? pagerSideCfg.icon_next : "ic_fluent_chevron_down_20_filled")
+        : (pagerCfg.icon_next !== undefined
+           ? pagerCfg.icon_next : "ic_fluent_chevron_right_20_filled")
     readonly property string exitIcon: exitCfg.icon !== undefined
         ? exitCfg.icon : "ic_fluent_power_20_filled"
     readonly property string exitLabel: exitCfg.label !== undefined
@@ -642,11 +663,16 @@ Item {
 
     /*! 根 Item 的尺寸 = **缩放后**的屏幕像素（Python 摆位 / 区域塑形 / 编辑器预览
         都读它，见 ``scaleFactor`` 的说明）。
-        ⚠️ 竖版宽恒 ``barHeight``、高由内容撑开（``bar.implicitHeight``）——
-        ``FlyoutSurface`` 的 ``vertical`` 模式负责算。 */
-    implicitWidth: Math.round((isVertical ? barHeight : bar.implicitWidth) * scaleFactor)
-    implicitHeight: Math.round((isVertical ? bar.implicitHeight : bar.implicitHeight)
-                               * scaleFactor)
+
+        ⚠️ **横竖都用 ``bar.implicitWidth`` / ``bar.implicitHeight``**，别给竖版
+        特判成 ``barHeight``（2026-10-16 踩坑）：``FlyoutSurface`` 的
+        ``implicitWidth`` 已经是 ``surface.width + margin*2``，竖版下它算出来是
+        110（底板 62 + 投影余量 24×2）。特判成 62 会让根 Item 比底板还窄，
+        底板从 x=24 画到 86、右侧 24px 溢出根 Item —— 而编辑器选中描边与压暗
+        挖洞都按**根 Item** 算（``updateFocusRect`` 读 ``item.width``），
+        于是蓝色轮廓缩成一条细竖线、和真正的 pill 完全不重合。 */
+    implicitWidth: Math.round(bar.implicitWidth * scaleFactor)
+    implicitHeight: Math.round(bar.implicitHeight * scaleFactor)
     width: implicitWidth
     height: implicitHeight
 
@@ -680,10 +706,18 @@ Item {
         // 都由基类提供。绑定 ``currentIndex: dock.toolIndex(...)`` 给出初值并
         // 跟随后端切换；用户点击会写 currentIndex 打断绑定，由底部 Connections
         // 继续同步（标准 TabBar 用法）。
-        ToolSegment {
-            id: toolSegment
-            visible: dock.present("tools")
-            itemHeight: dock.contentHeight
+        // ⚠️ 用 Loader 而不是 ``visible`` 切横竖两版（2026-10-16 实测）：
+        // ``Rin.Segmented``（TabBar）的 contentModel 与 ``visible`` **无关** ——
+        // 竖版下把横版那段藏起来，它内部的 ListView 照样创建并布局 delegate，
+        // 3 个工具钮横排溢出到竖条左上方（图上一枚孤零零的圆钮）。Loader 才是
+        // 「不实例化」的唯一开关。
+        Loader {
+            id: toolSegmentLoader
+            active: !dock.isVertical && dock.present("tools")
+            visible: active
+            sourceComponent: ToolSegment {
+                id: toolSegment
+                itemHeight: dock.contentHeight
             edgePadding: dock.segmentPaddingX
             itemSpacing: dock.segmentSpacing
 
@@ -746,6 +780,60 @@ Item {
                     onPressed: dock.noteToolPress()
                     onClicked: dock.activateTool(modelData.id)
                 }
+                }
+            }
+        }
+
+        // ============================ 1a. 竖版工具段（自建，不用 ToolSegment）
+        // ⚠️ 为什么不复用上面那个 ``ToolSegment``（2026-10-07 实测踩坑）：
+        // 它的基类是 ``Rin.Segmented`` = ``TabBar``，而 TabBar 的 ``contentItem``
+        // 是**恒横向**的 ListView。竖版要转置就得覆写 contentItem，而那条路上
+        // delegate 死活不布局（3 个 ToolSegmentItem 全堆在 (0,0)、只看见最上面
+        // 一枚；改锚定 / 显式尺寸 / 去 currentIndex / 去 snapMode 全部无效，
+        // 渲染输出一字不变）—— 症状是「工具组只剩一个钮」的静默失效。
+        // 所以竖版**绕开 TabBar 的 contentModel 机制**，自己用 Column 排，
+        // 选中态手动绑 ``checked``（圆钮读的就是它，见 ToolSegmentItem）。
+        Item {
+            id: vToolSegment
+            visible: dock.isVertical && dock.present("tools")
+            // 宽 = 一个项高 + 左右留白（与横版 ToolSegment 的 implicitWidth 同式）
+            width: dock.contentHeight + dock.segmentPaddingX * 2
+            // 高 = 项数 × 项高 + 间距（全等等高项，沿轴不折行）
+            height: dock.toolsCfg.length * dock.contentHeight
+                    + Math.max(0, dock.toolsCfg.length - 1) * dock.segmentSpacing
+
+            // 底槽：与横版 ToolSegment 的 background 同参数（全圆胶囊，按短边/2 钳）
+            Rectangle {
+                anchors.fill: parent
+                radius: Math.min(Lumi.dockSegmentRadius,
+                                 Math.round(Math.min(parent.width, parent.height) / 2))
+                color: Lumi.dockSegmentBg
+            }
+
+            Column {
+                anchors.centerIn: parent
+                spacing: dock.segmentSpacing
+
+                Repeater {
+                    model: dock.toolsCfg
+
+                    delegate: ToolSegmentItem {
+                        required property var modelData
+                        objectName: "dockTool_" + (modelData.id !== undefined
+                                                   ? modelData.id : "?")
+                        itemHeight: dock.contentHeight
+                        glyphSize: dock.iconSize
+                        tooltip: modelData.label !== undefined ? modelData.label : ""
+                        icon.name: modelData.icon !== undefined ? modelData.icon : ""
+                        label: modelData.label !== undefined ? modelData.label : ""
+                        showLabel: dock.showLabels
+                        expanded: dock.paletteOpened && modelData.id === "pen"
+                        // 选中态手动同步（TabBar 的 currentIndex 机制在这里不存在）
+                        checked: modelData.id === Backend.activeTool
+                        onPressed: dock.noteToolPress()
+                        onClicked: dock.activateTool(modelData.id)
+                    }
+                }
             }
         }
 
@@ -781,6 +869,8 @@ Item {
         Flow {
             visible: dock.present("actions")
             spacing: dock.buttonSpacing
+            // 竖版合并布局：内容自上而下一列排（与底板的 ``vertical`` 同源）
+            flow: dock.isVertical ? Flow.TopToBottom : Flow.LeftToRight
 
             Repeater {
                 model: dock.actionsCfg
@@ -826,6 +916,8 @@ Item {
         Flow {
             visible: dock.present("pager")
             spacing: dock.pagerSpacing
+            // 竖版合并布局：上一页 / 页码 / 下一页 竖着排
+            flow: dock.isVertical ? Flow.TopToBottom : Flow.LeftToRight
 
             IconButton {
                 objectName: "dockPagerPrev"
@@ -842,8 +934,12 @@ Item {
             Item {
                 id: pagerHit
                 objectName: "dockPagerHit"
-                width: dock.pagerWidth
-                height: dock.contentHeight
+                // 竖版是**转置**：宽 = 内容高（44，竖条内容区就只有这么宽），
+                // 高 = 横版页码区的宽度 ``pagerWidth``（68）—— 与 SidePager 的
+                // ``infoHeight`` 同一笔账。因为竖版页码是三行堆叠（26 / 小斜杠 / 41），
+                // 沿轴要放得下三行字。
+                width: dock.isVertical ? dock.contentHeight : dock.pagerWidth
+                height: dock.isVertical ? dock.pagerWidth : dock.contentHeight
 
                 // hover 底：这是「这里能点」的唯一提示 —— 页码区平时看着只是一个
                 // 数字，不给反馈没人会去点它。开了面板时也保持点亮，等于「面板是
@@ -874,12 +970,12 @@ Item {
                     anchors.fill: parent
                     page: Backend.slideIndex
 
-                    Rin.Text {
+                    // 竖版：三行堆叠（当前页 / 小一号的斜杠 / 总页数）—— 与
+                    // ``SidePager.qml`` 逐字同一套排法（2026-10-16 用户指令：
+                    // 「竖版的数字排列长这样啊」）。横版保持一行 ``26/41``。
+                    Loader {
                         anchors.centerIn: parent
-                        typography: Rin.Typography.BodyLarge
-                        text: Backend.slideTotal > 0
-                            ? Backend.slideIndex + "/" + Backend.slideTotal
-                            : "-/-"
+                        sourceComponent: dock.isVertical ? stackedPagerText : inlinePagerText
                     }
                 }
 
@@ -1097,6 +1193,55 @@ Item {
     // 用户点击后 currentIndex 的绑定被打断；后端发起的工具切换
     // （快捷键 / 托盘菜单）由这里继续同步到选中页。
     // 放大镜另有一条 ``onZoomActiveChanged`` —— 它不在 ``activeTool`` 那条链上。
+        // ============================================ 页码文字两种排法
+        //
+        // 横版一行（``26/41``），竖版三行堆叠（``26`` / 小一号的 ``/`` / ``41``）
+        // —— 后者与 ``SidePager.qml`` 逐字同一套，是 L1 竖版的原始排法
+        // （2026-10-16 用户指令：「竖版的数字排列长这样啊」）。
+        //
+        // ⚠️ 用 ``Component`` + ``Loader.sourceComponent`` 而不是在两处各写一份
+        // ``visible`` 互斥的文本：``Loader`` 才是「只实例化一个」的开关，两套都
+        // 写着的话其中一套照样会被创建（TabBar 那个坑的同类）。
+        //
+        // ⚠️ 必须声明在**根 Item 内部**：``Component`` 是根对象的数据成员，
+        // 写在根对象的 ``}`` 之外 QML 直接语法错。
+        Component {
+            id: inlinePagerText
+
+            Rin.Text {
+                typography: Rin.Typography.BodyLarge
+                text: Backend.slideTotal > 0
+                    ? Backend.slideIndex + "/" + Backend.slideTotal
+                    : "-/-"
+            }
+        }
+
+        Component {
+            id: stackedPagerText
+
+            Column {
+                spacing: 0
+
+                Rin.Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    typography: Rin.Typography.BodyLarge
+                    text: Backend.slideTotal > 0 ? Backend.slideIndex : "-"
+                }
+
+                Rin.Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    typography: Rin.Typography.Caption
+                    text: "/"
+                }
+
+                Rin.Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    typography: Rin.Typography.BodyLarge
+                    text: Backend.slideTotal > 0 ? Backend.slideTotal : "-"
+                }
+            }
+        }
+
     Connections {
         target: Backend
 
@@ -1106,7 +1251,8 @@ Item {
             // ``>= 0`` 兜底：配置里的 ``tools`` 万一被改坏（空数组 / id 写错），
             // ``-1`` 写进去会让分段自己把工具切回 ``toolIdAt(-1)``（空串，处理器
             // 会忽略），但没必要让选中页变成一个非法值。
-            if (index >= 0 && toolSegment.currentIndex !== index) {
+            if (index >= 0 && toolSegment !== null
+                    && toolSegment.currentIndex !== index) {
                 toolSegment.currentIndex = index
             }
             // 选单属于各自的工位：换成指针 / 橡皮就收起来（否则它会跟着

@@ -223,7 +223,7 @@
  "pager": {
   "//enabled": "翻页区块的总开关（关掉则控制条上不出现翻页 pill）。⚠️ 2026-10-01 按用户指令**从界面上删除**了这一项（原放映页那个「页码切换」开关；放映页本身已于同日第四轮删除）—— 翻页组件的**形态与位置**改由 ``position`` 管（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」），这一项保留为纯配置项、默认 true",
   "enabled": true,
-    "//position": "翻页组件的形态与位置（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」，2026-10-01 用户指令）。side = **竖版两侧中间**（middle_left / middle_right，组件 SidePager.qml）；bottom = **横版两侧下部**（bottom_left / bottom_right，与底部同款的横版 pill）。⚠️ 两种形态**二选一**（同时开会变成四个翻页栏），改它会连带开关 corners 里这四个角的 enabled —— 真实生效的仍是 corners，这一项只是它的人话开关",
+    "//position": "翻页组件的形态与位置（入口：主界面编辑器 → 选中翻页组件 → 「翻页组件位置」，2026-10-01 用户指令）。side = **竖版两侧中间**（middle_left / middle_right，组件 SidePager.qml）；bottom = **横版两侧下部**（bottom_left / bottom_right，与底部同款的横版 pill）。⚠️ 两种形态**二选一**（同时开会变成四个翻页栏），改它会连带开关 corners 里这四个角的 enabled —— 真实生效的仍是 corners，这一项只是它的人话开关。⚠️ 2026-10-07 起它**还决定合并态的朝向**：工具栏不在底部居中时（toolbar.count=single 且 position=left/right，或 count=dual），工具栏所在侧与翻页合并成同一个 dock，合并到 middle_* 还是 bottom_* 就看这一项",
     "position": "side",
     "//width": "页码文本区宽度。放大档：翻页 pill 180 = 4 + 圆钮 44 + 8 + 68 + 8 + 44 + 4（L1 原档 160×54 的同比例放大）",
     "width": 68,
@@ -262,7 +262,7 @@
     "style": "default"
   },
     "corners": {
-      "//": "每个角落的启停与区块编排。**这里是权威** —— 工具栏组数与位置（toolbar.count / toolbar.position）、翻页组件形态（pager.position）都只是人话开关，改它们会重排本段（bridge.py::_apply_toolbar_layout / _apply_pager_position）。工具栏居中时：bottom_center = tools/actions/exit；翻页栏按 pager.position 二选一，bottom_left / bottom_right = 底部左右各一只横版 pill、middle_left / middle_right = 屏幕左右垂直居中的竖版 pill（SidePager.qml）。工具栏**不在**居中时（单组居左 / 单组居右 / 双组左右两侧）：工具栏所在角落的 groups 直接带上 pager（tools/actions/exit/pager），由 PresentationDock 的 sectionOrder 在工具栏与翻页之间画**一条**分割线，两者表现为同一个组件；此时不再有独立的翻页角落",
+      "//": "每个角落的启停与区块编排。**这里是权威** —— 工具栏组数与位置（toolbar.count / toolbar.position）、翻页组件形态（pager.position）都只是人话开关，改它们会重排本段（bridge.py::_apply_corners_layout，2026-10-07 由原先的 _apply_toolbar_layout / _apply_pager_position 合并而来）。工具栏居中时：bottom_center = tools/actions/exit；翻页栏按 pager.position 二选一，bottom_left / bottom_right = 底部左右各一只横版 pill、middle_left / middle_right = 屏幕左右垂直居中的竖版 pill（SidePager.qml）。工具栏**不在**居中时（单组居左 / 单组居右 / 双组左右两侧）：工具栏所在角落的 groups 直接带上 pager（tools/actions/exit/pager），由 PresentationDock 的 sectionOrder 在工具栏与翻页之间画**一条**分割线，两者表现为同一个组件；此时不再有独立的翻页角落",
       "bottom_center": {
         "enabled": true,
         "groups": ["tools", "actions", "exit"]

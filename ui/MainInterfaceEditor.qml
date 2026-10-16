@@ -501,13 +501,20 @@ Rin.FluentWindowBase {
         selectedInspectorItems = next
     }
 
-    /*! 两条目列表的 **key 序列**是否一致（跨角落也复用：同一个 key 序列
-        = 同一批设置项，delegate 没有重建的必要）。 */
+    /*! 两条目列表是否**等价**（跨角落也复用：等价 = delegate 没有重建的必要）。
+
+        ⚠️ 必须把 ``_section``（分组小标题）一起比（2026-10-16 踩坑）：只比 key
+        序列时，从「单组角落」切到「合并角落」若 key 序列恰好相同（例如都只有
+        工具栏那一组有设置项），小标题该从无到有却不会重建 —— 静默失效。 */
     function _sameInspectorKeys(a, b) {
         if (!a || !b || a.length !== b.length)
             return false
         for (var i = 0; i < a.length; ++i) {
             if (a[i].key !== b[i].key)
+                return false
+            var sa = a[i]._section
+            var sb = b[i]._section
+            if ((sa === undefined ? "" : sa) !== (sb === undefined ? "" : sb))
                 return false
         }
         return true
@@ -546,27 +553,19 @@ Rin.FluentWindowBase {
                 var copy = ({})
                 for (var k in item)
                     copy[k] = item[k]
-                copy._group = entry.display_name !== undefined
+                var gname = entry.display_name !== undefined
                         ? String(entry.display_name) : groups[i]
+                copy._group = gname
+                // 分组小标题：**多个组**混在同一个角落时才标（单组不加 noise），
+                // 且同组连续出现只标第一项。
+                copy._section = (groups.length > 1
+                                 && (result.length === 0
+                                     || result[result.length - 1]._group !== gname))
+                        ? gname : ""
                 result.push(copy)
             }
         }
         return result
-    }
-
-    /*! 分组小标题：只在**多组混在同一个角落**时才显示（单组时不加noise）。
-        判据用「这一项所属组是不是和上一项不同」—— 同一组连续出现时只标一次。 */
-    function inspectorSectionTitle(descriptor, index) {
-        var groups = groupsOf(selectedCorner)
-        if (groups.length < 2)
-            return ""
-        var g = descriptor._group
-        if (g === undefined || g === null)
-            return ""
-        var prev = index > 0 ? selectedInspectorItems[index - 1] : undefined
-        if (prev !== undefined && prev !== null && prev._group === g)
-            return ""
-        return g
     }
 
     /*! 描述符的**当前值**：默认读扁平设置键（``Backend.settings[key]``）。
@@ -1539,9 +1538,11 @@ Rin.FluentWindowBase {
                         readonly property var descriptor: modelData
 
                         // 合并角落里两组的设置并排显示，用小标题分区
-                        // （2026-10-07 用户指令）。
-                        sectionTitle: editorWindow.inspectorSectionTitle(
-                                           descriptor, index)
+                        // （2026-10-07 用户指令）。值在 ``_computeInspectorItems``
+                        // 里算好（``_section``）—— 别在 delegate 里现算：那要读
+                        // 整个 ``presentationConfig`` 反查组，绑定依赖一大坨。
+                        sectionTitle: descriptor._section !== undefined
+                                      ? String(descriptor._section) : ""
                         title: descriptor.title !== undefined
                                ? String(descriptor.title) : ""
                         description: descriptor.description !== undefined

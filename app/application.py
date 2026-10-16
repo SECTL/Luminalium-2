@@ -427,6 +427,12 @@ class LuminaliumApplication:
                 self.windows,
                 include_debug=bool(self.config.get("app.debug")),
             )
+            # 导航 / 磁贴都是「读取侧拼接」（注册表加载后才有插件贡献），
+            # 而 QML 侧绑的是 ``settingsNavItems`` 这个 Property —— 不发通知
+            # 的话，加载前就已打开的面板会停在「只有内建项」的状态。
+            # 设置窗口虽是懒创建（正常路径赶得上），快捷面板不是；
+            # 顺带也让 `setPluginEnabled` 之后的未来刷新有处可挂。
+            self.backend.settingsNavItemsChanged.emit()
 
         self._wire()
 

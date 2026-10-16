@@ -1379,12 +1379,16 @@ def _run_plugin_seams() -> int:
     failed = False
 
     # ---- 插件设置页（Loader 宿主，与 _build_page_hosts 同一份宿主 QML）。
-    # 计时器 / 聚光灯两页是 2026-10-07 巡检补的覆盖，_demo 那张保持原名零回归
+    # 计时器 / 聚光灯两页是 2026-10-07 巡检补的覆盖，_demo 那张保持原名零回归。
+    # 2026-10-17 起 ``page_file`` 一律给**相对 ``ui/`` 的路径**（原先写死
+    # ``UI_DIR/"plugins"/...``）：插件管理页本体在 ``ui/settings/`` 下，
+    # 而它恰恰是「只有插件加载着才看得见内容」的那一张（主进程那份
+    # ``page_Plugins.png`` 是空态）—— 列表版式坏了原本没人看得见。
     OUT_DIR.mkdir(exist_ok=True)
     host_path = OUT_DIR / "_page_host.qml"
     host_path.write_text(PAGE_HOST_QML, encoding="utf-8")
 
-    def _make_page_host(page_file, off_x):
+    def _make_page_host(page_rel, off_x):
         nonlocal failed
         component = QQmlComponent(rinui.engine, QUrl.fromLocalFile(str(host_path)))
         if component.isError():
@@ -1394,7 +1398,7 @@ def _run_plugin_seams() -> int:
             return None
         host = component.createWithInitialProperties(
             {
-                "pageUrl": QUrl.fromLocalFile(str(UI_DIR / "plugins" / page_file)),
+                "pageUrl": QUrl.fromLocalFile(str(UI_DIR / page_rel)),
                 "hostHeight": PAGE_HEIGHT,
                 "hostWidth": PAGE_WIDTH,
                 "visible": True,
@@ -1409,9 +1413,17 @@ def _run_plugin_seams() -> int:
         host.show()
         return host
 
-    page_host = _make_page_host(Path("_demo") / "DemoSettings.qml", 1800)
-    timer_host = _make_page_host(Path("timer") / "TimerSettings.qml", 4200)
-    spotlight_host = _make_page_host(Path("spotlight") / "SpotlightSettings.qml", 5400)
+    page_host = _make_page_host(Path("plugins") / "_demo" / "DemoSettings.qml", 1800)
+    timer_host = _make_page_host(Path("plugins") / "timer" / "TimerSettings.qml", 4200)
+    spotlight_host = _make_page_host(
+        Path("plugins") / "spotlight" / "SpotlightSettings.qml", 5400
+    )
+    # 插件管理页：**列表填满**的那一版（空态那张由主进程出，名字不变）。
+    # 顺手把计时器的启用开关拨到 off（只改内存）：好让「已禁用」这一档在图上
+    # 有个实例 —— 行副文案与开关的关态都得看得见，不然两样都只能靠真机试。
+    config.set("plugins.timer.enabled", False, persist=False)
+    backend.reload_from_config()
+    plugins_page_host = _make_page_host(Path("settings") / "Plugins.qml", 6600)
 
     # ---- 主界面编辑器：选中含 _demo_group 的角落（backdropEnabled 关掉的
     # 理由与主流程相同：离屏抓图拿不到 DWM 亚克力层）----
@@ -1439,6 +1451,35 @@ def _run_plugin_seams() -> int:
             # 抬一次窗口催曝光。
             editor.raise_()
             editor.requestActivate()
+
+    # ---- 设置窗口（带插件设置页的导航）----
+    # 2026-10-16 用户指令：「原生的设置 tab 和插件及其插件提供的设置 tab 应当有
+    # 分割线区分」。最终方案是插件设置页落 RinUI NavigationBar 的**底部区**，
+    # 复用 bottom 区自带的 separator 当那条线（见 bridge.py 的
+    # ``_get_settings_nav_items``）。而**只有这个子进程**里插件是加载着的
+    # （注册表冻结不可逆，主进程不能既保零回归又加载插件），所以这张图只能在这儿出。
+    settings_win = None
+    settings_component = QQmlComponent(
+        rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "Settings.qml"))
+    )
+    if settings_component.isError():
+        for error in settings_component.errors():
+            print("PLUGIN SETTINGS ERROR:", error.toString())
+        failed = True
+    else:
+        settings_win = settings_component.createWithInitialProperties(
+            {"visible": True})
+        if settings_win is None:
+            for error in settings_component.errors():
+                print("PLUGIN SETTINGS CREATE ERROR:", error.toString())
+            failed = True
+        else:
+            settings_win._settings_component = settings_component
+            settings_win.setProperty("backdropEnabled", False)
+            settings_win.setPosition(OFFSCREEN_X - 1400, OFFSCREEN_Y - 700)
+            settings_win.show()
+            settings_win.raise_()
+            settings_win.requestActivate()
 
     # ---- _demo 夹具窗口（按需创建型窗口在预览里单独建实例，与设置/调试窗同款）----
     demo_window = None
@@ -1592,10 +1633,14 @@ def _run_plugin_seams() -> int:
             targets.append((f"plugin_timer_settings{suffix}.png", timer_host))
         if spotlight_host is not None:
             targets.append((f"plugin_spotlight_settings{suffix}.png", spotlight_host))
+        if plugins_page_host is not None:
+            targets.append((f"page_Plugins_list{suffix}.png", plugins_page_host))
         if editor is not None:
             targets.append((f"plugin_editor_demo{suffix}.png", editor))
         if demo_window is not None:
             targets.append((f"plugin_demo_window{suffix}.png", demo_window))
+        if settings_win is not None:
+            targets.append((f"settings_nav_plugin_sep{suffix}.png", settings_win))
         names = [
             f"plugin_timer_window{suffix}.png",
             f"plugin_blackboard_window{suffix}.png",

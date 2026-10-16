@@ -2,23 +2,47 @@ import QtQuick
 import QtQuick.Layouts
 import RinUI as Rin
 import Luminalium
+import "components"
 
 /*!
-    插件管理页：列出加载清单里的全部插件，每项一个启用 / 禁用开关；
-    外部导入的插件带删除按钮，页首提供两条导入入口。
+    插件管理页：两张导入磁贴 + 范围分段（全部 / 仅已启用）+ 筛选胶囊 + 插件行列表。
 
     2026-10-05（插件系统 Wave 3 任务 17）新增。数据源是 ``Backend.pluginItems``
     （``app/bridge.py`` 把 ``loader.loaded_plugins()`` 的清单 + 正式 Config
     里的 ``plugins.<id>.enabled`` 合成的列表），开关写回走
     ``Backend.setPluginEnabled``（常规配置路径，防抖落盘）。
 
-    2026-10-06（用户指令「给插件系统添加外部导入插件功能」）加外部插件
-    管理：页首两张「导入插件」卡片（.zip 包 / 文件夹）分别走
-    ``Backend.importPluginZip`` / ``importPluginFolder``（模态原生对话框，
+    2026-10-06（用户指令「给插件系统添加外部导入插件功能」）加外部插件管理：
+    导入走 ``Backend.importPluginZip`` / ``importPluginFolder``（模态原生对话框，
     Python 侧校验 + 拷贝，见 ``app/plugins/external.py``）；结果经
-    ``pluginManageResult(ok, message)`` 信号回来显示在页首横幅里。外部
-    插件卡片多一枚「删除」按钮（两段式确认，避免手滑整包删掉）—— 只删
-    用户插件目录里的安装副本，原始文件不动。
+    ``pluginManageResult(ok, message)`` 信号回来显示在页首横幅里。外部插件行
+    多一枚「删除」按钮（两段式确认，避免手滑整包删掉）—— 只删用户插件目录里
+    的安装副本，原始文件不动。
+
+    2026-10-17（用户指令「将插件界面的排版改成如图排版」）整页重排版：
+    原先的「两张 SettingCard 导入卡片 + 一条平铺列表」换成设计稿的四段式 ——
+
+      ① **小节标签**（``导入`` / ``插件``）—— ``Rin.Text { BodyStrong }``，
+         不再靠标题栏分区；
+      ② **两张并排的导入磁贴**（``ActionCard``，与主页外链卡共用）：
+         整张磁贴即入口，右下角一枚「打开」字形提示可点；
+      ③ **范围分段** ``Rin.Segmented``（已安装的全部 / 已安装且已启用）——
+         全宽两页，选中页自带淡底 + 底部强调色指示条（RinUI 原档，未改形态）；
+      ④ **筛选胶囊**（``PluginFilterChip``）—— 选中 = 强调色实底 + 对比文字色，
+         未选中 = 弱对比底色。**横向可滚动**：行是 ``Flickable``，
+         内容溢出时右端才出现一枚 chevron。
+
+    2026-10-17（用户指令「按 SVG 复刻」）**尺寸全部重按 SVG 量过**：上一版把
+    SVG 值乘了 0.844（1080 宽的 PNG / 1280 宽的 SVG），整页矮了一档；设计稿里
+    的字给出了判决 —— 行标题 14、行副文案 12、分段与胶囊文字 14，全落在 RinUI
+    的字号梯上，说明 **SVG 单位 = 逻辑 px**。具体值与理由见
+    ``ui/Luminalium/Lumi.qml`` 的「设置 · 插件页」一节。横向照旧交给布局。
+
+    2026-10-17（用户指令「设计稿和成品必须高度一致」）按 SVG 补齐完整类别筛选，
+    不再只放三只来源胶囊。分类值来自可选 ``META.category``；未声明的插件归
+    ``other``，所以外部插件不会因缺字段消失。同理，设计稿副文案上的作者名没有
+    数据源，``describe()`` 走的是本项目自己可验证的状态信息（版本 / 调试 /
+    外部导入 / 加载结果），只是把**版本号提到最前**。
 
     ⚠️ **导入 / 删除 / 启用 / 禁用都是重启后生效，本进程内不做任何动态
     增删** —— 这不是偷懒，是两个架构前提决定的：
@@ -41,13 +65,19 @@ import Luminalium
     ``armTimer`` 复位。
 
     页面结构（自上而下）：
-      ① 导入结果横幅（导入 / 删除完成后短暂可见）；
+      ① 导入 / 删除结果横幅（操作后短暂可见）；
       ② 「重启后生效」内联横幅（拨过开关 / 导入删除成功后出现）；
-      ③ 两张导入入口卡片（zip 包 / 文件夹）；
-      ④ 空态占位（加载清单为空时 —— 未跑加载 / 无插件）；
-      ⑤ 插件卡片列表（Repeater 遍历 ``Backend.pluginItems``）：标题 =
-         名称 + 版本号，副文案 = 调试 / 外部标记 + 加载结果 / 跳过原因，
-         右侧外部插件删除按钮 + 启用开关。
+      ③ 「导入」小节标签 + 两张导入磁贴；
+      ④ 「插件」小节标签 + 范围分段 + 筛选胶囊行；
+      ⑤ 空态占位（无插件，或筛选后一条都不剩 —— 两种文案分开）；
+      ⑥ 插件行（Repeater 遍历 ``Backend.pluginItems``）：标题 = 插件名，副文案 =
+         版本号 + 调试 / 外部标记 + 加载结果，右侧外部插件删除按钮 +「启用」
+         标签 + 启用开关。
+
+    ⚠️ **筛选没有走「先过滤再喂 Repeater」**（那要另建一个 JS 数组属性，
+    还得自己维护变更通知）：代理照旧遍历全量，各自 ``visible: page.matches()``，
+    空态用 ``shownCount`` 这只现算的只读属性。插件数量是个位数，多建的隐藏
+    代理不值一提，换来的是「删掉一条就地隐藏」那套既有逻辑一行都不用动。
 */
 Rin.FluentPage {
     id: page
@@ -64,9 +94,137 @@ Rin.FluentPage {
     /*! 本会话里已删除的插件 id —— 加载清单是启动快照，删掉的要就地改观。 */
     property var removedIds: ({})
 
-    /*! 卡片副文案：调试 / 外部标记 + 加载结果 / 跳过原因拼一行（「·」分隔）。 */
+    /*! 范围（分段控件）与筛选项的**唯一状态位**。
+        范围不另存一份：直接读 ``scopeBar.currentIndex``，免得两处状态打架。 */
+    property string kindFilter: "all"
+    /*! 分类词表：只负责 **id → 可翻译标签**，以及**显示顺序**。它不决定「有哪几个
+        分类」—— 那由插件自己说了算（见 ``kindFilters``）。表里没写到的 id 原样
+        显示，插件自定义的分类不该被 UI 吃掉。 */
+    readonly property var categoryLabels: ({
+        "utility": qsTr("实用工具"),
+        "subject": qsTr("学科工具"),
+        "office": qsTr("办公工具"),
+        "entertainment": qsTr("娱乐工具"),
+        "improve": qsTr("改进"),
+        "optimize": qsTr("优化"),
+        "injection": qsTr("注入式修改类"),
+        "integration": qsTr("联动类"),
+        "shortcut": qsTr("快捷方式类"),
+        "other": qsTr("其他"),
+        "quicktool": qsTr("快捷工具")
+    })
+
+    /*! 筛选胶囊的模型 = 全部 / 内置 / 非内置 + **插件实际声明过的分类**。
+        ``id`` 是不随翻译变化的 ``META.category`` 值（``app/bridge.py`` 的
+        ``pluginItems`` 逐项透出，缺省归 ``other``），来源筛选也走同一模型，
+        免得 UI 与过滤逻辑各维护一份顺序。
+
+        ⚠️ **这里刻意不读 ``kindFilter``**：绑上它就会「点一下 → 重建 Repeater →
+        把这个 delegate 自己从事件处理中拆掉」。选中的分类若因插件变动消失，
+        由 ``Backend.pluginItemsChanged`` 那条兜底把筛选退回「全部」。 */
+    readonly property var kindFilters: {
+        var out = [
+            { id: "all", label: qsTr("全部") },
+            { id: "builtIn", label: qsTr("内置") },
+            { id: "external", label: qsTr("非内置") }
+        ]
+        var seen = {}
+        var items = Backend.pluginItems
+        for (var i = 0; i < items.length; ++i) {
+            var c = items[i].category
+            if (c) {
+                seen[c] = true
+            }
+        }
+        var known = Object.keys(page.categoryLabels)
+        for (var k = 0; k < known.length; ++k) {
+            if (seen[known[k]] === true) {
+                out.push({ id: known[k], label: page.categoryLabels[known[k]] })
+                delete seen[known[k]]
+            }
+        }
+        // 词表外的分类（插件自定义）：按发现顺序缀在后面。
+        for (var m = 0; m < items.length; ++m) {
+            var extra = items[m].category
+            if (extra && seen[extra] === true) {
+                out.push({ id: extra, label: extra })
+                delete seen[extra]
+            }
+        }
+        return out
+    }
+
+    /*! 插件清单变了（启用开关 / 删除 / 重载）就核对一次当前筛选：选中的分类
+        如果已经不存在了，退回「全部」—— 否则会出现「一个胶囊都没高亮，列表却是
+        空的」这种没有出路的状态。 */
+    function pruneKindFilter() {
+        if (kindFilter === "all" || kindFilter === "builtIn"
+                || kindFilter === "external") {
+            return
+        }
+        var list = kindFilters
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].id === kindFilter) {
+                return
+            }
+        }
+        kindFilter = "all"
+    }
+
+    /*! 一行插件是否该露脸：范围（全部 / 仅已启用）× 类别或来源。
+        ``debug`` 归「内置」—— 它是 ``_`` 前缀的调试夹具，本来就在安装目录里。
+
+        ⚠️ 两个判据**当参数传进来**、不在这里偷读 ``scopeBar`` / ``kindFilter``：
+        传参让「这条 visible 依赖了谁」在调用点一眼可读，绑定依赖也抓得明明白白
+        （依赖是在绑定求值期抓的，函数里偷读当然也抓得到，但下一眼看不出来）。 */
+    function matches(item, scopeIndex, kind) {
+        if (!item) {
+            return false
+        }
+        if (scopeIndex === 1 && item.enabled !== true) {
+            return false
+        }
+        if (kind === "builtIn" && item.external === true) {
+            return false
+        }
+        if (kind === "external" && item.external !== true) {
+            return false
+        }
+        if (kind !== "all" && kind !== "builtIn" && kind !== "external"
+                && item.category !== kind) {
+            return false
+        }
+        return true
+    }
+
+    /*! 过滤之后还剩几条（空态据此显示）。写成属性而不是函数：只读属性会被当
+        绑定求值，``pluginItems`` / 分段 / 胶囊任一变化都会重算 —— 两个判据在
+        这里都读了一遍，依赖于是明摆着的。 */
+    readonly property int shownCount: {
+        var scope = scopeBar.currentIndex
+        var kind = kindFilter
+        var items = Backend.pluginItems
+        var n = 0
+        for (var i = 0; i < items.length; ++i) {
+            if (matches(items[i], scope, kind) && !isRemoved(items[i])) {
+                n += 1
+            }
+        }
+        return n
+    }
+
+    /*! 是否已被本会话删掉（加载清单是启动快照，删掉的就地隐藏）。 */
+    function isRemoved(item) {
+        return item.external === true && removedIds[item.id] === true
+    }
+
+    /*! 行副文案：版本号提到最前（设计稿是「v1.0.0 · 作者」这种形状），后面接
+        本项目真正有的状态信息，「·」分隔。 */
     function describe(item) {
         var parts = []
+        if (item.version) {
+            parts.push("v" + item.version)
+        }
         if (item.debug) {
             parts.push(qsTr("调试插件"))
         }
@@ -95,6 +253,11 @@ Rin.FluentPage {
                 page.restartHintShown = true
             }
         }
+        /*! 分类胶囊是从 ``pluginItems`` 推出来的，清单一变就要核对选中的分类还在
+            不在（启用开关 / 删除都会走这条路）。 */
+        function onPluginItemsChanged() {
+            page.pruneKindFilter()
+        }
     }
 
     // ==================================================== 导入 / 删除结果横幅
@@ -121,44 +284,198 @@ Rin.FluentPage {
         icon.name: "ic_fluent_arrow_sync_circle_20_regular"
     }
 
-    // ==================================================== 导入入口
-    // 两条入口分开（而不是一个按钮里做格式判断）：原生对话框「选文件夹」
-    // 与「选文件」是两种交互，硬捏在一个入口里只能二选一。
-    Rin.SettingCard {
-        objectName: "pluginsImportZip"
+    // ==================================================== ① 「导入」小节
+    /*! 小节标签 = **RinUI 通用写法**：``Rin.Text { BodyStrong }``，与「通用」
+        「主界面」「墨迹」「关于」等页的分组小标题同一层级（2026-10-17 用户指令
+        「应该用 RinUI 的通用的」）。不再自定 ``font.pixelSize: 16`` —— 那是我
+        照设计稿量出来的非标尺寸，字号梯上没有，且与别的设置页不一致。
+        ``BodyStrong`` 行高 20，与原先 16 号字一样，整页纵向节奏不变。 */
+    Rin.Text {
+        Layout.fillWidth: true
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("导入")
+    }
+
+    /*! 两条入口并排（而不是一个按钮里做格式判断）：原生对话框「选文件夹」与
+        「选压缩包」是两种交互，硬捏在一个入口里只能二选一。
+
+        2026-10-17：卡本体就是主页那两张外链卡（``components/ActionCard``），
+        这里只覆写尺寸与版式参数 —— 高 116（设计稿原值）、主图标 24、标题 16、
+        图标靠左、角标 16@15。间距 6 = 设计稿「标签 → 磁贴」16 - ``contentSpacing`` 10。 */
+    RowLayout {
+        objectName: "pluginsImportRow"
 
         Layout.fillWidth: true
-        title: qsTr("导入插件（.zip 包）")
-        description: qsTr("导入即拷贝安装，重启应用后生效；插件将在本机运行，请只导入可信来源")
-        icon.name: "ic_fluent_folder_zip_20_regular"
+        Layout.topMargin: Lumi.pluginLabelGap - page.contentSpacing
+        spacing: Lumi.pluginTileGap
 
-        Rin.Button {
-            text: qsTr("选择 zip 包")
+        ActionCard {
+            objectName: "pluginsImportFolder"
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Lumi.pluginTileHeight
+
+            label: qsTr("导入文件夹")
+            iconName: "ic_fluent_folder_20_regular"
+            tooltip: qsTr("选择包含 plugin.py 的插件文件夹；导入即拷贝安装")
+
+            iconSize: Lumi.pluginTileIconSize
+            glyphSize: Lumi.pluginTileGlyphSize
+            contentPadding: Lumi.pluginTilePadding
+            contentPaddingBottom: Lumi.pluginTilePaddingBottom
+            contentSpacing: Lumi.pluginTileSpacing
+            glyphMargin: Lumi.pluginTileGlyphMargin
+            centerIcon: false
+            titlePixelSize: Lumi.pluginTileTitleSize
+
+            onClicked: Backend.importPluginFolder()
+        }
+
+        ActionCard {
+            objectName: "pluginsImportZip"
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Lumi.pluginTileHeight
+
+            label: qsTr("导入压缩包（.zip）")
+            iconName: "ic_fluent_folder_zip_20_regular"
+            tooltip: qsTr("选择 .zip 插件包；导入即拷贝安装")
+
+            iconSize: Lumi.pluginTileIconSize
+            glyphSize: Lumi.pluginTileGlyphSize
+            contentPadding: Lumi.pluginTilePadding
+            contentPaddingBottom: Lumi.pluginTilePaddingBottom
+            contentSpacing: Lumi.pluginTileSpacing
+            glyphMargin: Lumi.pluginTileGlyphMargin
+            centerIcon: false
+            titlePixelSize: Lumi.pluginTileTitleSize
+
             onClicked: Backend.importPluginZip()
         }
     }
 
-    Rin.SettingCard {
-        objectName: "pluginsImportFolder"
+    // ==================================================== ② 「插件」小节
+    /*! 与小节①同一枚通用标签（``BodyStrong``）。间距 18 = 设计稿「磁贴底 →
+        小节标签」28 - ``contentSpacing`` 10。 */
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: Lumi.pluginSectionGap - page.contentSpacing
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("插件")
+    }
+
+    /*! 范围分段：基类是 RinUI ``Segmented``（两页等宽由基类自己分配 —— 与计时器
+        窗口那条三段控件同一套机制），选中页的淡底 + 底部强调色指示条都是
+        ``SegmentedItem`` 自带的，这里**不改形态**。
+
+        只重写 ``background``：RinUI 那圈 ``controlBorderColor`` 在深色档是
+        「黑 9%」，压在深色页底上等于没有 —— 容器读不出来，设计稿上那道细边
+        正是「这是一只凹槽」的唯一线索（铁律 4）。``TabBar`` 基类没有 id 或
+        ``states`` 引用 background，替换它是安全的（``ToolSegment`` 同款做法，
+        与 ``SegmentedItem`` 相反 —— 那个**绝不能**换）。 */
+    Rin.Segmented {
+        id: scopeBar
+        objectName: "pluginsScopeBar"
 
         Layout.fillWidth: true
-        title: qsTr("导入插件（文件夹）")
-        description: qsTr("选择包含 plugin.py 的插件文件夹；导入即拷贝安装，重启应用后生效")
-        icon.name: "ic_fluent_folder_open_20_regular"
+        Layout.topMargin: Lumi.pluginScopeGap - page.contentSpacing
+        currentIndex: 0
 
-        Rin.Button {
-            text: qsTr("选择文件夹")
-            onClicked: Backend.importPluginFolder()
+        background: Rectangle {
+            radius: Lumi.themeAppearance ? Lumi.themeAppearance.buttonRadius : 5
+            color: Lumi.pluginScopeBg
+            border.width: 1
+            border.color: Lumi.pluginScopeBorder
+        }
+
+        Rin.SegmentedItem {
+            text: qsTr("已安装的全部")
+            /*! 基类自带 ``implicitHeight: 32``，设计稿是 26.5 —— 压到令牌值。
+                不压的话这一条比下面的筛选胶囊还高一截，整段节奏就断了。 */
+            implicitHeight: Lumi.pluginScopeHeight
+        }
+        Rin.SegmentedItem {
+            text: qsTr("已安装且已启用")
+            implicitHeight: Lumi.pluginScopeHeight
         }
     }
 
-    // ==================================================== 空态占位
-    // 加载清单为空（未跑加载 / 无插件）时整个列表区换成一段占位文案，
-    // 不能让页面只剩一个标题。
+    // ==================================================== ③ 筛选胶囊
+    RowLayout {
+        objectName: "pluginsFilterRow"
+
+        Layout.fillWidth: true
+        // 设计稿「分段底 → 胶囊顶」17，页级 contentSpacing 只给 10。
+        Layout.topMargin: Lumi.pluginFilterGap - page.contentSpacing
+        spacing: 12
+
+        /*! 「筛选」是**行内字段名**，不是小节标签：与小节标签同字号（``Body``
+            与 ``BodyStrong`` 都是 14），但字重是 **Regular**（2026-10-17 用户
+            指令）；「导入」「插件」那两枚才是半粗。 */
+        Rin.Text {
+            Layout.alignment: Qt.AlignVCenter
+            typography: Rin.Typography.Body
+            text: qsTr("筛选")
+        }
+
+        /*! 横向滚动容器：完整类别在窄窗会溢出，设计稿的右端 chevron 因此只在
+            内容放不下时出现。 */
+        Flickable {
+            id: chipScroll
+            objectName: "pluginsFilterScroll"
+
+            Layout.fillWidth: true
+            Layout.preferredHeight: Lumi.pluginChipHeight
+            contentWidth: chipRow.width
+            contentHeight: height
+            clip: true
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentWidth > width
+
+            Row {
+                id: chipRow
+                width: implicitWidth
+                height: chipScroll.height
+                spacing: Lumi.pluginChipGap
+
+                Repeater {
+                    model: page.kindFilters
+
+                    delegate: PluginFilterChip {
+                        required property var modelData
+                        required property int index
+
+                        label: modelData.label
+                        /*! 不用 ``checked``：基类按钮被点后会把绑定摘掉。这里的
+                            选中态只读页面唯一状态位，指哪亮哪。 */
+                        selected: page.kindFilter === modelData.id
+                        onClicked: page.kindFilter = modelData.id
+                    }
+                }
+            }
+        }
+
+        /*! 溢出指示（内容放不下才出现；胶囊行是 ``Layout`` 子项，``visible: false``
+            的项不占位，所以不溢出时右端不会有空档）。 */
+        Rin.Icon {
+            Layout.alignment: Qt.AlignVCenter
+            visible: chipScroll.contentWidth > chipScroll.width
+            icon: "ic_fluent_chevron_right_20_regular"
+            size: 16
+            color: Lumi.textSecondary
+        }
+    }
+
+    // ==================================================== ④ 空态占位
+    /*! 加载清单为空（未跑加载 / 无插件）与「筛完一条不剩」是两件事，文案分开 ——
+        后者要说清楚是筛掉的，不然看着像插件没了。 */
     Item {
+        objectName: "pluginsEmptyState"
+
         Layout.fillWidth: true
         Layout.preferredHeight: emptyState.implicitHeight + 48
-        visible: Backend.pluginItems.length === 0
+        visible: page.shownCount === 0
 
         ColumnLayout {
             id: emptyState
@@ -174,88 +491,126 @@ Rin.FluentPage {
             }
             Rin.Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: qsTr("没有已安装的插件")
+                text: Backend.pluginItems.length === 0
+                      ? qsTr("没有已安装的插件")
+                      : qsTr("没有符合当前筛选条件的插件")
                 color: Lumi.textSecondary
             }
         }
     }
 
-    // ==================================================== 插件卡片列表
-    Repeater {
-        model: Backend.pluginItems
+    // ==================================================== ⑤ 插件行列表
+    /*! 行距单独一层容器：行要贴着（设计稿的行距量不出来，取 4），而页面级
+        ``contentSpacing`` 是 10 —— 不另起一层就只能让每行自己去顶。间距 11 =
+        设计稿「胶囊底 → 首行顶」21 - ``contentSpacing`` 10。 */
+    ColumnLayout {
+        objectName: "pluginsRowList"
 
-        delegate: Rin.SettingCard {
-            id: pluginCard
+        Layout.fillWidth: true
+        Layout.topMargin: Lumi.pluginListGap - page.contentSpacing
+        spacing: Lumi.pluginRowGap
 
-            required property var modelData
-            /*! 删除的两段式确认：第一次点击进入待确认态，3 秒后自动复位。 */
-            property bool removeArmed: false
+        Repeater {
+            model: Backend.pluginItems
 
-            Timer {
-                id: removeArmTimer
-                interval: 3000
-                onTriggered: pluginCard.removeArmed = false
-            }
+            delegate: Rin.SettingCard {
+                id: pluginCard
 
-            Layout.fillWidth: true
-            visible: !(pluginCard.modelData.external
-                       && page.removedIds[pluginCard.modelData.id] === true)
-            title: {
-                var text = modelData.title || modelData.id
-                if (modelData.version) {
-                    text += "  v" + modelData.version
+                objectName: "pluginCard" + index
+                required property var modelData
+                required property int index
+                /*! 删除的两段式确认：第一次点击进入待确认态，3 秒后自动复位。 */
+                property bool removeArmed: false
+
+                Timer {
+                    id: removeArmTimer
+                    interval: 3000
+                    onTriggered: pluginCard.removeArmed = false
                 }
-                return text
-            }
-            description: page.describe(modelData)
-            icon.name: modelData.debug
-                       ? "ic_fluent_beaker_20_regular"
-                       : (modelData.external
-                          ? "ic_fluent_puzzle_cube_20_regular"
-                          : "ic_fluent_puzzle_piece_20_regular")
 
-            content: [
-                // 外部插件的删除按钮（两段式确认；内建与调试夹具不给删 ——
-                // 它们的本体在安装目录里，删安装副本这个语义对它们无意义）。
-                // 两个控件直接做卡片子件：SettingCard 的默认属性把它们排进
-                // 右侧 Row，套一层 RowLayout 反而拿不到正确的宽度语义。
-                Rin.Button {
-                    visible: pluginCard.modelData.external === true
-                    text: pluginCard.removeArmed ? qsTr("确认删除") : qsTr("删除")
-                    onClicked: {
-                        if (!pluginCard.removeArmed) {
-                            pluginCard.removeArmed = true
-                            removeArmTimer.restart()
-                            return
+                leftPadding: Lumi.pluginRowPaddingX
+                rightPadding: Lumi.pluginRowPaddingX
+                topPadding: Lumi.pluginRowPaddingY
+                bottomPadding: Lumi.pluginRowPaddingY
+                Layout.fillWidth: true
+                visible: page.matches(pluginCard.modelData,
+                                      scopeBar.currentIndex, page.kindFilter)
+                         && !page.isRemoved(pluginCard.modelData)
+                title: modelData.title || modelData.id
+                description: page.describe(modelData)
+                icon.name: modelData.debug
+                           ? "ic_fluent_beaker_20_regular"
+                           : (modelData.external
+                              ? "ic_fluent_puzzle_cube_20_regular"
+                              : "ic_fluent_puzzle_piece_20_regular")
+                /*! 行里的插件图标按设计稿只有 16（墨迹 15×15）——``SettingCard``
+                    默认 22，比标题（14）大出一圈，整行会显得头重。 */
+                icon.size: Lumi.pluginRowIconSize
+
+                content: [
+                    // 外部插件的删除按钮（两段式确认；内建与调试夹具不给删 ——
+                    // 它们的本体在安装目录里，删安装副本这个语义对它们无意义）。
+                    // 三个控件直接做卡片子件：SettingCard 的默认属性把它们排进
+                    // 右侧 Row，套一层 RowLayout 反而拿不到正确的宽度语义。
+                    Rin.Button {
+                        visible: pluginCard.modelData.external === true
+                        text: pluginCard.removeArmed ? qsTr("确认删除") : qsTr("删除")
+                        onClicked: {
+                            if (!pluginCard.removeArmed) {
+                                pluginCard.removeArmed = true
+                                removeArmTimer.restart()
+                                return
+                            }
+                            removeArmTimer.stop()
+                            pluginCard.removeArmed = false
+                            // 必须换新对象再赋值：同一个引用原样写回去不会发
+                            // 属性变更通知，卡片就地隐藏就不会生效
+                            var ids = Object.assign({}, page.removedIds)
+                            ids[pluginCard.modelData.id] = true
+                            page.removedIds = ids
+                            Backend.removePlugin(pluginCard.modelData.id)
                         }
-                        removeArmTimer.stop()
-                        pluginCard.removeArmed = false
-                        // 必须换新对象再赋值：同一个引用原样写回去不会发
-                        // 属性变更通知，卡片就地隐藏就不会生效
-                        var ids = Object.assign({}, page.removedIds)
-                        ids[pluginCard.modelData.id] = true
-                        page.removedIds = ids
-                        Backend.removePlugin(pluginCard.modelData.id)
-                    }
-                },
+                    },
 
-                Rin.Switch {
-                    primaryColor: Lumi.accent
-                    checked: pluginCard.modelData.enabled === true
-                    onToggled: {
-                        Backend.setPluginEnabled(pluginCard.modelData.id, checked)
-                        page.restartHintShown = true
-                        // ⚠️ 点击已经把 ``checked`` 上的绑定打断了（C++ 侧
-                        // ``setChecked`` 会摘掉 QML 绑定，与「通用」页开机自启
-                        // 开关是同一个坑）。虽然 ``pluginItemsChanged`` 会让
-                        // Repeater 重建代理、绑定自然刷新，但「值没变 → 不重建」
-                        // 的边角下开关会停在用户点的那一格；重装是幂等的。
-                        checked = Qt.binding(function () {
-                            return pluginCard.modelData.enabled === true
-                        })
+                    // 设计稿右侧：「启用」标签 + 开关本体，不要 On/Off 状态字。
+                    // 把两者包进同一个 RowLayout：减少 SettingItem 内部嵌套层级
+                    //（直接塞 Button + Text + Switch 三个独立子件会触发
+                    // RowLayout 递归重排警告）。间距 12 = 设计稿「启用」墨迹右
+                    // → 开关左 14，扣掉开关盒子自身的内缩。
+                    RowLayout {
+                        spacing: 12
+
+                        Rin.Text {
+                            Layout.alignment: Qt.AlignVCenter
+                            typography: Rin.Typography.Body
+                            text: qsTr("启用")
+                        }
+
+                        Rin.Switch {
+                            Layout.preferredWidth: 40
+                            Layout.preferredHeight: 20
+                            Layout.alignment: Qt.AlignVCenter
+                            text: " "
+                            checkedText: ""
+                            uncheckedText: ""
+                            primaryColor: Lumi.accent
+                            checked: pluginCard.modelData.enabled === true
+                            onToggled: {
+                                Backend.setPluginEnabled(pluginCard.modelData.id, checked)
+                                page.restartHintShown = true
+                                // ⚠️ 点击已经把 ``checked`` 上的绑定打断了（C++ 侧
+                                // ``setChecked`` 会摘掉 QML 绑定，与「通用」页开机自启
+                                // 开关是同一个坑）。虽然 ``pluginItemsChanged`` 会让
+                                // Repeater 重建代理、绑定自然刷新，但「值没变 → 不重建」
+                                // 的边角下开关会停在用户点的那一格；重装是幂等的。
+                                checked = Qt.binding(function () {
+                                    return pluginCard.modelData.enabled === true
+                                })
+                            }
+                        }
                     }
-                }
-            ]
+                ]
+            }
         }
     }
 }

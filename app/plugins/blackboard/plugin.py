@@ -25,6 +25,7 @@ META = {
     "id": "blackboard",
     "name": "小黑板",
     "version": "1.0.0",
+    "category": "subject",
 }
 
 #: 无设置项（板色 / 笔色是黑板的本体属性，不给配 —— 给了就是一块不是

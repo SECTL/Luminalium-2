@@ -119,6 +119,9 @@ _dock_actions: dict[str, dict[str, Any]] = {}
 
 # 设置页：id → {title, page_url, icon, position?}
 # 对齐 Settings.qml navigationItems 的 {title, page, icon, position}（page ← page_url）。
+# ⚠️ position 可省略：省略时消费端（bridge._get_settings_nav_items）补 RinUI
+# 的 Position.Bottom —— 插件设置页与「关于 / 更新」同区， NavigationBar 自带的
+# bottomSeparator 即「原生 ↔ 插件」的分割线（2026-10-16 用户指令）。
 _settings_pages: dict[str, dict[str, Any]] = {}
 
 # 扁平设置键 → {path, notify, side_effect}

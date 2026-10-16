@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import RinUI as Rin
+import "components"
 
 /*!
     设置**主页**：一比一复刻 Class Widgets 2 的
@@ -131,8 +132,12 @@ Rin.FluentPage {
     }
 
     // ================================================================ 链接卡
-    /*! 两张 220×128 的 ``Rin.Clip`` 卡（CW2 的 ``Component card``）：大图标 +
-        撑开 + 标题，右下角 open 角标，整卡点击开外链。 */
+    /*! 两张 220×128 的 ``Rin.Clip`` 卡（CW2 的 ``Component card``）：左上大图标 +
+        撑开 + 标题，右下角 open 角标，整卡点击开外链。
+
+        2026-10-17：卡本体抽到 ``components/ActionCard.qml``（插件页的导入磁贴
+        是同一张卡，只是矮一档）；同日用户要求主页大图标也改靠左，默认值就是
+        两处共用的形态。 */
     RowLayout {
         Layout.fillWidth: true
 
@@ -150,7 +155,7 @@ Rin.FluentPage {
                 }
             ]
 
-            delegate: Rin.Clip {
+            delegate: ActionCard {
                 id: linkCard
 
                 objectName: "homeLinkCard" + index
@@ -166,39 +171,8 @@ Rin.FluentPage {
                 Layout.preferredWidth: 220
                 Layout.preferredHeight: 128
 
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 18
-                    spacing: 18
-
-                    Rin.Icon {
-                        Layout.alignment: Qt.AlignVCenter
-                        name: linkCard.modelData.icon
-                        size: 32
-                    }
-
-                    Item { Layout.fillHeight: true }
-
-                    Rin.Text {
-                        Layout.fillWidth: true
-                        width: parent.width
-                        typography: Rin.Typography.BodyLarge
-                        text: linkCard.modelData.title
-                    }
-                }
-
-                /*! 右下角 open 角标 —— CW2 的 ``IconWidget``（RinUI 0.4.4.1
-                    没有，用 ``Rin.Icon`` 按同样的锚点与尺寸摆）。 */
-                Rin.Icon {
-                    anchors {
-                        bottom: parent.bottom
-                        right: parent.right
-                        margins: 12
-                    }
-                    size: 18
-                    name: "ic_fluent_open_20_regular"
-                }
-
+                label: linkCard.modelData.title
+                iconName: linkCard.modelData.icon
                 onClicked: Qt.openUrlExternally(linkCard.modelData.url)
             }
         }

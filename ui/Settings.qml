@@ -23,6 +23,14 @@ import Luminalium
       file:/// 成品，QML 零拼接；``position`` 是 ``Rin.Position`` 枚举的
       整数值，经 QVariant 后 ``=== Rin.Position.Bottom`` 仍成立，「关于 /
       更新」钉底部的语义原样保留；
+      2026-10-16（用户指令「原生的设置 tab 和插件及其插件提供的设置 tab
+      应当有分割线区分」）起插件设置页不再平铺在导航里：挂进内建「插件」
+      管理项的 ``subItems`` 折叠子项（用户定案：「要不别改 rinui 了，直接
+      用 rinui 的这个」）。中间曾试过自绘往 NavigationBar 中间区插分割线
+      —— PySide 下 ``FluentWindow.navigationView`` 是 QObject 包装、拿不到
+      ``childItems()``，遍历内部树这条路实测走不通，遂放弃。折叠方案的
+      展开收起 / 选中高亮 / 点击推页全是 RinUI 自己的机制（数据形状见
+      ``app/bridge.py::_get_settings_nav_items``）。
     * 页面本体是 ``Rin.FluentPage``：``title`` 走页面头部，内容默认进一个带
       左右留白的 ``ColumnLayout``；
     * ``position: Rin.Position.Bottom`` 的项（关于 / 更新）钉在导航底部。

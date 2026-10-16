@@ -44,6 +44,7 @@ META = {
     "id": "timer",
     "name": "计时器",
     "version": "1.0.0",
+    "category": "utility",
 }
 
 #: ``plugins.timer.*`` 的默认值（dict 型贡献，经阶段一注入默认层，不落盘）。

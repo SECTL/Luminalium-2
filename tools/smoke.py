@@ -2038,6 +2038,16 @@ def _check_editor(app) -> None:
         "放映" not in titles and not any("Presentation.qml" in p for p in pages),
         f"titles={titles} pages={pages}",
     )
+    # 2026-10-16 用户指令：「将『设置-主界面』中的『墨迹』相关选项放在新的设置
+    # tab 中，命名为『墨迹和批注』」—— 新页 settings/Ink.qml 承接原「主界面」页
+    # 末尾「墨迹」组的三张卡。同上一类：导航是这件事唯一的外部引用点，改一半的
+    # 表现是点进去一片空白 / 控制台报找不到 qml，所以这里先钉导航两头；
+    # **页面内容**的断言在后段（那里才真的 push 了页面，见「墨迹和批注」一节）。
+    check(
+        "设置导航含「墨迹和批注」且指向 Ink.qml",
+        "墨迹和批注" in titles and any("Ink.qml" in p for p in pages),
+        f"titles={titles}",
+    )
 
 
 # ============================================================ 插件断言组
@@ -3746,6 +3756,15 @@ def main() -> int:
                 and abs(cdock.x() - (geom.width() - plain_width) // 2) <= 1,
                 f"宽度={float(cdock.width()):.0f}（原 {plain_width:.0f}）x={cdock.x()}",
             )
+        else:
+            # 这一段（笔选单 / 色板 / 橡皮 / 指针 / 显示文本…)整块以 bottom_center
+            # 为参考条，合并编排里它不在役。显式记一条，别让静默跳过冒充通过。
+            check(
+                "（跳过）工具栏交互断言组（笔选单 / 色板 / 工具切换）："
+                "当前编排里 bottom_center 不在役",
+                True,
+                f"在役控制条={sorted(app.windows._docks)}",
+            )
         for corner, edge in (("middle_left", "left"), ("middle_right", "right")):
             dock = app.windows._docks.get(corner)
             if dock is None:
@@ -3776,12 +3795,26 @@ def main() -> int:
               f"cloaked={_dwm_cloaked(hwnd)}")
 
         # ---- 穿透：首选区域塑形（系统级），兜底才是整窗 WS_EX_TRANSPARENT ----
-        if app.windows._region_mode:
+        # ⚠️ 别写死 ``_docks["bottom_center"]``：底中那条只有在配置的角落组里
+        #    开着时才存在，而「把翻页栏挪去左右两侧」是一份完全合法的用户配置
+        #    （2026-10-16 实测：那样配之后这里取到 None，``_dock_global_rect``
+        #    直接 AttributeError，整轮自检在第一条断言之前就中断了 —— 后面
+        #    那一大堆断言全被吞掉，看着像「改坏了」）。退化成「任意一条在役
+        #    控制条」即可：这一组验的是「控制条落在可点区域内」，与它在哪条边
+        #    无关（同一套退化写法见下面「缩放大小」那段）。
+        bdock = app.windows._docks.get("bottom_center") or next(
+            iter(app.windows._docks.values()), None)
+        if bdock is None:
+            check(
+                "穿透断言：当前配置没有任何控制条（逐条断言跳过）",
+                not app.windows._docks,
+                f"docks={list(app.windows._docks)}",
+            )
+        elif app.windows._region_mode:
             scale = app.windows._region_scale or 1.0
             gdi32 = ctypes.windll.gdi32
             hrgn = gdi32.CreateRectRgn(0, 0, 0, 0)
             got = user32.GetWindowRgn(hwnd, hrgn)
-            bdock = app.windows._docks.get("bottom_center")
             hit_rect = app.windows._dock_global_rect(bdock)
             origin = overlay.position()
 
@@ -3807,7 +3840,6 @@ def main() -> int:
                 bool(style & 0x20),
                 f"exstyle=0x{style:08X}",
             )
-            bdock = app.windows._docks.get("bottom_center")
             hit_rect = app.windows._dock_global_rect(bdock)
             app.windows._update_overlay_hit(hit_rect.center())
             style = user32.GetWindowLongW(hwnd, -20)
@@ -3902,47 +3934,90 @@ def main() -> int:
                 f"rect={app.windows._overlay_rect} 期望={base_rect}",
             )
 
-        # ---- 工具栏恒横向（下中部）+ 翻页栏独立在两侧（默认：竖版）----
+        # ---- 角落编排：期望**由配置派生**，不写死「经典布局」----
+        # ⚠️ 2026-10-16 实测（用户的 ``config.json``）：工具栏与翻页栏**合并**
+        #    进 ``middle_left`` / ``middle_right``（groups = tools/actions/exit/pager
+        #    一整组）、``bottom_center`` 关掉，是一份完全合法的配置（语义见
+        #    ``default_config.json`` 的 ``presentation.corners`` 注释）。旧写法把
+        #    经典布局写死在断言里，于是：
+        #      · 三条断言全红（工具栏不在底中 / middle_* 的 groups 不是 ["pager"]）；
+        #      · ``cdock`` 取到 None 时 ``cdock.width()`` 写在 **``check`` 的 detail
+        #        f-string** 里（求值早于 ``check``）→ AttributeError 把整轮自检
+        #        打断在第一条断言之前，后面（含设置页那一整段）断言全被吞掉，
+        #        看起来却像「代码被改坏了」。**detail 里别放会抛异常的表达式**。
+        #    现在的口径：结构期望从配置派生；「横向 / 居中 / 两侧等大」这几条只在
+        #    **经典编排**（工具栏独占 bottom_center、翻页栏独占左右两侧）下有定义，
+        #    其余编排显式记一条「按配置跳过」——不冒充通过，也不报假红。
         corners_cfg = app.config.get("presentation.corners", {}) or {}
-        center_groups = (corners_cfg.get("bottom_center") or {}).get("groups", [])
-        check("工具栏在下中部且不含翻页组",
-              "tools" in center_groups and "pager" not in center_groups,
-              str(center_groups))
-        # 竖版两侧（middle_*）与底部横版（bottom_*）二选一，同时开会四个翻页栏
-        side_on = [(corners_cfg.get(c) or {}).get("enabled", False)
-                   for c in ("middle_left", "middle_right")]
-        bottom_on = [(corners_cfg.get(c) or {}).get("enabled", False)
-                     for c in ("bottom_left", "bottom_right")]
-        check("翻页栏形态二选一（竖版两侧 或 底部横版，不并存）",
-              any(side_on) != any(bottom_on),
-              f"middle={side_on} bottom={bottom_on}")
-        for corner in ("middle_left", "middle_right"):
-            check(f"{corner} 翻页组",
-                  ((corners_cfg.get(corner) or {}).get("groups", [])) == ["pager"],
-                  str((corners_cfg.get(corner) or {}).get("groups", [])))
-        cdock = app.windows._docks.get("bottom_center")
-        ldock = app.windows._docks.get("middle_left")
-        rdock = app.windows._docks.get("middle_right")
+
+        def _corner_groups(corner: str) -> list:
+            """在役角落的区块列表；未启用的角落一律当空（``enabled`` 才作数）。"""
+            cfg = corners_cfg.get(corner) or {}
+            return list(cfg.get("groups", [])) if cfg.get("enabled", False) else []
+
+        corner_groups = {c: _corner_groups(c) for c in
+                         ("bottom_center", "bottom_left", "bottom_right",
+                          "middle_left", "middle_right")}
+        pager_corners = [c for c, g in corner_groups.items() if "pager" in g]
+        toolbar_corners = [c for c, g in corner_groups.items() if "tools" in g]
+        solo_pagers = [c for c in pager_corners if "tools" not in corner_groups[c]]
+        merged_pagers = [c for c in pager_corners if "tools" in corner_groups[c]]
+        # 经典编排 = 工具栏独占 bottom_center + 翻页栏全部独占一个角落。
+        # 判据来源同 ``default_config.json``：合并编排下「不再有独立的翻页角落」。
+        classic_layout = (toolbar_corners == ["bottom_center"] and bool(solo_pagers))
+        _classic_skip = ("当前编排不是经典布局（工具栏不在底中 / 翻页栏与工具栏同组），"
+                         "本条按配置跳过")
         check(
-            "工具栏恒横向（宽大于高）",
-            cdock is not None and cdock.width() > cdock.height(),
-            f"center={cdock.width()}x{cdock.height()}",
+            "角落编排自洽：翻页栏要么独占角落、要么与工具栏同组（两种不并存）",
+            bool(pager_corners) and not (solo_pagers and merged_pagers),
+            f"独立={solo_pagers} 同组={merged_pagers} 全部={corner_groups}",
         )
         check(
-            "工具栏水平居中（左右余量对称）",
-            cdock is not None
-            and abs(cdock.x() - (geom.width() - cdock.width() - cdock.x())) <= 2,
-            f"x={cdock.x()} w={cdock.width()} screen={geom.width()}",
+            "工具栏在役（配置里至少有一组带 tools）",
+            bool(toolbar_corners),
+            f"toolbar={toolbar_corners}",
+        )
+        # ``cdock`` / ``ldock`` / ``rdock`` 只在这几条经典断言里用；后面的尺寸 token
+        # 那一段也读 ``cdock``，所以它的 None 语义保持不变（经典下 = bottom_center）。
+        cdock = app.windows._docks.get("bottom_center") if classic_layout else None
+        ldock = (app.windows._docks.get("middle_left")
+                 if "middle_left" in solo_pagers else None)
+        rdock = (app.windows._docks.get("middle_right")
+                 if "middle_right" in solo_pagers else None)
+        check(
+            "工具栏在下中部且不含翻页组",
+            True if not classic_layout
+            else ("pager" not in corner_groups["bottom_center"]),
+            _classic_skip if not classic_layout
+            else f"bottom_center groups={corner_groups['bottom_center']}",
+        )
+        check(
+            "翻页栏形态二选一（竖版两侧 或 底部横版，不并存）",
+            True if not classic_layout
+            else (any(c in solo_pagers for c in ("middle_left", "middle_right"))
+                  != any(c in solo_pagers for c in ("bottom_left", "bottom_right"))),
+            _classic_skip if not classic_layout else f"独立翻页角落={solo_pagers}",
+        )
+        check(
+            "工具栏恒横向且水平居中（左右余量对称）",
+            True if not classic_layout
+            else (cdock is not None and cdock.width() > cdock.height()
+                  and abs(cdock.x() - (geom.width() - cdock.width() - cdock.x())) <= 2),
+            _classic_skip if not classic_layout
+            else f"x={cdock.x() if cdock else '?'} w={cdock.width() if cdock else '?'} "
+                 f"screen={geom.width()}",
         )
         check(
             "两侧翻页 pill 等大且是竖版（同一套组件，宽 < 高）",
-            ldock is not None and rdock is not None
-            and abs(rdock.height() - ldock.height()) <= 1
-            and abs(rdock.width() - ldock.width()) <= 1
-            and ldock.width() < ldock.height()
-            and rdock.x() > ldock.x(),
-            f"left={ldock.width() if ldock else '?'}x{ldock.height() if ldock else '?'} "
-            f"right={rdock.width() if rdock else '?'}x{rdock.height() if rdock else '?'}",
+            True if not classic_layout
+            else bool(ldock is not None and rdock is not None
+                      and abs(rdock.height() - ldock.height()) <= 1
+                      and abs(rdock.width() - ldock.width()) <= 1
+                      and ldock.width() < ldock.height()
+                      and rdock.x() > ldock.x()),
+            _classic_skip if not classic_layout
+            else f"left={ldock.width() if ldock else '?'}x{ldock.height() if ldock else '?'} "
+                 f"right={rdock.width() if rdock else '?'}x{rdock.height() if rdock else '?'}",
         )
         # ---- 尺寸档位 = Luminalium 1 的实装值（防止比例被悄悄改回参考稿那套）----
         # 这些值之间的**关系**才是设计语言：按钮直径 = 内容高 = 条高 − 上下内边距×2，
@@ -4012,6 +4087,14 @@ def main() -> int:
                 cdock.width() - cshadow * 2 > 0 and cdock.height() - cshadow * 2 == 62,
                 f"{cdock.width() - cshadow * 2}x{cdock.height() - cshadow * 2}",
             )
+        else:
+            # 参考条取下中那条（经典编排 = 工具栏）。合并编排里它不在役，这一段
+            # 尺寸 token 就没人可量 —— 显式记一条，免得「静默跳过」被当成「通过」。
+            check(
+                "（跳过）工具栏尺寸 token 断言：当前编排里 bottom_center 不在役",
+                True,
+                f"在役控制条={sorted(app.windows._docks)} 工具栏角落={toolbar_corners}",
+            )
         if ldock is not None:
             lshadow = int(ldock.property("shadowMargin") or 0)
             check(
@@ -4031,6 +4114,12 @@ def main() -> int:
                 abs(ldock.y() - (geom.height() - ldock.height() - ldock.y())) <= 2,
                 f"y={ldock.y()} h={ldock.height()} screen={geom.height()}",
             )
+        else:
+            check(
+                "（跳过）竖版翻页 pill 断言：middle_* 当前不是独立的翻页栏",
+                True,
+                f"独立翻页角落={solo_pagers} 全部={corner_groups}",
+            )
 
         # ---- 切「翻页组件位置」：当着放映画面把真机控制条**整批重建** ----
         # 这个设置项最容易翻车的就是这一段：换形态不只是挪位置，而是换一整套 QML
@@ -4038,59 +4127,69 @@ def main() -> int:
         # 控制条矩形塑形的，形状变了穿透区域也得跟着重算（旧区域留着 = 新的翻页栏
         # 点不动）。编辑器那边（``_check_editor``）只验了「配置 / 预览 / 重建调用」，
         # 真机这一侧得在这儿顶着放映态验。
-        pager_prev = str(app.config.get("presentation.pager.position") or "side")
-        pager_other = "bottom" if pager_prev != "bottom" else "side"
-        swap_on = ("bottom_left", "bottom_right") if pager_other == "bottom" \
-            else ("middle_left", "middle_right")
-
-        def _check_live_pagers(shape: str, label: str) -> None:
-            left = app.windows._docks.get(swap_on[0])
-            right = app.windows._docks.get(swap_on[1])
-            if left is None or right is None:
-                check(label, False, f"{swap_on} 没建出来（真机={sorted(app.windows._docks)}）")
-                return
-            if shape == "bottom":
-                same_axis = abs(left.y() - right.y()) <= 1
-                crossed = left.width() > left.height() and right.width() > right.height()
-                axis = f"y=({left.y():.0f},{right.y():.0f})"
-            else:
-                same_axis = abs(
-                    left.y() - (geom.height() - left.height() - left.y())) <= 2
-                crossed = left.height() > left.width() and right.height() > right.width()
-                axis = f"左边距={left.y():.0f}/对侧={geom.height() - left.height() - left.y():.0f}"
+        if not classic_layout:
+            # 这条设置项在合并编排下没有主语：pager 已经并进工具栏那一组，
+            # 切 position 只会让 _apply_corners_layout 重排同一条容器，
+            # 不存在「独立的翻页角落整批重建」这件事。
             check(
-                label,
-                sorted(app.windows._docks) == sorted(["bottom_center", *swap_on])
-                and same_axis and crossed
-                and left.x() < right.x(),
-                f"真机={sorted(app.windows._docks)} {axis} "
-                f"左={left.width():.0f}x{left.height():.0f}",
+                "（跳过）切「翻页组件位置」重建真机控制条：当前编排没有独立翻页角落",
+                True,
+                f"独立翻页角落={solo_pagers} 全部={corner_groups}",
             )
+        else:
+            pager_prev = str(app.config.get("presentation.pager.position") or "side")
+            pager_other = "bottom" if pager_prev != "bottom" else "side"
+            swap_on = ("bottom_left", "bottom_right") if pager_other == "bottom" \
+                else ("middle_left", "middle_right")
 
-        app.backend.setSetting("presentation_pager_position", pager_other)
-        QTest.qWait(150)  # 重建 + 重摆是同步的，给区域塑形一拍
-        _check_live_pagers(
-            "bottom" if pager_other == "bottom" else "side",
-            "切形态后真机控制条整批重建（新形态就位：横版宽>高 / 竖版高>宽）",
-        )
-        region_rects = app.windows._dock_rects_local()
-        if app.windows._region_mode:
-            check(
-                "区域塑形按重建后的矩形重算（新的翻页栏照样点得动）",
-                app.windows._last_region_rects
-                == tuple(tuple(r) for r in region_rects) and len(region_rects) >= 3,
-                f"已应用={app.windows._last_region_rects} "
-                f"期望={tuple(tuple(r) for r in region_rects)}",
+            def _check_live_pagers(shape: str, label: str) -> None:
+                left = app.windows._docks.get(swap_on[0])
+                right = app.windows._docks.get(swap_on[1])
+                if left is None or right is None:
+                    check(label, False, f"{swap_on} 没建出来（真机={sorted(app.windows._docks)}）")
+                    return
+                if shape == "bottom":
+                    same_axis = abs(left.y() - right.y()) <= 1
+                    crossed = left.width() > left.height() and right.width() > right.height()
+                    axis = f"y=({left.y():.0f},{right.y():.0f})"
+                else:
+                    same_axis = abs(
+                        left.y() - (geom.height() - left.height() - left.y())) <= 2
+                    crossed = left.height() > left.width() and right.height() > right.width()
+                    axis = f"左边距={left.y():.0f}/对侧={geom.height() - left.height() - left.y():.0f}"
+                check(
+                    label,
+                    sorted(app.windows._docks) == sorted(["bottom_center", *swap_on])
+                    and same_axis and crossed
+                    and left.x() < right.x(),
+                    f"真机={sorted(app.windows._docks)} {axis} "
+                    f"左={left.width():.0f}x{left.height():.0f}",
+                )
+
+            app.backend.setSetting("presentation_pager_position", pager_other)
+            QTest.qWait(150)  # 重建 + 重摆是同步的，给区域塑形一拍
+            _check_live_pagers(
+                "bottom" if pager_other == "bottom" else "side",
+                "切形态后真机控制条整批重建（新形态就位：横版宽>高 / 竖版高>宽）",
             )
+            region_rects = app.windows._dock_rects_local()
+            if app.windows._region_mode:
+                check(
+                    "区域塑形按重建后的矩形重算（新的翻页栏照样点得动）",
+                    app.windows._last_region_rects
+                    == tuple(tuple(r) for r in region_rects) and len(region_rects) >= 3,
+                    f"已应用={app.windows._last_region_rects} "
+                    f"期望={tuple(tuple(r) for r in region_rects)}",
+                )
 
-        app.backend.setSetting("presentation_pager_position", pager_prev)
-        QTest.qWait(150)
-        swap_on = ("bottom_left", "bottom_right") if pager_prev == "bottom" \
-            else ("middle_left", "middle_right")
-        _check_live_pagers(
-            "bottom" if pager_prev == "bottom" else "side",
-            "还原后真机控制条回到原形态（自检不留副作用）",
-        )
+            app.backend.setSetting("presentation_pager_position", pager_prev)
+            QTest.qWait(150)
+            swap_on = ("bottom_left", "bottom_right") if pager_prev == "bottom" \
+                else ("middle_left", "middle_right")
+            _check_live_pagers(
+                "bottom" if pager_prev == "bottom" else "side",
+                "还原后真机控制条回到原形态（自检不留副作用）",
+            )
 
         # ---- 模拟退出放映：顶层窗口整体隐藏 ----
         app.ppt.inject_state(PresentationState(active=False))
@@ -5770,6 +5869,117 @@ def main() -> int:
                     f"宽={scale_dock.width():.0f} 期望 {base_w:.0f}",
                 )
 
+            # ---- 墨迹组整组搬去新页「墨迹和批注」（2026-10-16 用户指令）----
+            # ⚠️ 两件事都要钉，缺一条会出假绿：
+            #   1. 旧页（此刻正加载着）里那三个 objectName 一个都不该剩 —— 只验
+            #      新页有卡的话，「搬了一份、旧的还留着」这种最可能的失误照样通过；
+            #   2. 新页里三张卡**连同控件**都在 —— 整块搬走时最容易漏的就是卡片
+            #      里的下拉 / 开关 / 滑块（表现是「有这一项但点不动」）。
+            # ⚠️ 「不存在」类断言要先确认**页面真的在**，否则页面没加载时它也绿
+            # （NavigationView 会把页面根的 objectName 覆盖成文件名，所以找
+            # ``MainInterface``）。这条在页面上就放在 ``show_settings`` 之后。
+            check(
+                "断言前提：「主界面」页确实在（否则「已无墨迹组」是假绿）",
+                _find_named(settings.contentItem(), "MainInterface") is not None,
+                "页面没落地",
+            )
+            ink_objects = [
+                "mainInterfaceInkEngine",
+                "mainInterfaceInkPalmErase",
+                "mainInterfaceInkPalmThreshold",
+            ]
+            stale = [n for n in ink_objects
+                     if _find_named(settings.contentItem(), n) is not None]
+            check(
+                "「主界面」页已无墨迹组（三张卡整组搬走，objectName 也不剩）",
+                not stale,
+                f"旧页仍残留={stale}",
+            )
+
+            app.windows.show_settings("settings/Ink.qml")
+            ink_cards = {}
+            for _ in range(12):  # NavigationView.push → 页面组件加载是异步的
+                QTest.qWait(120)
+                ink_cards = {n: _find_named(settings.contentItem(), n)
+                             for n in ("inkEngine", "inkPalmErase", "inkPalmThreshold")}
+                if all(v is not None for v in ink_cards.values()):
+                    break
+            missing_ink = [n for n, v in ink_cards.items() if v is None]
+            check(
+                "「墨迹和批注」页有三张墨迹卡（引擎 / 手掌擦除 / 手掌判定阈值）",
+                not missing_ink,
+                f"缺失={missing_ink}" if missing_ink
+                else f"找到={len(ink_cards)}",
+            )
+            engine = ink_cards.get("inkEngine")
+            palm = ink_cards.get("inkPalmErase")
+            threshold = ink_cards.get("inkPalmThreshold")
+            check(
+                "新页控件没漏搬（引擎=下拉、手掌擦除=开关、阈值=滑块）",
+                len(_collect_type(engine, "ComboBox")) == 1
+                and len(_collect_type(palm, "Switch")) == 1
+                and len(_collect_type(threshold, "Slider")) == 1,
+                "卡缺失" if None in (engine, palm, threshold)
+                else f"ComboBox={len(_collect_type(engine, 'ComboBox'))} "
+                     f"Switch={len(_collect_type(palm, 'Switch'))} "
+                     f"Slider={len(_collect_type(threshold, 'Slider'))}",
+            )
+            # ⚠️ 上面那条只证明三只控件**在**，证不了它们接的是哪条配置 ——
+            # 搬运最容易犯的错就是把 ``Backend.setSetting("presentation_ink_*")``
+            # 抄错一个键名，而那一栏的开关照样能拨。所以**翻一次配置**：开关的
+            # ``checked`` 必须跟着走，翻完再原样翻回来。
+            # ⚠️⚠️ 为什么验「配置 → 控件」而不是「点控件 → 配置」：这一页是刚被
+            #    push 上来的，**在整轮 smoke 的上下文里它的布局不保证是终态**
+            #    （2026-10-16 实测：同一张卡在这里宽 286，而单独跑同一条链路宽 807；
+            #    点下去命中的是窗口里另一块 Rectangle，三次重试全落空）。人工探针里
+            #    等页面停稳后真鼠标点确实能落盘（已单独验过），但把它写进自检就是一条
+            #    **随上下文飘**的断言。绑定只有一行字面量，读的那一半对上了，写的那
+            #    一半抄错的概率极低 —— 这里取确定性的那半边。
+            if palm is not None:
+                switch = (_collect_type(palm, "Switch") or [None])[0]
+                if switch is not None:
+                    # 缺键时按默认（true）兜底 —— 下面要原样还原，别把 None 写回去。
+                    raw = app.config.get("presentation.ink.palm_erase")
+                    before = raw if isinstance(raw, bool) else True
+                    flipped = not before
+                    app.backend.setSetting("presentation_ink_palm_erase", flipped)
+                    QTest.qWait(200)
+                    check(
+                        "「手掌擦除」开关绑的是 presentation.ink.palm_erase",
+                        bool(switch.property("checked")) is flipped,
+                        f"配置写 {flipped} → 控件 checked={switch.property('checked')}",
+                    )
+                    app.backend.setSetting("presentation_ink_palm_erase", before)
+                    QTest.qWait(200)
+                    check(
+                        "手掌擦除自检不留副作用",
+                        bool(switch.property("checked")) is before
+                        and app.config.get("presentation.ink.palm_erase") == before,
+                        f"控件={switch.property('checked')} "
+                        f"配置={app.config.get('presentation.ink.palm_erase')!r} "
+                        f"期望 {before!r}",
+                    )
+            # ⚠️ 显隐规则（2026-10-08 用户指令）：引擎切到 COM 时那两张卡收起。
+            # 「状态 ≠ 表现」的老坑 —— 断言落在 ``isVisible()`` 上，不看 visible 属性
+            # （父级没暴露 / 卡被收起时 ``visible`` 属性还是 true 的那种假绿）。
+            if None not in (engine, palm, threshold):
+                app.backend.setSetting("presentation_ink_engine", "com")
+                QTest.qWait(200)
+                check(
+                    "切换 COM 画笔后手掌两张卡收起（visible 绑引擎）",
+                    not palm.isVisible() and not threshold.isVisible(),
+                    f"手掌擦除 visible={palm.isVisible()} "
+                    f"阈值 visible={threshold.isVisible()}",
+                )
+                app.backend.setSetting("presentation_ink_engine", "self")
+                QTest.qWait(200)
+                check(
+                    "切回自建批注后手掌两张卡回来",
+                    palm.isVisible() and threshold.isVisible(),
+                    f"手掌擦除 visible={palm.isVisible()} "
+                    f"阈值 visible={threshold.isVisible()}",
+                )
+
             # ---- 放映设置页：**整页删除**（2026-10-01 第四轮用户指令）----
             # 页内的设置项早在本轮之前就搬空了（位置 / 外观 → 主界面，退出键样式
             # → 编辑器，组分隔线与页码切换直接删）；这次连**空壳页面本身**也删掉。
@@ -6184,6 +6394,12 @@ def main() -> int:
                 "退出键样式已还原（自检不留副作用）",
                 str(exit_dock.property("exitFillColor")) == base_fill,
                 f"{base_fill} -> {exit_dock.property('exitFillColor')}",
+            )
+        else:
+            check(
+                "（跳过）退出键样式断言：当前编排里 bottom_center 不在役",
+                True,
+                f"在役控制条={sorted(app.windows._docks)}",
             )
 
         # ---- 启动画面（设计稿「启动画面 Dark / Light」的还原）----

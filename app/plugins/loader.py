@@ -35,7 +35,8 @@ JSON 损坏一律按默认 ``true`` 处理）；阶段二拿到正式 Config 后
 
 插件模块约定：``app/plugins/<id>/plugin.py`` 暴露 ——
 
-* ``META``: dict，必含 ``"id"``（与目录名一致），可选 ``"depends": list[str]``；
+* ``META``: dict，必含 ``"id"``（与目录名一致），可选 ``"depends": list[str]``
+  与 ``"category": str``（插件管理页分类 id；缺省归 ``other``）；
 * ``DEFAULTS``: 可选 dict，``plugins.<id>.*`` 的默认值（相对键 → 值）；
 * ``register(ctx)``: 加载期回调，经 :class:`~app.plugins.context.PluginContext`
   声明全部贡献。

@@ -137,11 +137,13 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_exit_style": "presentation.exit.style",
     # 墨迹引擎（self = 自建墨迹 / com = PowerPoint·WPS 自带放映笔）。值变了由
     # ``application.py`` 挂在 ``Config.on_change`` 上的监听器即时改道（放映中
-    # 切换也生效），这里只负责让 QML 能读写；设置页入口在计划 self-ink 第 9 项。
+    # 切换也生效），这里只负责让 QML 能读写；设置页入口：设置 → 墨迹和批注
+    # →「墨迹引擎」（2026-10-16 起独立成页 ``settings/Ink.qml``）。
     "presentation_ink_engine": "presentation.ink.engine",
     # 橡皮子模式（stroke = 整笔 / pixel = 像素）与手掌擦除开关、阈值（毫米）。
     # 2026-10-07 自建批注（计划 self-ink 第 9 项）：控制条橡皮卡片写前一个，设置页
-    # 「主界面 → 墨迹」写后两个；擦除行为本身由第 8 项在 InkLayer 侧消费。
+    # 「墨迹和批注 → 墨迹」写后两个（2026-10-16 起该组已从「主界面」页搬去
+    # ``settings/Ink.qml`` 独立成页）；擦除行为本身由第 8 项在 InkLayer 侧消费。
     "presentation_ink_eraser_mode": "presentation.ink.eraser_mode",
     "presentation_ink_palm_erase": "presentation.ink.palm_erase",
     "presentation_ink_palm_threshold_mm": "presentation.ink.palm_threshold_mm",
@@ -257,6 +259,10 @@ _RIN_POSITION_BOTTOM = 1
 #: - 「主界面」：2026-10-01 由「外观」改名而来，原页的主题 / 强调色 / 界面语言
 #:   三张卡挪走；本页专放主界面自己的设定（可视化编辑在独立的
 #:   MainInterfaceEditor 窗口）。
+#: - 「墨迹和批注」：2026-10-16 用户指令「将『设置-主界面』中的『墨迹』相关
+#:   选项放在新的设置 tab 中，命名为『墨迹和批注』」—— 新建页
+#:   ``settings/Ink.qml``，承接原「主界面」页末尾「墨迹」组的三张卡
+#:   （墨迹引擎 / 手掌擦除 / 手掌判定阈值）。排在「主界面」之后。
 _BUILTIN_SETTINGS_NAV: Tuple[Tuple[str, str, str, Optional[int]], ...] = (
     ("settings/Home.qml", "主页", "ic_fluent_home_20_regular", None),
     ("settings/General/Index.qml", "通用", "ic_fluent_settings_20_regular", None),
@@ -267,6 +273,7 @@ _BUILTIN_SETTINGS_NAV: Tuple[Tuple[str, str, str, Optional[int]], ...] = (
         None,
     ),
     ("settings/MainInterface.qml", "主界面", "ic_fluent_window_20_regular", None),
+    ("settings/Ink.qml", "墨迹和批注", "ic_fluent_pen_20_regular", None),
     # 「插件」：2026-10-05（插件系统 Wave 3 任务 17）新增的管理页（启用 / 禁用
     # 开关，重启生效）。内建页而非插件贡献 —— 管理插件的界面本身不能依赖
     # 插件系统注册（禁用全部插件后管理入口不能跟着消失）。排在「主界面」之后、
@@ -1320,20 +1327,16 @@ class Backend(QObject):
           到 QML 后与 ``Rin.Position.Bottom`` 严格相等）；普通条目不写这个
           键，QML 侧读为 ``undefined``，落入普通区。「关于 / 更新」钉底部
           的语义由表里的 ``_RIN_POSITION_BOTTOM`` 原样保留。
+          ⚠️ 2026-10-16 起**插件设置页默认也落底部区**（未显式指定
+          ``position`` 时）—— RinUI 的 NavigationBar 中间区没有分割线机制，
+          底部区那条自带的 separator 就是「原生 ↔ 插件」的分割线。
         * 每次读取现算（注册表在加载期冻结，读到的必是全量），且合并结果
           **绝不写回 config**（列表型贡献注入默认层会被用户层整体顶掉 ——
           铁律，见文件头注释与 ``app/plugins/registry.py`` 头注释第 3 条）。
         """
         items: List[Dict[str, Any]] = []
-        for rel, title_source, icon, position in _BUILTIN_SETTINGS_NAV:
-            item: Dict[str, Any] = {
-                "title": i18n.tr("Settings", title_source),
-                "page": "file:///" + (UI_DIR / rel).as_posix(),
-                "icon": icon,
-            }
-            if position is not None:
-                item["position"] = position
-            items.append(item)
+        plugin_sub_items: List[Dict[str, Any]] = []
+        plugin_top_items: List[Dict[str, Any]] = []
         for entry in registry.settings_pages().values():
             plugin_item: Dict[str, Any] = {
                 "title": str(entry.get("title", "")),
@@ -1341,8 +1344,27 @@ class Backend(QObject):
                 "icon": str(entry.get("icon", "")),
             }
             if "position" in entry:
+                # 显式指定了 position 的插件页仍作**顶层**条目（subItems 不支持
+                # position —— 尊重作者意图优先于折叠收纳）。
                 plugin_item["position"] = entry["position"]
-            items.append(plugin_item)
+                plugin_top_items.append(plugin_item)
+            else:
+                plugin_sub_items.append(plugin_item)
+
+        for rel, title_source, icon, position in _BUILTIN_SETTINGS_NAV:
+            item: Dict[str, Any] = {
+                "title": i18n.tr("Settings", title_source),
+                "page": "file:///" + (UI_DIR / rel).as_posix(),
+                "icon": icon,
+            }
+            # 插件设置页收纳进「插件」管理页的折叠子项 —— 与「这是插件的设置」
+            # 的从属语义一致（2026-10-16 用户指令定案，见本函数 docstring）。
+            if rel == "settings/Plugins.qml" and plugin_sub_items:
+                item["subItems"] = plugin_sub_items
+            if position is not None:
+                item["position"] = position
+            items.append(item)
+        items.extend(plugin_top_items)
         return items
 
     settingsNavItems = Property(
@@ -1359,7 +1381,8 @@ class Backend(QObject):
         * ``id`` / ``debug`` / ``loaded`` / ``reason``：照清单原样透传
           （``reason`` 为跳过原因，未跳过是 None）；
         * ``title``：``META.name``，插件没声明就回落 id（管理页总得有个
-          能给人看的名字）；``version``：``META.version``，可空；
+          能给人看的名字）；``version``：``META.version``，可空；``category``：
+          可选分类 id，缺省归 ``other``，保证设置页类别筛选不会漏掉老插件；
         * ``enabled``：**从正式 Config 现读** ``plugins.<id>.enabled``
           （默认 true），不照抄清单里那份 —— 清单是加载时刻的快照，而
           这个属性在 ``setPluginEnabled`` 之后还要被重读，读快照就永远
@@ -1376,6 +1399,7 @@ class Backend(QObject):
                     "id": pid,
                     "title": str(meta.get("name") or pid),
                     "version": meta.get("version"),
+                    "category": str(meta.get("category") or "other"),
                     "enabled": bool(
                         self._config.get(f"plugins.{pid}.enabled", True)
                     ),

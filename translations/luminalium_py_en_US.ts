@@ -201,6 +201,10 @@ Purpose: check the layout, emoji, and primary button ("Ignore") of the error rep
         <translation>Main interface</translation>
     </message>
     <message>
+        <source>墨迹和批注</source>
+        <translation>Ink and annotations</translation>
+    </message>
+    <message>
         
         <source>插件</source>
         <translation>Plugins</translation>

@@ -44,6 +44,7 @@ META = {
     "id": "spotlight",
     "name": "聚光灯",
     "version": "1.0.0",
+    "category": "utility",
 }
 
 #: ``plugins.spotlight.*`` 默认值：遮罩浓度（alpha %）与光斑半径（占光标屏

@@ -94,6 +94,11 @@ QtObject {
     /*! 三级文本：空状态说明、占位提示这类最弱的信息。 */
     readonly property color textTertiary: themeColors && themeColors.textTertiaryColor !== undefined
         ? themeColors.textTertiaryColor : textSecondary
+    /*! 压在强调色实底上的文字色（RinUI ``textOnAccentColor``：深色档纯黑、
+        浅色档纯白）。插件页选中胶囊上那行字用的就是它 —— 设计稿上那是一枚
+        ``#60CDFF`` 实底 + 纯黑字。 */
+    readonly property color textOnAccent: themeColors
+        ? themeColors.textOnAccentColor : "#000000"
 
     // ------------------------------------------------------------ 通用「控件」
     readonly property color controlHoverFill: themeColors
@@ -740,6 +745,122 @@ QtObject {
     /*! 字标素材 ``resources/design_by_yunofactory.svg`` 的宽高比（4687 : 734）。
         ⚠️ 换素材这个数要跟着改 —— 写错的症状是字标被拉扁/拉长，预览图上不显眼。 */
     readonly property real aboutCreditsAspect: 4687 / 734
+
+    // ================================================================ 设置 · 插件页
+    //
+    // 2026-10-17 用户指令「将插件界面的排版改成如图排版」：页面从「两张导入
+    // SettingCard + 卡片列表」改成
+    //
+    //     小节标签 → 两张并排导入磁贴 → 小节标签 → 范围分段 → 筛选胶囊 → 行列表
+    //
+    // 版式值直接照 **1280×720 的矢量 SVG** 量得，**SVG 单位 = 逻辑 px（1:1）**。
+    // 横向交给布局（本页内容区 807 宽、设计稿 1125，横向本来就是流体的），
+    // 纵向与图标/字号照抄。
+    //
+    // ⚠️ 2026-10-17 第二次修正：上一版把 SVG 值乘了 0.844（拿 1080 宽的 PNG
+    // 当「设计单位」），整页因此矮了一档。0.844 是错的 —— **设计稿里的字给出了
+    // 判决**：插件行标题墨迹 41px / 3 个汉字 → 字号 14（= Body，墨迹 = 3F-1）；
+    // 行副文案 161.1px / 「v1.0.0 · Seirai Haraguchi, Saskia」33 个英数字
+    // → 字号 12（= Caption）；分段与胶囊文字 82.2 / 6 个汉字 → 14。三个都精确
+    // 落在 RinUI 的字号梯上，说明设计稿就是按逻辑像素画的 1280 宽窗口；乘 0.844
+    // 会把这些字压成 11.8 / 10.1 —— 梯上没有的尺寸。
+    //
+    // 量出来的值（没注明「字号」的都是**墨迹**；落成字形盒要再除 0.75~0.79，
+    // 见下面两条图标的注释）：磁贴 557×116（rx 3.5 / 内边距 20 / 主图标墨迹
+    // 24×21 / 右下角标墨迹 12.2@距边 16 / 标题字号 16）、分段 564×31（rx 3.5）、
+    // 胶囊 31 高（rx 15.5 = 全圆角药丸 / 左右各 12 留白 / 间距 5）、插件行
+    // 1125×64（左右 16 / 上下 14 / 图标墨迹 15 / 标题字号 14 / 副文案字号 12）、
+    // Switch 39×19。
+    //
+    // 颜色**一处都不用另立**，全部命中 RinUI 现成令牌：行底 = ``cardColor``
+    // （白 5.12%，设计稿 0.0512）、分段容器 = ``controlAltSecondaryColor``
+    // （黑 10%）、选中页 = ``controlFillColor``（白 6.05%）压在上面、选中胶囊 =
+    // 强调色 + ``textOnAccentColor``、所有描边 = ``hairline``。
+    // 磁贴底设计稿是白 6.05%，``Rin.Clip``→``Frame`` 默认给的是 ``cardColor``
+    // （5.12%）——**差 3/255，不去覆写它**：覆写会把 ``Frame`` 上「悬停变亮」的
+    // 那条绑定一起摘掉。
+    //
+    // ⚠️ 唯一对不上的是**页头标题**：设计稿「插件」墨迹 70×33.8 → 字号 36，
+    // 而 RinUI ``FluentPage`` 的页头写死 ``Typography.Title``（28）。那是全部
+    // 设置页共用的页头，不为这一页动它。
+    /*! 小节标签（``导入`` / ``插件``）**不在这里**：用 RinUI 通用的
+        ``Rin.Text { typography: BodyStrong }``（14 半粗，行高 20），与本项目
+        其余设置页的分组小标题同一层级（2026-10-17 用户指令「应该用 RinUI 的
+        通用的」）。原先照设计稿墨迹（28.8×13.7）另立过 ``pluginLabelSize: 16``，
+        那是字号梯上没有的非标尺寸，已删；``BodyStrong`` 行高同为 20，
+        纵向节奏不变。 */
+    /*! 小节标签 → 紧随其后那件东西的间距（设计稿「导入」→ 磁贴 16.2、
+        「插件」→ 分段 12.1，取一档）。 */
+    readonly property int pluginLabelGap: 16
+    /*! 上一个小节的内容 → 下一个小节标签的间距（设计稿磁贴底 → 「插件」28）。 */
+    readonly property int pluginSectionGap: 28
+    /*! 小节标签 → 范围分段。设计稿这一处（15.1）比「导入 → 磁贴」（19.2）紧
+        一档，所以没有跟着 ``pluginLabelGap`` 走。 */
+    readonly property int pluginScopeGap: 12
+    /*! 分段 → 筛选行 / 筛选行 → 列表的间距（设计稿 17 / 21）。 */
+    readonly property int pluginFilterGap: 17
+    readonly property int pluginListGap: 21
+    /*! 插件行之间。设计稿上只有一行，量不出来；取 4 —— 行自带描边与圆角，
+        贴死会糊成一片。 */
+    readonly property int pluginRowGap: 4
+    /*! 导入磁贴：高 / 圆角 / 两张之间的间距 / 内边距 / 图标与标题的间距 /
+        右下角 open 角标距边的距离。
+        ⚠️ 圆角设计稿是 3.5（取 4）—— 这块磁贴几乎是直角，取 6 会明显「更胖」。
+        内边距 20 让「左上图标 + 左下标题」的对角关系落到磁贴上下缘。 */
+    readonly property int pluginTileHeight: 116
+    readonly property int pluginTileRadius: 4
+    readonly property int pluginTileGap: 10
+    /*! 上/左内边距 = 18。⚠️ 别照设计稿写的 20 —— 那个 20 是从**字形盒**量出来的，
+        还要扣掉字形盒自身的留白：图标（``_20_`` 变体）墨迹只占盒 0.79，盒顶到
+        墨迹顶还有 4。实测内边距 20 时图标墨迹距上缘 24（设计稿 22）、标题墨迹
+        距左 20.6（设计稿 18.9），两处都松 2 左右；落到 18 就都对齐了。 */
+    readonly property int pluginTilePadding: 18
+    /*! 磁贴的下内边距比上内边距紧 6 —— 设计稿上标题墨迹底在 273.5（距下缘 17）；
+        这行 16 号字坐的是 BodyLarge 的 24 高行盒，墨迹底距盒底有 5.4 的降部余量，
+        所以盒子底要落在距下缘 17 - 5.4 ≈ 12。 */
+    readonly property int pluginTilePaddingBottom: 12
+    readonly property int pluginTileSpacing: 20
+    /*! 右下角标距边的距离。同样是「盒子」不是「墨迹」：字形盒 18、墨迹 12.2，
+        每边留 2.9，设计稿墨迹距右 17.4 / 距下 16.4 → 盒子边距 ≈ 14。 */
+    readonly property int pluginTileGlyphMargin: 14
+    /*! 磁贴标题字号（设计稿墨迹 78.6 / 5 个汉字 → 16，同样不在字号梯上）。 */
+    readonly property int pluginTileTitleSize: 16
+    /*! 磁贴左上角那枚主图标，与右下角那枚「打开」字形的大小（都是字形盒，
+        不是墨迹）。设计稿的墨迹是 24×21 —— 本项目用的是 Fluent 的 ``_20_``
+        变体，墨迹只占字形盒的 0.79，所以盒子要 30 才落得出 24 的墨迹
+        （实测 24 的盒子只出 18.9）。右下角那枚同理：18 出 12.2。
+        右下角故意比主图标小一档：它是「这里可点」的提示，不是第二个语义。 */
+    readonly property int pluginTileIconSize: 30
+    readonly property int pluginTileGlyphSize: 18
+    /*! 筛选胶囊高度与间距。胶囊本体（``components/PluginFilterChip.qml``）就是
+        RinUI 的 ``PillButton``（``RoundButton`` 药丸底），只覆写尺寸。 */
+    readonly property int pluginChipHeight: 31
+    readonly property int pluginChipGap: 5
+    /*! 胶囊的左右留白**合计**：设计稿逐枚量得「宽 - 文字宽 = 23」（51/79/107
+        对 28/56/84，都是 2/4/6 个汉字 × 14 号）。RinUI ``Button`` 把宽度写死成
+        ``内容宽 + 26``（拿不到内边距），所以要自己量、自己加。 */
+    readonly property int pluginChipPadding: 23
+    /*! 范围分段（``已安装的全部 / 已安装且已启用``）的高度。RinUI
+        ``SegmentedItem`` 自带 ``implicitHeight: 32``，设计稿 31 —— 差 1，
+        但这一条与下面的胶囊（31）必须等高，否则整段的节奏就断了。 */
+    readonly property int pluginScopeHeight: 31
+    /*! 插件行的内边距。``SettingCard`` 默认 左右 18 / 上下 16（行高 ≈ 68），
+        设计稿是 左右 16 / 上下 14 —— 14 让行高落到 64。 */
+    readonly property int pluginRowPaddingY: 14
+    readonly property int pluginRowPaddingX: 16
+    /*! 插件行左侧那枚插件图标。设计稿墨迹 15×15；本项目用 ``_20_`` 变体，
+        墨迹只占字形盒的 0.75，所以盒子取 20（实测 16 的盒子只出 12）。 */
+    readonly property int pluginRowIconSize: 20
+
+    /*! 范围分段（``已安装的全部 / 已安装且已启用``）容器的底与描边。
+        底色直接取 RinUI 的 ``controlAltSecondaryColor``（Fluent 的凹槽色），
+        描边**必须**走 ``hairline`` —— RinUI ``Segmented`` 自带那圈
+        ``controlBorderColor`` 在深色档是「黑 9%」，压在深色页底上等于没有，
+        分段就读不出「这是一只容器」（与铁律 4 是同一个坑；浅色档那圈
+        ``controlBorderColor`` 本来就看得见，换成 ``hairline`` 也一样）。 */
+    readonly property color pluginScopeBg: themeColors
+        ? themeColors.controlAltSecondaryColor : "#1A000000"
+    readonly property color pluginScopeBorder: hairline
 
     /*! 窗口/页面基色 —— RinUI ``FluentWindowBase`` 在没有 backdrop 时就是用
         ``colors.backgroundColor`` 铺底（``app.backdrop`` 默认 "none"）。 */

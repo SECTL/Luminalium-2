@@ -80,7 +80,7 @@
     <message>
         <location filename="../ui/settings/About.qml" line="250"/>
         <source>© 2025-2026 Seirai Haraguchi, YUNOFACTORY &amp; SECTL Studio</source>
-        <translation type="unfinished"></translation>
+        <translation>© 2025-2026 Seirai Haraguchi, YUNOFACTORY &amp; SECTL Studio</translation>
     </message>
     <message>
         <location filename="../ui/settings/About.qml" line="381"/>
@@ -256,17 +256,17 @@
     <message>
         <location filename="../ui/plugins/_demo/DemoSettings.qml" line="22"/>
         <source>演示插件</source>
-        <translation type="unfinished"></translation>
+        <translation>デモプラグイン</translation>
     </message>
     <message>
         <location filename="../ui/plugins/_demo/DemoSettings.qml" line="29"/>
         <source>演示开关</source>
-        <translation type="unfinished"></translation>
+        <translation>デモスイッチ</translation>
     </message>
     <message>
         <location filename="../ui/plugins/_demo/DemoSettings.qml" line="30"/>
         <source>验收夹具占位：只验证插件设置键的读写链路，无实际功能</source>
-        <translation type="unfinished"></translation>
+        <translation>検証用フィクスチャのプレースホルダー：プラグイン設定キーの読み書き経路のみを検証するもので、実機能はありません</translation>
     </message>
 </context>
 <context>
@@ -274,12 +274,12 @@
     <message>
         <location filename="../ui/plugins/_demo/DemoWindow.qml" line="26"/>
         <source>演示插件</source>
-        <translation type="unfinished"></translation>
+        <translation>デモプラグイン</translation>
     </message>
     <message>
         <location filename="../ui/plugins/_demo/DemoWindow.qml" line="41"/>
         <source>插件系统验收夹具：本窗口无任何实际功能</source>
-        <translation type="unfinished"></translation>
+        <translation>プラグインシステムの検証用フィクスチャ：このウィンドウに実機能はありません</translation>
     </message>
 </context>
 <context>
@@ -392,27 +392,27 @@
 <context>
     <name>Home</name>
     <message>
-        <location filename="../ui/settings/Home.qml" line="114"/>
+        <location filename="../ui/settings/Home.qml" line="115"/>
         <source>主页</source>
         <translation>ホーム</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="128"/>
+        <location filename="../ui/settings/Home.qml" line="129"/>
         <source>警告</source>
         <translation>警告</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="129"/>
+        <location filename="../ui/settings/Home.qml" line="130"/>
         <source>当前版本仍在测试中，可能包含错误或未完成的功能。欢迎到 &lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; 上提交 Issue。</source>
         <translation>現在のバージョンはまだテスト中のため、不具合や未実装の機能が含まれる可能性があります。&lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; への Issue 報告を歓迎します。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="143"/>
+        <location filename="../ui/settings/Home.qml" line="148"/>
         <source>GitHub</source>
         <translation>GitHub</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="148"/>
+        <location filename="../ui/settings/Home.qml" line="153"/>
         <source>反馈问题或功能建议</source>
         <translation>問題の報告・機能の提案</translation>
     </message>
@@ -501,6 +501,59 @@
     </message>
 </context>
 <context>
+    <name>Ink</name>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="24"/>
+        <source>墨迹和批注</source>
+        <translation>インクと注釈</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="38"/>
+        <source>墨迹</source>
+        <translation>インク</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="45"/>
+        <source>墨迹引擎</source>
+        <translation>インクエンジン</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="46"/>
+        <source>自建批注在放映画面上自己画，两家一致；COM 交给演示软件（兜底）</source>
+        <translation>内蔵インクはスライド映像の上に自前で描画し、両アプリで一貫します。COM はプレゼンソフトに任せます（フォールバック）</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="52"/>
+        <source>自建批注</source>
+        <translation>内蔵インク</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="52"/>
+        <source>COM画笔</source>
+        <translation>COMペン</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="67"/>
+        <source>手掌擦除</source>
+        <translation>手のひら消去</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="68"/>
+        <source>触摸屏上手掌或手背压上去时临时切成像素擦除，抬起即还原；仅在使用自建批注时生效</source>
+        <translation>タッチ画面で手のひらや手の甲を押し当てると一時的にピクセル消去に切り替わり、離すと元に戻ります。内蔵インク使用時のみ有効です</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="87"/>
+        <source>手掌判定阈值</source>
+        <translation>手のひら判定のしきい値</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="88"/>
+        <source>接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上</source>
+        <translation>接触直径がこの値以上で手のひらと判定します。指先は約8〜12mm、手のひらは通常25mm以上です</translation>
+    </message>
+</context>
+<context>
     <name>InkOverlay</name>
     <message>
         <location filename="../ui/ink/InkOverlay.qml" line="30"/>
@@ -511,84 +564,84 @@
 <context>
     <name>MainInterface</name>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="51"/>
+        <location filename="../ui/settings/MainInterface.qml" line="53"/>
         <source>主界面</source>
         <translation>メイン画面</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="107"/>
+        <location filename="../ui/settings/MainInterface.qml" line="109"/>
         <source>编辑主界面的新方式</source>
         <translation>メイン画面を編集する新しい方法</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="112"/>
+        <location filename="../ui/settings/MainInterface.qml" line="114"/>
         <source>右键托盘图标或唤出快捷面板，点「主界面编辑器」即可体验：
 点击任意组件聚焦放大，右侧面板里调整它的设置。</source>
         <translation>トレイアイコンを右クリックするか、クイックパネルから「メイン画面エディター」を開いてください：
 任意のコンポーネントをクリックしてフォーカスし、右側のパネルで設定を調整できます。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="122"/>
+        <location filename="../ui/settings/MainInterface.qml" line="124"/>
         <source>打开主界面编辑器</source>
         <translation>メイン画面エディターを開く</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="141"/>
+        <location filename="../ui/settings/MainInterface.qml" line="143"/>
         <source>缩放</source>
         <translation>拡大縮小</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="148"/>
+        <location filename="../ui/settings/MainInterface.qml" line="150"/>
         <source>缩放大小</source>
         <translation>拡大率</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="149"/>
+        <location filename="../ui/settings/MainInterface.qml" line="151"/>
         <source>整体放大或缩小控制条上的组件；位置与边距不受影响</source>
         <translation>コントロールバーの部品をまとめて拡大・縮小します。位置と余白は変わりません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="173"/>
+        <location filename="../ui/settings/MainInterface.qml" line="175"/>
         <source>位置</source>
         <translation>位置</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="180"/>
+        <location filename="../ui/settings/MainInterface.qml" line="182"/>
         <source>水平边距</source>
         <translation>水平マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="184"/>
+        <location filename="../ui/settings/MainInterface.qml" line="186"/>
         <source>控制条距放映窗口左右边缘的距离（全屏放映时即屏幕边缘）</source>
         <translation>コントロールバーとスライドショーウィンドウの左右の端との距離（全画面表示のときは画面の端）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="205"/>
+        <location filename="../ui/settings/MainInterface.qml" line="207"/>
         <source>垂直边距</source>
         <translation>垂直マージン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="207"/>
+        <location filename="../ui/settings/MainInterface.qml" line="209"/>
         <source>控制条距放映窗口上下边缘的距离（全屏放映时即屏幕边缘）</source>
         <translation>コントロールバーとスライドショーウィンドウの上下の端との距離（全画面表示のときは画面の端）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="226"/>
+        <location filename="../ui/settings/MainInterface.qml" line="228"/>
         <source>目标显示器</source>
         <translation>対象ディスプレイ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="228"/>
+        <location filename="../ui/settings/MainInterface.qml" line="230"/>
         <source>控制条跟着放映窗口走，或固定在某台显示器上</source>
         <translation>コントロールバーをスライドショーウィンドウに追従させるか、特定のディスプレイに固定するか</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="245"/>
+        <location filename="../ui/settings/MainInterface.qml" line="247"/>
         <source>显示器 %1</source>
         <translation>ディスプレイ %1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="247"/>
+        <location filename="../ui/settings/MainInterface.qml" line="249"/>
         <source>（主显示器）</source>
         <translation>（メインディスプレイ）</translation>
     </message>
@@ -597,7 +650,7 @@
         <translation type="vanished">コントロールバーをスライドショーウィンドウに追従させるか、メインディスプレイに固定するか</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="242"/>
+        <location filename="../ui/settings/MainInterface.qml" line="244"/>
         <source>跟随放映窗口</source>
         <translation>スライドショーに追従</translation>
     </message>
@@ -606,78 +659,69 @@
         <translation type="vanished">メインディスプレイ</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="294"/>
+        <location filename="../ui/settings/MainInterface.qml" line="296"/>
         <source>外观</source>
         <translation>外観</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="301"/>
+        <location filename="../ui/settings/MainInterface.qml" line="303"/>
         <source>底板不透明度</source>
         <translation>パネルの不透明度</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="302"/>
+        <location filename="../ui/settings/MainInterface.qml" line="304"/>
         <source>越透明，放映画面透出来越多，边缘高光也越明显</source>
         <translation>透明度が高いほどスライドショーが透けて見え、縁のハイライトも際立ちます</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="322"/>
+        <location filename="../ui/settings/MainInterface.qml" line="324"/>
         <source>阴影</source>
         <translation>影</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="323"/>
+        <location filename="../ui/settings/MainInterface.qml" line="325"/>
         <source>底板下方的柔和投影；纯色背景下关掉更清爽</source>
         <translation>パネルの下に柔らかい影を落とします。無地の背景ではオフのほうがすっきりします</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="344"/>
         <source>墨迹</source>
-        <translation>インク</translation>
+        <translation type="vanished">インク</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="351"/>
         <source>墨迹引擎</source>
-        <translation>インクエンジン</translation>
+        <translation type="vanished">インクエンジン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="352"/>
         <source>自建批注在放映画面上自己画，两家一致；COM 交给演示软件（兜底）</source>
-        <translation>内蔵インクはスライド映像の上に自前で描画し、両アプリで一貫します。COM はプレゼンソフトに任せます（フォールバック）</translation>
+        <translation type="vanished">内蔵インクはスライド映像の上に自前で描画し、両アプリで一貫します。COM はプレゼンソフトに任せます（フォールバック）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="358"/>
         <source>自建批注</source>
-        <translation>内蔵インク</translation>
+        <translation type="vanished">内蔵インク</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="358"/>
         <source>COM画笔</source>
-        <translation>COMペン</translation>
+        <translation type="vanished">COMペン</translation>
     </message>
     <message>
         <source>PowerPoint·WPS 自带 (COM)</source>
         <translation type="vanished">PowerPoint・WPS 標準 (COM)</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="373"/>
         <source>手掌擦除</source>
-        <translation>手のひら消去</translation>
+        <translation type="vanished">手のひら消去</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="374"/>
         <source>触摸屏上手掌或手背压上去时临时切成像素擦除，抬起即还原；仅在使用自建批注时生效</source>
-        <translation>タッチ画面で手のひらや手の甲を押し当てると一時的にピクセル消去に切り替わり、離すと元に戻ります。内蔵インク使用時のみ有効です</translation>
+        <translation type="vanished">タッチ画面で手のひらや手の甲を押し当てると一時的にピクセル消去に切り替わり、離すと元に戻ります。内蔵インク使用時のみ有効です</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="393"/>
         <source>手掌判定阈值</source>
-        <translation>手のひら判定のしきい値</translation>
+        <translation type="vanished">手のひら判定のしきい値</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="394"/>
         <source>接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上</source>
-        <translation>接触直径がこの値以上で手のひらと判定します。指先は約8〜12mm、手のひらは通常25mm以上です</translation>
+        <translation type="vanished">接触直径がこの値以上で手のひらと判定します。指先は約8〜12mm、手のひらは通常25mm以上です</translation>
     </message>
 </context>
 <context>
@@ -728,12 +772,17 @@
         <translation>画面右・垂直中央</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="411"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="413"/>
+        <source>组 | 工具栏和翻页器</source>
+        <translation>グループ | ツールバーとスライド送り</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="417"/>
         <source>翻页组件</source>
         <translation>スライド送り</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="409"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="415"/>
         <source>工具栏</source>
         <translation>ツールバー</translation>
     </message>
@@ -747,12 +796,12 @@
         <translation type="vanished">ボタンテキストを表示</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1427"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1562"/>
         <source>开</source>
         <translation>オン</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1428"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1563"/>
         <source>关</source>
         <translation>オフ</translation>
     </message>
@@ -845,97 +894,216 @@
 <context>
     <name>Plugins</name>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="55"/>
+        <location filename="../ui/settings/Plugins.qml" line="79"/>
+        <location filename="../ui/settings/Plugins.qml" line="287"/>
         <source>插件</source>
         <translation>プラグイン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="71"/>
+        <location filename="../ui/settings/Plugins.qml" line="97"/>
+        <source>全部</source>
+        <translation>すべて</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="98"/>
+        <source>实用工具</source>
+        <translation>実用ツール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="99"/>
+        <source>学科工具</source>
+        <translation>科目ツール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="100"/>
+        <source>办公工具</source>
+        <translation>オフィスツール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="101"/>
+        <source>娱乐工具</source>
+        <translation>エンターテインメント</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="102"/>
+        <source>改进</source>
+        <translation>改善</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="103"/>
+        <source>优化</source>
+        <translation>最適化</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="104"/>
+        <source>注入式修改类</source>
+        <translation>注入型の変更</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="105"/>
+        <source>联动类</source>
+        <translation>連携</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <source>快捷方式类</source>
+        <translation>ショートカット類</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="107"/>
+        <source>其他</source>
+        <translation>その他</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="108"/>
+        <source>快捷工具</source>
+        <translation>クイックツール</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="109"/>
+        <source>内置</source>
+        <translation>内蔵</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="110"/>
+        <source>非内置</source>
+        <translation>非内蔵</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="168"/>
         <source>调试插件</source>
         <translation>デバッグプラグイン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="74"/>
+        <location filename="../ui/settings/Plugins.qml" line="171"/>
         <source>外部导入</source>
         <translation>外部取り込み</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="77"/>
+        <location filename="../ui/settings/Plugins.qml" line="174"/>
         <source>已加载</source>
         <translation>読み込み済み</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="79"/>
+        <location filename="../ui/settings/Plugins.qml" line="176"/>
         <source>未加载：%1</source>
         <translation>未読み込み：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="81"/>
+        <location filename="../ui/settings/Plugins.qml" line="178"/>
         <source>未加载</source>
         <translation>未読み込み</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="84"/>
+        <location filename="../ui/settings/Plugins.qml" line="181"/>
         <source>已禁用</source>
         <translation>無効</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <location filename="../ui/settings/Plugins.qml" line="203"/>
         <source>操作成功</source>
         <translation>成功しました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <location filename="../ui/settings/Plugins.qml" line="203"/>
         <source>操作失败</source>
         <translation>失敗しました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="119"/>
+        <location filename="../ui/settings/Plugins.qml" line="216"/>
         <source>更改将在重启应用后生效</source>
         <translation>変更はアプリの再起動後に有効になります</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="120"/>
+        <location filename="../ui/settings/Plugins.qml" line="217"/>
         <source>插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载</source>
         <translation>プラグインの有効状態と追加・削除は起動時にのみ読み込まれ、実行中に動的にロード・解除されることはありません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="131"/>
+        <location filename="../ui/settings/Plugins.qml" line="225"/>
+        <source>导入</source>
+        <translation>インポート</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="245"/>
+        <source>导入文件夹</source>
+        <translation>フォルダーをインポート</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="247"/>
+        <source>选择包含 plugin.py 的插件文件夹；导入即拷贝安装</source>
+        <translation>plugin.py を含むプラグインフォルダーを選択します。インポート時にコピーしてインストールします</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="266"/>
+        <source>导入压缩包（.zip）</source>
+        <translation>アーカイブをインポート（.zip）</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="268"/>
+        <source>选择 .zip 插件包；导入即拷贝安装</source>
+        <translation>.zip 形式のプラグインパッケージを選択します。インポート時にコピーしてインストールします</translation>
+    </message>
+    <message>
+        <source>插件将在本机运行，请只导入可信来源。</source>
+        <translation type="vanished">プラグインはこのマシン上で実行されます。信頼できる提供元のみをインポートしてください。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="314"/>
+        <source>已安装的全部</source>
+        <translation>インストール済みのすべて</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="320"/>
+        <source>已安装且已启用</source>
+        <translation>インストール済みかつ有効</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="337"/>
+        <source>筛选</source>
+        <translation>フィルター</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="421"/>
+        <source>没有符合当前筛选条件的插件</source>
+        <translation>現在のフィルター条件に一致するプラグインはありません</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="495"/>
+        <source>启用</source>
+        <translation>有効にする</translation>
+    </message>
+    <message>
         <source>导入插件（.zip 包）</source>
-        <translation>プラグインをインポート（.zip）</translation>
+        <translation type="vanished">プラグインをインポート（.zip）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="132"/>
         <source>导入即拷贝安装，重启应用后生效；插件将在本机运行，请只导入可信来源</source>
-        <translation>インポートするとコピーしてインストールし、アプリ再起動後に有効になります。プラグインはローカルで実行されるため、信頼できるソースのみ取り込んでください</translation>
+        <translation type="vanished">インポートするとコピーしてインストールし、アプリ再起動後に有効になります。プラグインはローカルで実行されるため、信頼できるソースのみ取り込んでください</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="136"/>
         <source>选择 zip 包</source>
-        <translation>zip を選択</translation>
+        <translation type="vanished">zip を選択</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="145"/>
         <source>导入插件（文件夹）</source>
-        <translation>プラグインをインポート（フォルダー）</translation>
+        <translation type="vanished">プラグインをインポート（フォルダー）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="146"/>
         <source>选择包含 plugin.py 的插件文件夹；导入即拷贝安装，重启应用后生效</source>
-        <translation>plugin.py を含むフォルダーを選択してください。インポートするとコピーしてインストールし、再起動後に有効になります</translation>
+        <translation type="vanished">plugin.py を含むフォルダーを選択してください。インポートするとコピーしてインストールし、再起動後に有効になります</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="150"/>
         <source>选择文件夹</source>
-        <translation>フォルダーを選択</translation>
+        <translation type="vanished">フォルダーを選択</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="224"/>
+        <location filename="../ui/settings/Plugins.qml" line="467"/>
         <source>确认删除</source>
         <translation>削除を確認</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="224"/>
+        <location filename="../ui/settings/Plugins.qml" line="467"/>
         <source>删除</source>
         <translation>削除</translation>
     </message>
@@ -944,7 +1112,7 @@
         <translation type="vanished">プラグインの有効状態は起動時にのみ読み込まれ、実行中に動的な読み込み・解除は行われません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="177"/>
+        <location filename="../ui/settings/Plugins.qml" line="420"/>
         <source>没有已安装的插件</source>
         <translation>インストール済みのプラグインはありません</translation>
     </message>
@@ -952,24 +1120,75 @@
 <context>
     <name>PresentationDock</name>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="189"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="252"/>
         <source>更多操作</source>
         <translation>その他の操作</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="197"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="269"/>
         <source>退出放映</source>
         <translation>スライドショーの終了</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="618"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="277"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="279"/>
+        <source>放大镜</source>
+        <translation>ルーペ</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="999"/>
         <source>上一页</source>
         <translation>前のスライド</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="676"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1069"/>
         <source>下一页</source>
         <translation>次のスライド</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1219"/>
+        <source>缩放</source>
+        <translation type="unfinished">拡大縮小</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1221"/>
+        <source>移位</source>
+        <translation>パン</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1237"/>
+        <source>放大</source>
+        <translation>拡大</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1239"/>
+        <source>缩小</source>
+        <translation>縮小</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1241"/>
+        <source>恢复原始大小</source>
+        <translation>元のサイズに戻す</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1243"/>
+        <source>向上移位</source>
+        <translation>上へ移動</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1245"/>
+        <source>向下移位</source>
+        <translation>下へ移動</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1247"/>
+        <source>向左移位</source>
+        <translation>左へ移動</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1249"/>
+        <source>向右移位</source>
+        <translation>右へ移動</translation>
     </message>
 </context>
 <context>
@@ -1021,13 +1240,13 @@
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../ui/Settings.qml" line="257"/>
-        <location filename="../ui/Settings.qml" line="309"/>
+        <location filename="../ui/Settings.qml" line="265"/>
+        <location filename="../ui/Settings.qml" line="317"/>
         <source>需要重启</source>
         <translation>再起動が必要</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="62"/>
+        <location filename="../ui/Settings.qml" line="70"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
@@ -1056,22 +1275,22 @@
         <translation type="vanished">更新</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="262"/>
+        <location filename="../ui/Settings.qml" line="270"/>
         <source>部分设置需要重启才能生效，点击以重启应用。</source>
         <translation>一部の設定は反映に再起動が必要です。クリックしてアプリを再起動します。</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="317"/>
+        <location filename="../ui/Settings.qml" line="325"/>
         <source>部分设置需要重启以应用</source>
         <translation>一部の設定は適用に再起動が必要です。</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="327"/>
+        <location filename="../ui/Settings.qml" line="335"/>
         <source>取消</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="336"/>
+        <location filename="../ui/Settings.qml" line="344"/>
         <source>重启</source>
         <translation>再起動</translation>
     </message>
@@ -1079,12 +1298,12 @@
 <context>
     <name>SidePager</name>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="246"/>
+        <location filename="../ui/presentation/SidePager.qml" line="247"/>
         <source>上一页</source>
         <translation>前のスライド</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="321"/>
+        <location filename="../ui/presentation/SidePager.qml" line="328"/>
         <source>下一页</source>
         <translation>次のスライド</translation>
     </message>
@@ -1353,29 +1572,29 @@
 <context>
     <name>Update</name>
     <message>
-        <location filename="../ui/settings/Update.qml" line="75"/>
-        <location filename="../ui/settings/Update.qml" line="266"/>
-        <location filename="../ui/settings/Update.qml" line="288"/>
+        <location filename="../ui/settings/Update.qml" line="79"/>
+        <location filename="../ui/settings/Update.qml" line="280"/>
+        <location filename="../ui/settings/Update.qml" line="302"/>
         <source>检查更新</source>
         <translation>更新プログラムの確認</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="100"/>
+        <location filename="../ui/settings/Update.qml" line="104"/>
         <source>检测到更新。</source>
         <translation>更新があります。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="101"/>
+        <location filename="../ui/settings/Update.qml" line="105"/>
         <source>您已更新到最新版本。</source>
         <translation>最新バージョンです。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="102"/>
+        <location filename="../ui/settings/Update.qml" line="106"/>
         <source>检查更新失败。</source>
         <translation>更新の確認に失敗しました。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="103"/>
+        <location filename="../ui/settings/Update.qml" line="107"/>
         <source>尚未检查更新。</source>
         <translation>まだ更新を確認していません。</translation>
     </message>
@@ -1396,47 +1615,47 @@
         <translation type="vanished">最新の機能と修正を含みますが、不安定な場合があります。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="150"/>
+        <location filename="../ui/settings/Update.qml" line="164"/>
         <source>关闭</source>
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="237"/>
+        <location filename="../ui/settings/Update.qml" line="251"/>
         <source>发现新版本：%1</source>
         <translation>新しいバージョン：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="238"/>
+        <location filename="../ui/settings/Update.qml" line="252"/>
         <source>上次检查更新时间：%1</source>
         <translation>前回の更新確認：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="240"/>
+        <location filename="../ui/settings/Update.qml" line="254"/>
         <source>从未</source>
         <translation>なし</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="317"/>
+        <location filename="../ui/settings/Update.qml" line="331"/>
         <source>更新部署尚未实现</source>
         <translation>更新の適用は未実装です</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="318"/>
+        <location filename="../ui/settings/Update.qml" line="332"/>
         <source>下载与安装更新的环节还没有接入，目前只能检查更新。可以前往 &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; 手动下载新版本。</source>
         <translation>更新のダウンロードとインストールはまだ実装されていないため、現在は更新の確認のみ可能です。新しいバージョンは &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; から手動でダウンロードできます。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="342"/>
+        <location filename="../ui/settings/Update.qml" line="356"/>
         <source>正在检查更新…</source>
         <translation>更新を確認しています…</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="376"/>
+        <location filename="../ui/settings/Update.qml" line="390"/>
         <source>更新日志</source>
         <translation>更新履歴</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="377"/>
+        <location filename="../ui/settings/Update.qml" line="391"/>
         <source>更新设置</source>
         <translation>更新設定</translation>
     </message>
@@ -1485,32 +1704,32 @@
         <translation type="vanished">現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="306"/>
+        <location filename="../ui/settings/Update.qml" line="320"/>
         <source>出错了</source>
         <translation>エラーが発生しました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="307"/>
+        <location filename="../ui/settings/Update.qml" line="321"/>
         <source>更新时发生网络错误，请检查您的网络连接。</source>
         <translation>更新中にネットワークエラーが発生しました。ネットワーク接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="281"/>
+        <location filename="../ui/settings/Update.qml" line="295"/>
         <source>下载更新</source>
         <translation>更新をダウンロード</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="452"/>
+        <location filename="../ui/settings/Update.qml" line="496"/>
         <source>已经是最新版啦，真棒，夸夸你哦♪</source>
         <translation>すでに最新バージョンです。すごい！</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="451"/>
+        <location filename="../ui/settings/Update.qml" line="495"/>
         <source>还没有检查过更新。</source>
         <translation>まだ更新を確認していません。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="449"/>
+        <location filename="../ui/settings/Update.qml" line="493"/>
         <source>检查没能完成，请检查网络后重试。</source>
         <translation>確認を完了できませんでした。ネットワークを確認して、もう一度お試しください。</translation>
     </message>
@@ -1566,6 +1785,54 @@
         <location filename="../ui/settings/UpdateSettingsTab.qml" line="159"/>
         <source>强制将应用更新到当前通道上的最新版本，即使此版本比应用当前版本更旧。</source>
         <translation type="unfinished">現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
+    </message>
+</context>
+<context>
+    <name>ZoomPanel</name>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="63"/>
+        <source>缩放</source>
+        <translation type="unfinished">拡大縮小</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="64"/>
+        <source>移位</source>
+        <translation>パン</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="75"/>
+        <source>放大</source>
+        <translation>拡大</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="76"/>
+        <source>缩小</source>
+        <translation>縮小</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="77"/>
+        <source>恢复原始大小</source>
+        <translation>元のサイズに戻す</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="78"/>
+        <source>向上移位</source>
+        <translation>上へ移動</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="79"/>
+        <source>向下移位</source>
+        <translation>下へ移動</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="80"/>
+        <source>向左移位</source>
+        <translation>左へ移動</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ZoomPanel.qml" line="81"/>
+        <source>向右移位</source>
+        <translation>右へ移動</translation>
     </message>
 </context>
 </TS>

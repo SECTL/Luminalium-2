@@ -193,6 +193,10 @@
         <translation>メイン画面</translation>
     </message>
     <message>
+        <source>墨迹和批注</source>
+        <translation>インクと注釈</translation>
+    </message>
+    <message>
         
         <source>插件</source>
         <translation>プラグイン</translation>

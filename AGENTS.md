@@ -6,6 +6,8 @@
 
 Luminalium 2，纯粹的演示注释工具：托盘 + 快捷面板，检测到 PowerPoint / WPS 放映时在屏幕上叠一层控制条（翻页、笔、指针那套）。PySide6 + RinUI（QML），没有网页前端、没有 node，别往这个方向想。
 
+唯一例外（2026-10-17 用户指令）：计时器插件是 Lmn-copy HTML 版的原样移植，跑在 QWebEngineView 里（`app/plugins/timer/webview.py` + `web/timer.html`，同时豁免「窗口走 register_window」和「禁 FramelessWindowHint」两条）。这是一次性例外，不是开闸——其他功能照样不准碰网页前端，写新插件也不许拿 timer 当范例（范例看 blackboard / spotlight）。
+
 源码跑起来就是：
 
 ```

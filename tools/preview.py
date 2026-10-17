@@ -1320,12 +1320,14 @@ def _run_plugin_seams() -> int:
       有实体可聚焦 —— 空组区块高度为零，取景矩形会塌掉）；
     * ``plugin_demo_window.png`` —— ``_demo`` 夹具窗口（组件直接建实例，
       ``onClosing`` 的动作链路不演示）；
-    * ``plugin_timer_window`` / ``plugin_blackboard_window`` /
+    * ``plugin_blackboard_window`` /
       ``plugin_spotlight_overlay`` / ``plugin_timer_settings`` /
-      ``plugin_spotlight_settings`` —— 三个正式插件的窗口与设置页
+      ``plugin_spotlight_settings`` —— 正式插件的窗口与设置页
       （2026-10-07 插件巡检补的覆盖：此前正式插件界面从没进过预览管线；
-      计时器灌一拍「剩 2:22」、黑板灌两笔一幕展示例，走的都是引擎 /
-      QML 的真实数据通道，不是截图改图）。
+      黑板灌两笔一幕展示例，走的是引擎 / QML 的真实数据通道，不是截图改图。
+      2026-10-17 计时器换成 HTML 版后，它的五个窗口场景随
+      ``ui/plugins/timer/TimerWindow.qml`` 一起撤出预览管线 —— WebView
+      窗口不走 QML 离屏渲染，设置页保留）。
 
     浅色主题（继承主进程的 ``LUMI_PREVIEW_THEME``）下文件名带 ``_light``
     后缀，不覆盖深色版。锁屏可跑（离屏渲染，窗口摆屏幕外）。
@@ -1502,8 +1504,9 @@ def _run_plugin_seams() -> int:
             demo_window.setPosition(OFFSCREEN_X - 2400, OFFSCREEN_Y - 1000)
             demo_window.show()
 
-    # ---- 三个正式插件的窗口（2026-10-07 插件巡检补的覆盖：此前正式插件
-    # 的窗口 / 设置页从没进过预览管线，版式坏了只能靠真机肉眼）----
+    # ---- 正式插件的窗口（2026-10-07 插件巡检补的覆盖：此前正式插件
+    # 的窗口 / 设置页从没进过预览管线，版式坏了只能靠真机肉眼。
+    # 计时器 2026-10-17 起是 HTML 版，WebView 窗口不进本管线）----
     plugin_windows = []
 
     def _make_plugin_window(file_name, initial=None, setup=None):
@@ -1526,12 +1529,6 @@ def _run_plugin_seams() -> int:
         if setup is not None:
             setup(window)
         return window
-
-    def _seed_timer(window):
-        # 引擎没在跑（stub 句柄 .window 恒 None），手动灌一拍「剩 2:22」的
-        # 状态 —— 走的正是 Python 引擎 setProperty 的同一条显示通道
-        window.setProperty("cdTotal", 300000)
-        window.setProperty("cdRemaining", 142000)
 
     def _seed_blackboard(window):
         # 2026-10-08 小黑板搬到 InkLayer（照搬叠加层自建批注）：strokes 属性
@@ -1563,10 +1560,6 @@ def _run_plugin_seams() -> int:
 
         QTimer.singleShot(600, _lay_strokes)
 
-    plugin_windows.append(_make_plugin_window(
-        Path("timer") / "TimerWindow.qml",
-        {"visible": True}, _seed_timer,
-    ))
     plugin_windows.append(_make_plugin_window(
         Path("blackboard") / "BlackboardWindow.qml",
         {"visible": True}, _seed_blackboard,
@@ -1656,7 +1649,6 @@ def _run_plugin_seams() -> int:
         if settings_win is not None:
             targets.append((f"settings_nav_plugin_sep{suffix}.png", settings_win))
         names = [
-            f"plugin_timer_window{suffix}.png",
             f"plugin_blackboard_window{suffix}.png",
             f"plugin_spotlight_overlay{suffix}.png",
         ]

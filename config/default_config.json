@@ -3,7 +3,7 @@
     "name": "Luminalium 2",
     "theme": "dark",
     "language": "zh_CN",
-    "//language": "UI 语言：zh_CN（源语言）/ en_US（English，translations/luminalium_en_US.qm）/ ja_JP（日本語，translations/luminalium_ja_JP.qm）。切换后重启生效；ja_JP 还会把 UI 字体切成 Yu Gothic UI（RinUI 补丁，见 app/rinui_patch.py）",
+    "//language": "UI 语言。取值即 translations/luminalium_<值>.qm 的文件名：zh_CN（源语言，不装翻译器）/ en_US（English）/ ja_JP（日本語）/ zh_TW（繁體中文）/ ko_KR（한국어）/ yue_HK（粵語）。切换后重启生效。ja_JP / ko_KR / zh_TW / yue_HK 还会各自换一套 UI 字体，对照表在 app/i18n.py::UI_FONTS（RinUI 补丁见 app/rinui_patch.py）。候选名单在 ui/settings/General/Index.qml 的 languages。",
     "log_level": "INFO",
     "accent": "#4CC2FF",
     "//backdrop": "窗口背景材质。auto（默认）= 按平台自动，与 RinUI 自带策略一致：Win11 → Mica / Win10 → Acrylic / 其余 → none。也可显式指定 none / mica / acrylic / tabbed。none = 实色主题背景（窗口不透明）；其余会让窗口透明、全靠 DWM 合成。⚠️ 以前这里默认 none，等于把 RinUI 自己的平台判断无条件覆盖掉，Win11 上永远铺实色底 —— 看起来就像 RinUI 的 Mica 没生效。",
@@ -16,6 +16,11 @@
     "dev_watermark": true,
     "//autostart": "开机自启（设置页「通用 → 启动 → 开机自启」）。⚠️ 这个键**只是影子**：真正的开关是 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run 里的 Luminalium2 值（见 app/autostart.py）。界面每次打开都回读注册表，所以手改这里不会改变实际行为 —— 它只用于日志与排查。",
     "autostart": false
+  },
+  "narration": {
+    "//": "旁白 / 配音语言（设置页「通用 → 语言 → 旁白与配音语言」，2026-10-17 用户指令）。这是**对外暴露的全局配音语种**：主程序任何要出声的旁白模块、以及日后插件里的旁白 / 配音场景，都从这里取，不要各读一份。唯一读取入口是 app/narration.py::language()（插件经 PluginContext.narration_language()，QML 经 Backend.narrationLanguage）。",
+    "//language": "取值只有三档：zh_CN（中配）/ en_US（英配）/ ja_JP（日配），默认 zh_CN。⚠️ 与 app.language（界面语言）是两个独立维度，界面切英文而旁白用中文是合法组合，别合并。读不到 / 读到脏值时 app/narration.py 一律回退 zh_CN。试听素材映射在 app/narration.py::SAMPLES（resources/narration_testaudio_<bcp47>.mp3）。",
+    "language": "zh_CN"
   },
   "update": {
     "//": "检查更新（设置页「更新」，界面一比一复刻 ClassIsland 的 UpdateSettingsPage）。检查源 = GitHub Releases（app/update_checker.py）。⚠️ 2026-10-05 用户指令「目前先不要实现更新部署」：下载 / 安装 / 部署环节尚未实现，mode 2 / 3 与 mode 1 等效（只检查并通知）",
@@ -76,8 +81,8 @@
   "presentation": {
     "//enabled": "原「放映时显示控制条」总开关已于 2026-10-01 按用户指令删除：探测到放映就出控制条，不再有开关（windows.py::show_docks 也不再读它）",
     "poll_interval_ms": 400,
-    "//page_turn_rate_limit": "1 秒窗口内最多接受的翻页次数，超出的直接丢弃（不发出去）。参考 Luminalium 1 的 PPT.PageTurnRateLimit 默认 2：放映中连点会不断推 PowerPoint 的 COM / 消息泵，它会开始拒绝调用（RPC_E_CALL_REJECTED）或把输入排队，用户看到的就是「点了没反应、然后突然跳好几页」",
-    "page_turn_rate_limit": 2,
+    "//page_turn_rate_limit": "1 秒窗口内最多接受的翻页次数，超出的直接丢弃（不发出去）。闸门本身要留着：放映中连点会不断推演示软件的 COM / 消息泵，它会开始拒绝调用（RPC_E_CALL_REJECTED）或把输入排队，用户看到的就是「点了没反应、然后突然跳好几页」。默认值 2026-10-17 由 2 提到 4：L2 的 COM 在自己的线程里、已不在主线程排队，而 1 秒窗口只放 2 次意味着连点三下就被吞一次 —— 那一下要等到窗口滑过去，实测观感就是「卡一秒」",
+    "page_turn_rate_limit": 4,
     "//window_classes": "放映窗口类名白名单（不区分大小写，另含 slideshow 子串的通配）。screenClass=PowerPoint；WPS 演示是 wppSlideShowWindowClass 等，只填 screenClass 会把 WPS 整个漏掉",
     "window_classes": ["screenClass", "wppSlideShowWindowClass", "WPP SlideShow Window", "WPP SlideShow Window 8.0", "SDL_app"],
     "//process_names": "类名不认识时的兜底：进程映像名命中 +（标题像放映 或 铺满整屏且不是编辑器主窗口）即判为放映。类名随版本变，进程名不会",

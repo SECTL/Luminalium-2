@@ -42,7 +42,13 @@ VENV_SCRIPTS = ROOT / ".venv" / "Scripts"
 TRANSLATIONS = ROOT / "translations"
 
 #: 已有翻译的语言（源语言 zh_CN 不需要 ts）。
-LANGUAGES = ("en_US", "ja_JP")
+#: 新增一门语言的步骤：① 往这里加一行 → ② 跑本脚本生成 ts 骨架 →
+#: ③ 翻译（QML 侧 ``luminalium_<lang>.ts`` + Python 侧
+#: ``luminalium_py_<lang>.ts``，后者照 ``luminalium_py_en_US.ts`` 手抄结构）
+#: → ④ 往 ``ui/settings/General/Index.qml`` 的 ``languages`` 名单里加一项
+#: （name 用母语名）→ ⑤ 若该语言需要专属 UI 字体，改 ``app/i18n.py::
+#: apply_ui_font`` 与 ``app/rinui_patch.py``。
+LANGUAGES = ("en_US", "ja_JP", "zh_TW", "ko_KR", "yue_HK")
 
 #: lupdate 的扫描根：ui/ 整树递归，天然覆盖 ui/plugins/<id>/。
 QML_SOURCES = [ROOT / "ui"]

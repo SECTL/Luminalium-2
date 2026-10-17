@@ -45,6 +45,7 @@ META = {
     "name": "聚光灯",
     "version": "1.0.0",
     "category": "utility",
+    "icon": "ic_fluent_flashlight_20_regular",
 }
 
 #: ``plugins.spotlight.*`` 默认值：遮罩浓度（alpha %）与光斑半径（占光标屏
@@ -211,7 +212,7 @@ def register(ctx) -> None:
     def tr(source: str) -> str:
         return i18n.tr("spotlight", source)
 
-    # ⚠️ META["name"] 在这里才翻译（时序理由见 timer/plugin.py 同日注释）：
+    # ⚠️ META["name"] 在这里才翻译（时序理由见 timer_l1/plugin.py 同日注释）：
     # 模块 import 跑在翻译器安装之前，import 期的 i18n.tr 只能回中文原文。
     META["name"] = tr("聚光灯")
 

@@ -132,6 +132,14 @@ class SlideThumbCache(QObject):
         self._requested: set[int] = set()
         self._attempts: dict[int, int] = {}
         self._pending: deque[int] = deque()
+        #: 已经投出去、还没等到 ``thumbnailReady`` 的那一张（同一时刻最多一张）。
+        #:
+        #: 2026-10-17 修「一页里塞满媒体时翻页卡顿」：原先只按 500ms 节拍盲投，
+        #: 导出慢于节拍时（媒体多的页要几百毫秒到几秒）队列会**越积越长**，
+        #: 而翻页命令和导出命令共用 COM 线程那条队列 —— 用户按翻页键得先等
+        #: 前面十几张图导完。记一个在路上的标志把积压压到最多一张：导出快
+        #: （几十毫秒）时节拍不变、观感不变；导出慢时它自己退化成「一张接一张」。
+        self._inflight = False
         # ⚠️ 走 ``paths.slide_thumb_dir()``（每次构造时解析）而不是模块级常量：
         # 它要跟随 ``LUMINALIUM_DATA_DIR`` 的覆盖 —— 这个类是应用里唯一会**主动
         # 整目录删文件**的地方，自检 / 探针跑起来绝不能去动用户真实数据目录。
@@ -171,6 +179,9 @@ class SlideThumbCache(QObject):
             self._pending.clear()
             self._requested.clear()
             self._attempts.clear()
+            # 在路上的那一张已经作废（代次号会把它丢掉），标志必须放掉，
+            # 否则下一场一开始就卡在「有一张在路上」
+            self._inflight = False
             if self._urls:
                 self._urls = []
                 self.urlsChanged.emit()
@@ -184,6 +195,7 @@ class SlideThumbCache(QObject):
             self._requested.clear()
             self._attempts.clear()
             self._pending.clear()
+            self._inflight = False
             self._urls = [""] * total
             self.urlsChanged.emit()
             log.debug("缩略图缓存：新一场放映（%d 页，代次 %d）", total, self._generation)
@@ -198,12 +210,31 @@ class SlideThumbCache(QObject):
                 del self._urls[total:]
             self.urlsChanged.emit()
 
+    def pause(self) -> None:
+        """页码快速跳转面板收起 → 停掉后台补图（2026-10-17）。
+
+        缩略图只在那个面板里看得见。面板一收起，剩下几十张还按 500ms 一拍往
+        COM 线程里投，而导出与翻页共用 PowerPoint 的 UI 线程 —— 用户关掉面板
+        接着翻页，就被这些「没人在看」的导出拖住（一页媒体多时要几百毫秒到
+        几秒，正是「翻一页卡一下」里我们这半边的来源）。
+
+        只停**派发**：``_urls``（已加载的结果）、磁盘缓存、``_attempts`` 一律
+        不动，再打开面板时缺哪张补哪张（``request()`` 的判据就是 ``_urls``）。
+        队列里还没投出去的那几页要把「已请求」记号撤掉 —— 不撤的话它们会被
+        记成「已经要过了」，面板重开时没人去补，症状是固定空着几格。
+        """
+        self._stop()
+        for page in self._pending:
+            self._requested.discard(page)
+        self._pending.clear()
+
     def clear(self) -> None:
         """删掉缓存目录并复位（退出 / 诊断用）。"""
         self._stop()
         self._pending.clear()
         self._requested.clear()
         self._attempts.clear()
+        self._inflight = False
         self._live = False
         self._purge()
         if self._urls:
@@ -256,6 +287,10 @@ class SlideThumbCache(QObject):
             self._stop()
 
     def _dispatch(self) -> bool:
+        # 上一张还在路上就什么都不投：队列只涨不消的时候（导出慢于节拍）
+        # 积压会把 COM 线程长期占住，翻页就得排队（见 ``_inflight`` 的注释）。
+        if self._inflight:
+            return False
         while self._pending:
             page = self._pending.popleft()
             if page < 1 or page > len(self._urls) or self._urls[page - 1]:
@@ -269,6 +304,7 @@ class SlideThumbCache(QObject):
             if self._controller.export_slide_thumbnail(
                 page, str(raw), EXPORT_WIDTH, EXPORT_HEIGHT
             ):
+                self._inflight = True
                 return True
             # 投都投不出去（控制器没接上 / 已停）：把它放开 —— 不然这一页会被
             # 永远记成「已经要过了」，再也没人去补
@@ -283,9 +319,16 @@ class SlideThumbCache(QObject):
         「已经要过了」，那一张就再也没人去补了（症状是面板上固定空着一格）。
         重试上限 ``MAX_ATTEMPTS`` —— 真导不出来（比如 WPS 不支持
         ``Slides(i).Export``）时不该每滚一下就重投一轮。
+
+        无论成功失败都要在开头把 ``_inflight`` 放掉、把节拍器叫起来：等这张的
+        那段时间里 ``_pump`` 会因为「有一张在路上」把自己停掉，而下面几条
+        早退分支（失败 / 越界 / 上一场迟到）恰恰是最需要继续补图的。
         """
         index = int(index)
         raw = Path(path) if path else None
+        self._inflight = False
+        if self._live and self._pending and not self._timer.isActive():
+            self._timer.start()
         if not self._live or index < 1 or index > len(self._urls):
             if raw is not None:
                 self._unlink(raw)

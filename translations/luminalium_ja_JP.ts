@@ -392,27 +392,26 @@
 <context>
     <name>Home</name>
     <message>
-        <location filename="../ui/settings/Home.qml" line="115"/>
         <source>主页</source>
-        <translation>ホーム</translation>
+        <translation type="vanished">ホーム</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="129"/>
+        <location filename="../ui/settings/Home.qml" line="141"/>
         <source>警告</source>
         <translation>警告</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="130"/>
+        <location filename="../ui/settings/Home.qml" line="142"/>
         <source>当前版本仍在测试中，可能包含错误或未完成的功能。欢迎到 &lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; 上提交 Issue。</source>
         <translation>現在のバージョンはまだテスト中のため、不具合や未実装の機能が含まれる可能性があります。&lt;a href=&quot;%1&quot;&gt;GitHub&lt;/a&gt; への Issue 報告を歓迎します。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="148"/>
+        <location filename="../ui/settings/Home.qml" line="160"/>
         <source>GitHub</source>
         <translation>GitHub</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Home.qml" line="153"/>
+        <location filename="../ui/settings/Home.qml" line="165"/>
         <source>反馈问题或功能建议</source>
         <translation>問題の報告・機能の提案</translation>
     </message>
@@ -894,153 +893,158 @@
 <context>
     <name>Plugins</name>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="79"/>
-        <location filename="../ui/settings/Plugins.qml" line="287"/>
+        <location filename="../ui/settings/Plugins.qml" line="96"/>
+        <location filename="../ui/settings/Plugins.qml" line="391"/>
         <source>插件</source>
         <translation>プラグイン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="97"/>
+        <location filename="../ui/settings/Plugins.qml" line="141"/>
         <source>全部</source>
         <translation>すべて</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="98"/>
+        <location filename="../ui/settings/Plugins.qml" line="115"/>
         <source>实用工具</source>
         <translation>実用ツール</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="99"/>
+        <location filename="../ui/settings/Plugins.qml" line="116"/>
         <source>学科工具</source>
         <translation>科目ツール</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="100"/>
+        <location filename="../ui/settings/Plugins.qml" line="117"/>
         <source>办公工具</source>
         <translation>オフィスツール</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="101"/>
+        <location filename="../ui/settings/Plugins.qml" line="118"/>
         <source>娱乐工具</source>
         <translation>エンターテインメント</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="102"/>
+        <location filename="../ui/settings/Plugins.qml" line="119"/>
         <source>改进</source>
         <translation>改善</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="103"/>
+        <location filename="../ui/settings/Plugins.qml" line="120"/>
         <source>优化</source>
         <translation>最適化</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="104"/>
+        <location filename="../ui/settings/Plugins.qml" line="121"/>
         <source>注入式修改类</source>
         <translation>注入型の変更</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="105"/>
+        <location filename="../ui/settings/Plugins.qml" line="122"/>
         <source>联动类</source>
         <translation>連携</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <location filename="../ui/settings/Plugins.qml" line="123"/>
         <source>快捷方式类</source>
         <translation>ショートカット類</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="107"/>
+        <location filename="../ui/settings/Plugins.qml" line="124"/>
         <source>其他</source>
         <translation>その他</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="108"/>
+        <location filename="../ui/settings/Plugins.qml" line="125"/>
         <source>快捷工具</source>
         <translation>クイックツール</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="109"/>
+        <location filename="../ui/settings/Plugins.qml" line="142"/>
+        <source>已启用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="143"/>
         <source>内置</source>
         <translation>内蔵</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="110"/>
+        <location filename="../ui/settings/Plugins.qml" line="144"/>
         <source>非内置</source>
         <translation>非内蔵</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="168"/>
+        <location filename="../ui/settings/Plugins.qml" line="250"/>
         <source>调试插件</source>
         <translation>デバッグプラグイン</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="171"/>
+        <location filename="../ui/settings/Plugins.qml" line="253"/>
         <source>外部导入</source>
         <translation>外部取り込み</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="174"/>
+        <location filename="../ui/settings/Plugins.qml" line="256"/>
         <source>已加载</source>
         <translation>読み込み済み</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="176"/>
+        <location filename="../ui/settings/Plugins.qml" line="258"/>
         <source>未加载：%1</source>
         <translation>未読み込み：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="178"/>
+        <location filename="../ui/settings/Plugins.qml" line="260"/>
         <source>未加载</source>
         <translation>未読み込み</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="181"/>
+        <location filename="../ui/settings/Plugins.qml" line="269"/>
         <source>已禁用</source>
         <translation>無効</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="203"/>
+        <location filename="../ui/settings/Plugins.qml" line="296"/>
         <source>操作成功</source>
         <translation>成功しました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="203"/>
+        <location filename="../ui/settings/Plugins.qml" line="296"/>
         <source>操作失败</source>
         <translation>失敗しました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="216"/>
+        <location filename="../ui/settings/Plugins.qml" line="309"/>
         <source>更改将在重启应用后生效</source>
         <translation>変更はアプリの再起動後に有効になります</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="217"/>
+        <location filename="../ui/settings/Plugins.qml" line="310"/>
         <source>插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载</source>
         <translation>プラグインの有効状態と追加・削除は起動時にのみ読み込まれ、実行中に動的にロード・解除されることはありません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="225"/>
+        <location filename="../ui/settings/Plugins.qml" line="323"/>
         <source>导入</source>
         <translation>インポート</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="245"/>
+        <location filename="../ui/settings/Plugins.qml" line="345"/>
         <source>导入文件夹</source>
         <translation>フォルダーをインポート</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="247"/>
+        <location filename="../ui/settings/Plugins.qml" line="347"/>
         <source>选择包含 plugin.py 的插件文件夹；导入即拷贝安装</source>
         <translation>plugin.py を含むプラグインフォルダーを選択します。インポート時にコピーしてインストールします</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="266"/>
+        <location filename="../ui/settings/Plugins.qml" line="367"/>
         <source>导入压缩包（.zip）</source>
         <translation>アーカイブをインポート（.zip）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="268"/>
+        <location filename="../ui/settings/Plugins.qml" line="369"/>
         <source>选择 .zip 插件包；导入即拷贝安装</source>
         <translation>.zip 形式のプラグインパッケージを選択します。インポート時にコピーしてインストールします</translation>
     </message>
@@ -1049,27 +1053,24 @@
         <translation type="vanished">プラグインはこのマシン上で実行されます。信頼できる提供元のみをインポートしてください。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="314"/>
         <source>已安装的全部</source>
-        <translation>インストール済みのすべて</translation>
+        <translation type="vanished">インストール済みのすべて</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="320"/>
         <source>已安装且已启用</source>
-        <translation>インストール済みかつ有効</translation>
+        <translation type="vanished">インストール済みかつ有効</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="337"/>
         <source>筛选</source>
-        <translation>フィルター</translation>
+        <translation type="vanished">フィルター</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="421"/>
+        <location filename="../ui/settings/Plugins.qml" line="480"/>
         <source>没有符合当前筛选条件的插件</source>
         <translation>現在のフィルター条件に一致するプラグインはありません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="495"/>
+        <location filename="../ui/settings/Plugins.qml" line="581"/>
         <source>启用</source>
         <translation>有効にする</translation>
     </message>
@@ -1098,12 +1099,12 @@
         <translation type="vanished">フォルダーを選択</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="467"/>
+        <location filename="../ui/settings/Plugins.qml" line="552"/>
         <source>确认删除</source>
         <translation>削除を確認</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="467"/>
+        <location filename="../ui/settings/Plugins.qml" line="552"/>
         <source>删除</source>
         <translation>削除</translation>
     </message>
@@ -1112,7 +1113,7 @@
         <translation type="vanished">プラグインの有効状態は起動時にのみ読み込まれ、実行中に動的な読み込み・解除は行われません</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="420"/>
+        <location filename="../ui/settings/Plugins.qml" line="479"/>
         <source>没有已安装的插件</source>
         <translation>インストール済みのプラグインはありません</translation>
     </message>
@@ -1408,134 +1409,295 @@
 <context>
     <name>TimerSettings</name>
     <message>
-        <location filename="../ui/plugins/timer/TimerSettings.qml" line="21"/>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="33"/>
         <source>计时器</source>
         <translation>タイマー</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerSettings.qml" line="28"/>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="122"/>
+        <source>计时器音效</source>
+        <translation>タイマーの効果音</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="123"/>
+        <source>控制计时结束和重置时是否播放提示音</source>
+        <translation>タイマーの終了時とリセット時に通知音を鳴らすかどうか</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="144"/>
+        <source>计时器全屏行为</source>
+        <translation>タイマーの全画面動作</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="145"/>
+        <source>选择计时器进入全屏时是真正全屏，还是仅最大化窗口</source>
+        <translation>全画面にするか、ウィンドウを最大化するだけかを選択します</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="153"/>
+        <source>全屏切换</source>
+        <translation>全画面</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="165"/>
+        <source>最大化</source>
+        <translation>最大化</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="183"/>
+        <source>快捷加时</source>
+        <translation>クイック加算</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="184"/>
+        <source>编辑计时器里的快捷加时按钮，最多四个，可选秒或分</source>
+        <translation>タイマーのクイック加算ボタンを編集します（最大 4 個、秒または分）</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="216"/>
+        <source>秒</source>
+        <translation>秒</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="216"/>
+        <source>分</source>
+        <translation>分</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="222"/>
+        <source>移除</source>
+        <translation>削除</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="236"/>
+        <source>最多四个按钮</source>
+        <translation>最大 4 個まで</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="245"/>
+        <source>添加快捷加时</source>
+        <translation>クイック加算を追加</translation>
+    </message>
+    <message>
         <source>提示音</source>
-        <translation>サウンド</translation>
+        <translation type="vanished">サウンド</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerSettings.qml" line="29"/>
         <source>倒计时结束响起铃声并循环，最多 3 分钟；最后 3 秒逐秒提示</source>
-        <translation>カウントダウン終了時にアラームが最大3分まで鳴り続けます。最後の3秒は毎秒通知音が鳴ります</translation>
+        <translation type="vanished">カウントダウン終了時にアラームが最大3分まで鳴り続けます。最後の3秒は毎秒通知音が鳴ります</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerSettings.qml" line="48"/>
         <source>试听铃声</source>
-        <translation>アラームを試聴</translation>
+        <translation type="vanished">アラームを試聴</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerSettings.qml" line="49"/>
         <source>播放一遍结束铃声（不循环）</source>
-        <translation>終了アラームを一度だけ再生します（ループなし）</translation>
+        <translation type="vanished">終了アラームを一度だけ再生します（ループなし）</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerSettings.qml" line="53"/>
         <source>播放</source>
-        <translation>再生</translation>
+        <translation type="vanished">再生</translation>
     </message>
 </context>
 <context>
     <name>TimerWindow</name>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="36"/>
         <source>计时器</source>
-        <translation>タイマー</translation>
+        <translation type="vanished">タイマー</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="131"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="469"/>
         <source>倒计时</source>
         <translation>カウントダウン</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="132"/>
         <source>正计时</source>
-        <translation>ストップウォッチ</translation>
+        <translation type="vanished">ストップウォッチ</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="133"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="126"/>
         <source>时钟</source>
         <translation>時計</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="197"/>
+        <source>全屏</source>
+        <translation type="vanished">全画面</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="876"/>
         <source>时间到</source>
         <translation>時間です</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="206"/>
         <source>已暂停</source>
-        <translation>一時停止中</translation>
+        <translation type="vanished">一時停止中</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="233"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="68"/>
+        <source>计时器（Luminalium 1）</source>
+        <translation>タイマー（Luminalium 1）</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="197"/>
+        <source>小时</source>
+        <translation>時間</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="125"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="208"/>
+        <source>秒表</source>
+        <translation>ストップウォッチ</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="123"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="205"/>
+        <source>计时</source>
+        <translation>タイマー</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="207"/>
+        <source>当前时间</source>
+        <translation>現在時刻</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="470"/>
+        <source>到点</source>
+        <translation>指定時刻</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="550"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="702"/>
         <source>时</source>
         <translation>時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="248"/>
+        <source>重新计时</source>
+        <translation type="vanished">もう一度</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="623"/>
+        <source>常用时间</source>
+        <translation>よく使う時間</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
+        <source>周日</source>
+        <translation>日曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
+        <source>周一</source>
+        <translation>月曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
+        <source>周二</source>
+        <translation>火曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
+        <source>周三</source>
+        <translation>水曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="903"/>
+        <source>周四</source>
+        <translation>木曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="903"/>
+        <source>周五</source>
+        <translation>金曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="903"/>
+        <source>周六</source>
+        <translation>土曜日</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1250"/>
+        <source>总计 %1 分钟</source>
+        <translation>合計 %1 分</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1391"/>
+        <source>退出全屏</source>
+        <translation>全画面を終了</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="197"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="198"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="565"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="717"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="842"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1285"/>
         <source>分</source>
         <translation>分</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="262"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="197"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="198"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="199"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="580"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="842"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1285"/>
         <source>秒</source>
         <translation>秒</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="279"/>
         <source> 分</source>
-        <translation> 分</translation>
+        <translation type="vanished"> 分</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="294"/>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="382"/>
         <source>开始</source>
-        <translation>開始</translation>
+        <translation type="vanished">開始</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="320"/>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="382"/>
         <source>暂停</source>
-        <translation>一時停止</translation>
+        <translation type="vanished">一時停止</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="320"/>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="754"/>
+        <source>目标时间已过，将设为明天</source>
+        <translation>過ぎた時刻は明日に設定されます</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="755"/>
+        <source>将在 %1 后响铃</source>
+        <translation>%1 後に通知します</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="810"/>
+        <source>共 %1 秒</source>
+        <translation>合計 %1 秒</translation>
+    </message>
+    <message>
         <source>继续</source>
-        <translation>再開</translation>
+        <translation type="vanished">再開</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="329"/>
         <source>+1 分钟</source>
-        <translation>+1 分</translation>
+        <translation type="vanished">+1 分</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="335"/>
         <source>知道了</source>
-        <translation>閉じる</translation>
+        <translation type="vanished">閉じる</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="335"/>
         <source>停止</source>
-        <translation>停止</translation>
+        <translation type="vanished">停止</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="368"/>
         <source>计时中</source>
-        <translation>計測中</translation>
+        <translation type="vanished">計測中</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="368"/>
         <source>已停止</source>
-        <translation>停止中</translation>
+        <translation type="vanished">停止中</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer/TimerWindow.qml" line="392"/>
         <source>重置</source>
-        <translation>リセット</translation>
+        <translation type="vanished">リセット</translation>
     </message>
 </context>
 <context>
@@ -1572,29 +1734,29 @@
 <context>
     <name>Update</name>
     <message>
-        <location filename="../ui/settings/Update.qml" line="79"/>
-        <location filename="../ui/settings/Update.qml" line="280"/>
-        <location filename="../ui/settings/Update.qml" line="302"/>
+        <location filename="../ui/settings/Update.qml" line="80"/>
+        <location filename="../ui/settings/Update.qml" line="281"/>
+        <location filename="../ui/settings/Update.qml" line="303"/>
         <source>检查更新</source>
         <translation>更新プログラムの確認</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="104"/>
+        <location filename="../ui/settings/Update.qml" line="105"/>
         <source>检测到更新。</source>
         <translation>更新があります。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="105"/>
+        <location filename="../ui/settings/Update.qml" line="106"/>
         <source>您已更新到最新版本。</source>
         <translation>最新バージョンです。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="106"/>
+        <location filename="../ui/settings/Update.qml" line="107"/>
         <source>检查更新失败。</source>
         <translation>更新の確認に失敗しました。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="107"/>
+        <location filename="../ui/settings/Update.qml" line="108"/>
         <source>尚未检查更新。</source>
         <translation>まだ更新を確認していません。</translation>
     </message>
@@ -1615,47 +1777,47 @@
         <translation type="vanished">最新の機能と修正を含みますが、不安定な場合があります。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="164"/>
+        <location filename="../ui/settings/Update.qml" line="165"/>
         <source>关闭</source>
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="251"/>
+        <location filename="../ui/settings/Update.qml" line="252"/>
         <source>发现新版本：%1</source>
         <translation>新しいバージョン：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="252"/>
+        <location filename="../ui/settings/Update.qml" line="253"/>
         <source>上次检查更新时间：%1</source>
         <translation>前回の更新確認：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="254"/>
+        <location filename="../ui/settings/Update.qml" line="255"/>
         <source>从未</source>
         <translation>なし</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="331"/>
+        <location filename="../ui/settings/Update.qml" line="332"/>
         <source>更新部署尚未实现</source>
         <translation>更新の適用は未実装です</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="332"/>
+        <location filename="../ui/settings/Update.qml" line="333"/>
         <source>下载与安装更新的环节还没有接入，目前只能检查更新。可以前往 &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; 手动下载新版本。</source>
         <translation>更新のダウンロードとインストールはまだ実装されていないため、現在は更新の確認のみ可能です。新しいバージョンは &lt;a href=&quot;%1&quot;&gt;GitHub Releases&lt;/a&gt; から手動でダウンロードできます。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="356"/>
+        <location filename="../ui/settings/Update.qml" line="357"/>
         <source>正在检查更新…</source>
         <translation>更新を確認しています…</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="390"/>
+        <location filename="../ui/settings/Update.qml" line="391"/>
         <source>更新日志</source>
         <translation>更新履歴</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="391"/>
+        <location filename="../ui/settings/Update.qml" line="392"/>
         <source>更新设置</source>
         <translation>更新設定</translation>
     </message>
@@ -1704,32 +1866,32 @@
         <translation type="vanished">現在のバージョンより古い場合でも、現在のチャネルの最新バージョンへ強制的に更新します。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="320"/>
+        <location filename="../ui/settings/Update.qml" line="321"/>
         <source>出错了</source>
         <translation>エラーが発生しました</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="321"/>
+        <location filename="../ui/settings/Update.qml" line="322"/>
         <source>更新时发生网络错误，请检查您的网络连接。</source>
         <translation>更新中にネットワークエラーが発生しました。ネットワーク接続を確認してください。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="295"/>
+        <location filename="../ui/settings/Update.qml" line="296"/>
         <source>下载更新</source>
         <translation>更新をダウンロード</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="496"/>
+        <location filename="../ui/settings/Update.qml" line="503"/>
         <source>已经是最新版啦，真棒，夸夸你哦♪</source>
         <translation>すでに最新バージョンです。すごい！</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="495"/>
+        <location filename="../ui/settings/Update.qml" line="502"/>
         <source>还没有检查过更新。</source>
         <translation>まだ更新を確認していません。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Update.qml" line="493"/>
+        <location filename="../ui/settings/Update.qml" line="500"/>
         <source>检查没能完成，请检查网络后重试。</source>
         <translation>確認を完了できませんでした。ネットワークを確認して、もう一度お試しください。</translation>
     </message>

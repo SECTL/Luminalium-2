@@ -1633,7 +1633,15 @@ class WindowManager(QObject):
         # 哪家软件 / 哪个窗口」那几张卡片准备的，卡片已随用户指令删除。
         self._backend.apply_state(state)
         if state.active:
-            self.show_docks()
+            # ⚠️ 这个槽**每翻一页**都会被调（页码变化也算状态变化）。放映中遮罩
+            # 早已露着，再跑一遍 show_docks 是把定屏、dock 摆位、扩展样式、
+            # 置顶重申（SetWindowPos）、区域塑形、单次定时器（reposition /
+            # _watch_overlay / 500ms 自检）整套重来 —— 每一页都刷一次窗口，
+            # 叠在播放器自己渲染那一页的时间里就是「翻页卡一下」。
+            # 只有当遮罩还藏着、或它是托盘菜单手动叫出来的（_manual_shown，
+            # 那条路没有放映窗口可依，进来后要重走一次完整定屏）才重跑。
+            if self._manual_shown or self.overlay is None or not self.overlay.isVisible():
+                self.show_docks()
         else:
             self.hide_docks()
         # 按页墨迹（计划 self-ink 第 7 项）要放在 show/hide_docks **之后**：

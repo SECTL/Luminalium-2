@@ -26,6 +26,8 @@ META = {
     "name": "小黑板",
     "version": "1.0.0",
     "category": "subject",
+    "icon": "./icon.png",
+    "author": "Saskia",
 }
 
 #: 无设置项（板色 / 笔色是黑板的本体属性，不给配 —— 给了就是一块不是
@@ -41,7 +43,7 @@ def _on_action(action: str) -> None:
     ⚠️ 只判 ``_window_handle is None``，**不判** ``.window``：窗口懒创建，
     首次 ``show()`` 前 ``.window`` 是 None，多查那一步会把唯一能触发创建
     的调用拦死（2026-10-07 计时器 / 小黑板「点了没反应」的根因，见
-    ``timer/plugin.py`` 同款注释）。
+    ``timer_l1/plugin.py`` 同款注释）。
     """
     if _window_handle is None:
         return
@@ -61,7 +63,7 @@ def register(ctx) -> None:
     def tr(source: str) -> str:
         return i18n.tr("blackboard", source)
 
-    # ⚠️ META["name"] 在这里才翻译（时序理由见 timer/plugin.py 同日注释）：
+    # ⚠️ META["name"] 在这里才翻译（时序理由见 timer_l1/plugin.py 同日注释）：
     # 模块 import 跑在翻译器安装之前，import 期的 i18n.tr 只能回中文原文。
     META["name"] = tr("小黑板")
 

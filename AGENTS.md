@@ -70,6 +70,7 @@ Luminalium 2，纯粹的演示注释工具：托盘 + 快捷面板，检测到 P
 | 改窗口创建 / 摆放 / 穿透 | `app/windows.py`（`WindowManager`，所有窗口的创建中枢） |
 | 改启动流程 / 信号接线 | `app/application.py`（装配 + `_wire` + 动作分发） |
 | 改颜色 / 间距 / 尺寸 | `ui/Luminalium/Lumi.qml`（设计令牌单例） |
+| 取旁白 / 配音语种（含插件） | `app/narration.py`（`language(config)`；插件用 `ctx.narration_language()`），配置键 `narration.language` |
 | 改版本号 | `app/__init__.py` 的 `__version__`（唯一一处） |
 | 改崩溃 / 错误报告 | `app/error_handler.py` + `ui/ErrorReport/` |
 | 改翻译 | `translations/`（QML 侧 lupdate 生成；Python 侧 ts 手工维护，别用 lupdate 碰） |

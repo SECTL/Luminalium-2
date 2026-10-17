@@ -330,6 +330,23 @@ class PluginContext:
         """
         return self._windows.register_overlay(name, qml_path, label=label)
 
+    # ---------------------------------------------------------- 全局配置
+
+    def narration_language(self) -> str:
+        """全局旁白 / 配音语言：``zh_CN``（中配）/ ``en_US``（英配）/ ``ja_JP``（日配）。
+
+        2026-10-17 用户指令：配音语种是**对外暴露的全局配置**，插件里的旁白 /
+        配音场景一律读这里，不要自己往配置里塞一份语种项。返回值**保证**
+        落在三档之内（用户没配过 / 配置被改坏都回退 ``zh_CN``，见
+        ``app/narration.py::language``），调用方不需要再判空或兜底。
+
+        这是本上下文唯一的「读宿主机配置」入口 —— 仍然是**类型化包装**，
+        不是把 Backend 交出去（铁律不变：插件不直接碰 bridge / config）。
+        需要「改了就跟着变」的插件把自己的状态缓存起来、在需要时重读即可：
+        配音通常在触发那一刻才用得上，现读成本可忽略。
+        """
+        return self._backend.narration_language()
+
     # ---------------------------------------------------------- 通信总线
 
     def publish(self, topic: str, payload: Any = None) -> None:

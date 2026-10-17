@@ -41,6 +41,10 @@
 
 环境变量：
 
+- ``LUMI_PREVIEW_LANG=<lang>`` —— 装 ``translations/luminalium_<lang>.qm``
+  再渲染（核验译文版式用）。配 ``LUMI_PREVIEW_PAGE_ONLY=1`` 最快：只出设置页，
+  且文件名带 ``_<lang>`` 后缀，不会覆盖中文那套基准图。不设就是中文原文
+  （源语言）。
 - ``LUMI_PREVIEW_THEME=light`` —— 换成浅色主题，且**只**输出启动画面。
 - ``LUMI_PREVIEW_ONLY=splash`` —— 保留当前主题但同样只输出启动画面。
 - ``LUMI_PREVIEW_PAGE_ONLY=1`` —— 只输出设置页（``page_*.png``），且文件名带
@@ -108,6 +112,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import time
 import sys
 from pathlib import Path
 
@@ -193,6 +198,14 @@ PAGE_HEIGHT = int(os.environ.get("LUMI_PREVIEW_PAGE_HEIGHT", "940") or 940)
 PAGE_WIDTH = int(os.environ.get("LUMI_PREVIEW_PAGE_WIDTH", "961") or 961)
 #: 控制条「显示按钮文本」的预览开关。**只在内存里改配置**（``persist=False``），
 #: 抓完图还原 —— 预览工具不该动用户的 ``config/config.json``。
+#: UI 语言档（``zh_TW`` / ``ko_KR`` / ``yue_HK`` / ``ja_JP`` / ``en_US``）：
+#: 装对应 .qm 再渲染，用来核验译文版式（长译文会不会把卡片撑破）。
+#: ⚠️ 翻译器必须在加载任何 QML **之前**装好，所以它在 ``main()`` 里紧跟
+#: ``QApplication`` 创建之后执行，不在 ``capture()`` 里。
+#: ⚠️ 带语言跑时 ``page_*.png`` 一律加 ``_<lang>`` 后缀 —— 中文（源语言）那
+#: 一套是视觉回归的对比基准，不能被别的语言覆盖掉。
+PREVIEW_LANG = os.environ.get("LUMI_PREVIEW_LANG", "").strip()
+LANG_SUFFIX = f"_{PREVIEW_LANG}" if PREVIEW_LANG else ""
 PREVIEW_LABELS = os.environ.get("LUMI_PREVIEW_LABELS", "") not in ("", "0")
 #: 「翻页组件位置」的预览档（side = 竖版两侧中间 / bottom = 横版两侧下部）。
 #: 与 ``PREVIEW_LABELS`` 一样只改内存、抓完图还原。见模块 docstring。
@@ -441,7 +454,7 @@ def _run_page_only(rinui, qt_app, config, backend, previous_theme: str,
     def shoot() -> None:
         for name, window in hosts:
             extra = suffix if id(window) in touched else ""
-            _grab_pair(window, name.replace(".png", f"{extra}_{THEME_TAG}.png"))
+            _grab_pair(window, name.replace(".png", f"{LANG_SUFFIX}{extra}_{THEME_TAG}.png"))
         qt_app.quit()
 
     # 页面都是静态版式，没有级联动画，给 0.6s 让 Loader 把页面铺完即可
@@ -480,6 +493,16 @@ def main() -> int:
     # 自建墨迹类型（Luminalium.Ink 1.0）必须在加载任何 QML 之前登记（与 application.py 同一时序）
     from app.ink import register_qml_types
     register_qml_types()
+    # UI 语言（``LUMI_PREVIEW_LANG``）：与真应用同一时序 —— 先设默认 QLocale
+    # （RinUI 字体补丁靠它挑字体），再装翻译器，然后才允许加载任何 QML。
+    # 只改内存里的 ``app.language``（横幅 / 语言下拉读它），不落盘用户配置。
+    if PREVIEW_LANG:
+        from app import i18n
+        i18n.apply_locale(PREVIEW_LANG)
+        i18n.install_translators(qt_app, PREVIEW_LANG)
+        i18n.apply_ui_font(qt_app, PREVIEW_LANG)
+        config.set("app.language", PREVIEW_LANG, persist=False)
+        print(f"[LANG] 预览语言 {PREVIEW_LANG}（输出带 {LANG_SUFFIX} 后缀）")
 
     backend = Backend(config, qt_app)
     # 编辑器分组注册表登记（2026-10-05 插件系统 Wave 2 任务 9）：编辑器的
@@ -890,7 +913,7 @@ def main() -> int:
         elif PAGE_ONLY:
             # 只出设置页（用来核验浅色主题下的页面版式），同样加主题后缀
             targets = [
-                (name.replace(".png", f"_{THEME_TAG}.png"), window)
+                (name.replace(".png", f"{LANG_SUFFIX}_{THEME_TAG}.png"), window)
                 for name, window in page_hosts
             ]
         elif EDITOR_LIGHT:
@@ -1320,9 +1343,10 @@ def _run_plugin_seams() -> int:
       有实体可聚焦 —— 空组区块高度为零，取景矩形会塌掉）；
     * ``plugin_demo_window.png`` —— ``_demo`` 夹具窗口（组件直接建实例，
       ``onClosing`` 的动作链路不演示）；
-    * ``plugin_timer_window`` / ``plugin_blackboard_window`` /
+    * ``plugin_timer_window(_picker)`` / ``plugin_blackboard_window`` /
       ``plugin_spotlight_overlay`` / ``plugin_timer_settings`` /
       ``plugin_spotlight_settings`` —— 三个正式插件的窗口与设置页
+      （计时器出两张：``_picker`` 是起跑前的滚轮页，主图是跑动态）
       （2026-10-07 插件巡检补的覆盖：此前正式插件界面从没进过预览管线；
       计时器灌一拍「剩 2:22」、黑板灌两笔一幕展示例，走的都是引擎 /
       QML 的真实数据通道，不是截图改图）。
@@ -1414,14 +1438,14 @@ def _run_plugin_seams() -> int:
         return host
 
     page_host = _make_page_host(Path("plugins") / "_demo" / "DemoSettings.qml", 1800)
-    timer_host = _make_page_host(Path("plugins") / "timer" / "TimerSettings.qml", 4200)
+    timer_host = _make_page_host(Path("plugins") / "timer_l1" / "TimerSettings.qml", 4200)
     spotlight_host = _make_page_host(
         Path("plugins") / "spotlight" / "SpotlightSettings.qml", 5400
     )
     # 插件管理页：**列表填满**的那一版（空态那张由主进程出，名字不变）。
     # 顺手把计时器的启用开关拨到 off（只改内存）：好让「已禁用」这一档在图上
     # 有个实例 —— 行副文案与开关的关态都得看得见，不然两样都只能靠真机试。
-    config.set("plugins.timer.enabled", False, persist=False)
+    config.set("plugins.timer_l1.enabled", False, persist=False)
     backend.reload_from_config()
     plugins_page_host = _make_page_host(Path("settings") / "Plugins.qml", 6600)
 
@@ -1524,14 +1548,28 @@ def _run_plugin_seams() -> int:
             return None
         window._plugin_component = component  # 持有引用防引擎回收
         if setup is not None:
-            setup(window)
+            # ⚠️ 灌状态必须等 show() 之后（见下面 show 循环里的注释）：
+            # 窗口还没暴露时 Canvas 类（计时器圆环）不落笔，先灌再显示会抓到
+            # 一张「有布局没画面」的图（2026-10-17 计时器换 timer_l1 时实锤）。
+            window._pending_setup = setup
         return window
 
     def _seed_timer(window):
         # 引擎没在跑（stub 句柄 .window 恒 None），手动灌一拍「剩 2:22」的
-        # 状态 —— 走的正是 Python 引擎 setProperty 的同一条显示通道
-        window.setProperty("cdTotal", 300000)
-        window.setProperty("cdRemaining", 142000)
+        # 状态 —— 走的正是 Python 引擎 setProperty 的同一条显示通道。
+        # 2026-10-17 起计时器换成从 L1 移植的 ``timer_l1``，属性名跟着换
+        # （``page`` / ``tmState`` / ``tmTotal`` / ``tmRemaining``），并且要
+        # 显式给 ``page = timer`` + ``running`` 才会渲染跑动版式（默认页是
+        # 秒表，跟 L1 一致）。``quickAdds`` 同理由：引擎心跳没跑，快捷加时
+        # 按钮不会自己出现，灌两份默认值（1 分 / 15 秒）。
+        window.setProperty("page", "timer")
+        window.setProperty("tmState", "running")
+        window.setProperty("tmTotal", 300000)
+        window.setProperty("tmRemaining", 142000)
+        window.setProperty("quickAdds", [
+            {"value": 1, "unit": "minute", "seconds": 60},
+            {"value": 15, "unit": "second", "seconds": 15},
+        ])
 
     def _seed_blackboard(window):
         # 直接灌两笔已落定的笔画 + 一个单击点（点路径 2026-10-07 才有，
@@ -1550,7 +1588,7 @@ def _run_plugin_seams() -> int:
         window.setProperty("dirtyAll", True)
 
     plugin_windows.append(_make_plugin_window(
-        Path("timer") / "TimerWindow.qml",
+        Path("timer_l1") / "TimerWindow.qml",
         {"visible": True}, _seed_timer,
     ))
     plugin_windows.append(_make_plugin_window(
@@ -1565,6 +1603,9 @@ def _run_plugin_seams() -> int:
         if window is not None:
             window.setPosition(OFFSCREEN_X - 3000 - i * 1200, OFFSCREEN_Y - 1600)
             window.show()
+            pending = getattr(window, "_pending_setup", None)
+            if pending is not None:
+                pending(window)
 
     # ---- 放映顶层窗口 + 控制条（与主流程同款手法，紧凑 1100x640）：插件
     # 的 dock 动作（timer / blackboard / spotlight / _demo）全在 actions 区，
@@ -1634,7 +1675,8 @@ def _run_plugin_seams() -> int:
         if spotlight_host is not None:
             targets.append((f"plugin_spotlight_settings{suffix}.png", spotlight_host))
         if plugins_page_host is not None:
-            targets.append((f"page_Plugins_list{suffix}.png", plugins_page_host))
+            targets.append((f"page_Plugins_list{suffix}{LANG_SUFFIX}.png",
+                            plugins_page_host))
         if editor is not None:
             targets.append((f"plugin_editor_demo{suffix}.png", editor))
         if demo_window is not None:
@@ -1646,9 +1688,30 @@ def _run_plugin_seams() -> int:
             f"plugin_blackboard_window{suffix}.png",
             f"plugin_spotlight_overlay{suffix}.png",
         ]
+        # ⚠️ 侧边栏版的计时器把三页交给 NavigationView 按需加载（异步创建 +
+        # 入场动画），且外部 ``push`` 会排在自己的首推之后 —— 直接抓会拿到
+        # 「侧栏在、页面还是默认页」的中间态。抓它之前先转一会儿事件循环
+        # （2026-10-17 实测必需，约 800ms 才收敛）。
+        timer_window = plugin_windows[0] if plugin_windows else None
+        if timer_window is not None:
+            for _ in range(40):
+                qt_app.processEvents()
+                time.sleep(0.02)
+
         for name, window in zip(names, plugin_windows):
             if window is not None and not _grab(name, window):
                 failed = True
+        # 计时器「起跑前」那一版单独出一张（2026-10-17 按 L1 版式重做后补）：
+        # 滚轮 + 常用时间才是 L1 的主版式，只出跑动态那张等于这一页没进视觉回归。
+        if timer_window is not None:
+            timer_window.setProperty("tmState", "picker")
+            # 页内三层（起跑前 / 跑动 / 时间到）是 opacity 过渡，切完要等一拍
+            for _ in range(15):
+                qt_app.processEvents()
+                time.sleep(0.02)
+            if not _grab(f"plugin_timer_window_picker{suffix}.png", timer_window):
+                failed = True
+            timer_window.setProperty("tmState", "running")
         if plugin_top is not None and not _grab(
             f"plugin_top_window{suffix}.png", plugin_top
         ):

@@ -11,5 +11,5 @@
     app.application     应用装配入口
 """
 
-__version__ = "26.0.821.1"
+__version__ = "26.0.823.1"
 __all__ = ["__version__"]

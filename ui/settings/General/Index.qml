@@ -4,7 +4,7 @@ import RinUI as Rin
 import Luminalium
 
 /*!
-    通用：开机自启、快捷面板开关与界面语言。
+    通用：开机自启、快捷面板开关、界面语言与旁白语言。
 
     2026-09-25 导航重构后本页吸收了原「行为」子页的全部内容；
     2026-10-01 又吸收了原「外观」页的三张卡（应用主题 / 强调色 / 界面语言）——
@@ -29,6 +29,7 @@ import Luminalium
     先只留强调色」—— 「应用主题」（跟随系统 / 浅色 / 深色）从「个性化」搬回来，
     单独成一组「外观」排在「启动」之后；「强调色」留在「个性化」不动。
     于是本页 4 张卡：开机自启 + 应用主题 + 快捷方式锁定 + 界面语言。
+    （2026-10-17 起是 5 张：语言组末尾多了「旁白与配音语言」。）
 
     2026-10-04 用户指令：「通用设置新增开机自启开关」—— 顶部新增「启动」分组与
     「开机自启」卡（3 张卡）。**它和别的开关不是一回事**：本体是 Windows 注册表
@@ -160,14 +161,29 @@ Rin.FluentPage {
         description: qsTr("切换后需要重新加载应用")
         icon.name: "ic_fluent_local_language_20_regular"
 
-        /*! 语言名单：code 落 ``app.language`` 配置（zh_CN / en_US / ja_JP），
+        /*! 语言名单：code 落 ``app.language`` 配置，同时也是
+            ``translations/luminalium_<code>.qm`` 的文件名（zh_CN 是源语言、
+            不装翻译器，界面即 QML 里的中文原文）。
             name 用**各自语言的母语名**显示（「界面语言」这一项本身该让
             看不懂当前语言的人也认得，惯例同 Windows / VS Code）。
-            name 不参与存储与匹配，改显示名不用动配置。 */
+            name 不参与存储与匹配，改显示名不用动配置。
+
+            顺序：先源语言，再按字母排（en → ja → ko → yue → zh_TW）。
+            ⚠️ 粤语用 ``yue_HK``（ISO 639-3 + 地区码），不是 ``zh_HK`` ——
+            Qt 6 的 QLocale 认得这个代码（``QLocale("yue_HK").language()``
+            = ``Cantonese``，nativeLanguageName = 粵語），写成 zh_HK 会被
+            当成繁体中文、拿不到粤语译文。
+
+            加一门语言的三处改动：这里 + ``tools/update_translations.py``
+            的 ``LANGUAGES`` + ``translations/`` 下的两个 ts。详见
+            update_translations.py 头注释。 */
         readonly property var languages: [
             { code: "zh_CN", name: "简体中文" },
             { code: "en_US", name: "English" },
-            { code: "ja_JP", name: "日本語" }
+            { code: "ja_JP", name: "日本語" },
+            { code: "ko_KR", name: "한국어" },
+            { code: "yue_HK", name: "粵語" },
+            { code: "zh_TW", name: "繁體中文" }
         ]
 
         Rin.ComboBox {
@@ -185,6 +201,131 @@ Rin.FluentPage {
                 return index
             }
             onActivated: Backend.setSetting("language", card.languages[currentIndex].code)
+        }
+    }
+
+    /*! 2026-10-17 用户指令：「常规设置 → 语言」新增「旁白与配音语言」。
+
+        这一项是**对外暴露的全局配音语种配置**：主程序里任何要出声的旁白
+        模块、以及日后插件里的旁白 / 配音场景，都读同一个值
+        （Python：``app/narration.py::language(config)``；插件：
+        ``ctx.narration_language()``；QML：``Backend.narrationLanguage``）。
+        **别**在别处再登记一份语种项 —— 那样界面语言和配音语言迟早会分裂。
+
+        与上面「界面语言」的关系：**两个独立维度**。上面那个换 UI 文案与字体
+        （``app.language``，要重启），这个只换旁白的声音（``narration.language``，
+        立即生效）。英文界面 + 中文旁白是合法组合，所以刻意不复用同一个键、
+        也不共用一个下拉。
+
+        版式：下拉（与「界面语言」同款同宽，保持语言类设置项的一致观感）+
+        紧邻的一颗试听按钮，即 Windows 11「辅助功能 → 语音」那套「下拉 + 预览」
+        的做法。为什么不做成「下拉里每一项右侧各挂一颗按钮」：RinUI 的
+        ``ComboBox`` 弹出层是它自己的 ``ContextMenu``（``model: delegateModel``），
+        没有 delegate 注入口，硬做就得改 site-packages —— 仓储铁律不允许。
+        当前选中项就是试听对象，切一档点一下就听到那一档，功能上等价。
+
+        语种表与素材映射**全部来自 Python**（``Backend.narrationLanguages``，
+        源头 ``app/narration.py::SAMPLES``）：QML 这边不写死文件名，也不判断
+        「有没有素材」——``sampleAvailable`` 由后端算好，素材缺失时按钮自己
+        变灰（``resources/narration_testaudio_*.mp3`` 三条就是全部素材，
+        加一档要连素材一起加）。
+
+        播放状态：后端发 ``narrationPreviewState(code, playing)``，按钮据此在
+        喇叭 / 停止之间换图标；正在放的时候再点一下是停止。没有这个回声，
+        点下去界面毫无动静（示例音频有半秒前奏），看着像没反应。 */
+    Rin.SettingCard {
+        id: narrationCard
+        objectName: "generalNarrationLanguage"
+
+        Layout.fillWidth: true
+        title: qsTr("旁白与配音语言")
+        description: qsTr("旁白与配音类语音统一使用的语种，可点右侧按钮试听")
+        icon.name: "ic_fluent_speaker_2_20_regular"
+
+        //: 候选表来自后端（每项 { code, name, sampleAvailable }）。
+        readonly property var languages: Backend.narrationLanguages
+        //: 正在试听的语种 code，空串 = 没在放。
+        property string previewingCode: ""
+
+        //: 当前选中项（按 ComboBox 的索引取，索引失配时退回第一项 ——
+        //: 配置被手改成脏值时后端已归一，理论上不会走到，兜底而已）。
+        function codeAt(index) {
+            if (!languages || languages.length === 0)
+                return ""
+            return (index >= 0 && index < languages.length)
+                    ? languages[index].code : languages[0].code
+        }
+
+        readonly property string selectedCode: codeAt(narrationCombo.currentIndex)
+        readonly property bool selectedSampleAvailable: {
+            if (!languages || languages.length === 0)
+                return false
+            var index = narrationCombo.currentIndex
+            var entry = (index >= 0 && index < languages.length) ? languages[index] : languages[0]
+            return entry.sampleAvailable === true
+        }
+
+        Connections {
+            target: Backend
+            function onNarrationPreviewState(code, playing) {
+                narrationCard.previewingCode = playing ? code : ""
+            }
+        }
+
+        Rin.ComboBox {
+            id: narrationCombo
+            Layout.preferredWidth: 150
+
+            model: narrationCard.languages
+            textRole: "name"
+            currentIndex: {
+                var index = 0
+                for (var i = 0; i < narrationCard.languages.length; ++i) {
+                    if (narrationCard.languages[i].code === Backend.narrationLanguage) {
+                        index = i
+                        break
+                    }
+                }
+                return index
+            }
+            // 换语种时先把还在放的那条停掉，否则会听到上一档的尾音。
+            onActivated: {
+                if (narrationCard.previewingCode !== "")
+                    Backend.stopNarrationSample()
+                Backend.setSetting("narration_language",
+                                   narrationCard.languages[currentIndex].code)
+            }
+        }
+
+        Rin.ToolButton {
+            id: previewButton
+            objectName: "narrationPreviewButton"
+
+            flat: true
+            width: 32
+            height: 32
+            enabled: narrationCard.selectedSampleAvailable
+            icon.name: (narrationCard.previewingCode !== ""
+                        && narrationCard.previewingCode === narrationCard.selectedCode)
+                       ? "ic_fluent_stop_20_regular"
+                       : "ic_fluent_speaker_2_20_regular"
+
+            onClicked: {
+                if (narrationCard.previewingCode === narrationCard.selectedCode)
+                    Backend.stopNarrationSample()
+                else
+                    Backend.playNarrationSample(narrationCard.selectedCode)
+            }
+
+            Rin.ToolTip {
+                // 素材缺失时把原因说清楚，别让用户看着一颗灰按钮猜。
+                text: !narrationCard.selectedSampleAvailable
+                      ? qsTr("该语种的示例音频缺失")
+                      : (narrationCard.previewingCode === narrationCard.selectedCode
+                         ? qsTr("停止试听")
+                         : qsTr("试听该语种的配音示例"))
+                visible: parent.hovered
+            }
         }
     }
 }

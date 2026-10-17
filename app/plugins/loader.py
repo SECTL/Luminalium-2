@@ -77,10 +77,11 @@ _report: List[Dict[str, Any]] = []
 def loaded_plugins() -> List[Dict[str, Any]]:
     """返回最近一次加载的结果清单。
 
-    每项 ``{id, meta, debug, external, enabled, loaded, reason}``：
+    每项 ``{id, meta, root, debug, external, enabled, loaded, reason}``：
     ``debug`` = ``_`` 前缀调试夹具；``external`` = 用户导入的外部插件
     （设置页据此显示「外部导入」标记与删除按钮）；``reason`` 是跳过原因
-    （未跳过为 None）。
+    （未跳过为 None）；``root`` 是插件目录（``META.icon`` 的相对图片路径
+    以它为基准解析，见 ``bridge._get_plugin_items``）。
     """
     return [dict(entry) for entry in _report]
 
@@ -344,9 +345,18 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
     unavailable: Dict[str, str] = {}
 
     for pid in formal_ids + debug_ids + external_ids:
+        # 插件根目录（``plugin.py`` 所在的那一层）。2026-10-17 起对外透出：
+        # 管理页要把 ``META.icon`` 里的**相对图片路径**解成能加载的绝对路径，
+        # 而除了 loader 没别人知道「这个 id 的目录在哪」（内建在包内、外部在
+        # 用户插件目录）。只读元信息，不参与加载决策。
+        plugin_root = (
+            external.user_plugins_dir() / pid if pid in external_ids
+            else Path(__file__).resolve().parent / pid
+        )
         entry: Dict[str, Any] = {
             "id": pid,
             "meta": None,
+            "root": str(plugin_root),
             "debug": pid in debug_ids,
             "external": pid in external_ids,
             "enabled": True,
@@ -403,7 +413,7 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
                 continue
             by_id[pid]["loaded"] = True
             # 重拍 meta 快照：插件按约定在 register() 里才把 META["name"]
-            # 换成已翻译文案（import 期翻译器未装，见 timer/plugin.py 的
+            # 换成已翻译文案（import 期翻译器未装，见 timer_l1/plugin.py 的
             # register 注释）—— 上面那份是 register 前的旧值，不重拍的话
             # 插件管理页永远显示中文原文。
             by_id[pid]["meta"] = dict(modules[pid].META)

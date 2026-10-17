@@ -209,6 +209,11 @@ Item {
             Qt.callLater(centerOnCurrent)
             // 展开的一瞬间就播下 ±5 的预取（L1 的 ``requestThumbnailsForRange``）
             prefetch(current - prefetchSpan, current + prefetchSpan)
+        } else {
+            // 收起 → 停掉后台补图（2026-10-17）：面板关着没人看图，而导出要与
+            // 翻页共用演示软件的 UI 线程，剩下的几十张会一直拖着翻页不跟手。
+            // 已加载的图和磁盘缓存都不动，重开面板缺哪张补哪张。
+            Backend.pauseThumbnails()
         }
     }
     Behavior on reveal {

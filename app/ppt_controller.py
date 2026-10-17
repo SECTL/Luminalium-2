@@ -1361,13 +1361,20 @@ class _ComBackend:
 
 # 单次进度超过这个时长就告警（只告一次，避免刷屏）
 SLOW_CYCLE_MS = 1500
+# 单条控制命令超过这个时长就记一条 debug（2026-10-17）：媒体重的页面上
+# ``Next()`` 本身就要几百毫秒，日志里能分出「卡的是演示软件还是我们」。
+SLOW_COMMAND_MS = 120
 # 看护定时器间隔 / 心跳静默多久算「卡住」/ 同一阶段最多多久报一次
 WATCHDOG_INTERVAL_MS = 1000
 WATCHDOG_STALE_S = 3.0
 WATCHDOG_REPEAT_S = 15.0
-# 翻页限流：1 秒窗口内最多放行 N 次（对齐 Luminalium 1 ``PPT.PageTurnRateLimit``）
+# 翻页限流：1 秒窗口内最多放行 N 次。
+# ⚠️ 2026-10-17 由 2 提到 4：L1 的 2 是在「COM 挤在主线程的定时器里」那个前提下的
+# 值；L2 的 COM 有自己的线程，而 1 秒滑动窗口只放 2 次意味着**连点第三下直接被吞**
+# —— 用户得等窗口滑过去再点，实测观感就是「卡一秒钟」（logs 里那条
+# 「翻页过快（上限 2 次/秒），本次丢弃」就是它）。闸门保留，只是别卡得比手快。
 PAGE_TURN_WINDOW_S = 1.0
-PAGE_TURN_LIMIT_DEFAULT = 2
+PAGE_TURN_LIMIT_DEFAULT = 4
 
 
 class _Heartbeat:
@@ -1595,6 +1602,9 @@ class _ComThread(QThread):
         # 进场那一刻的缩放值（「未放大」基准）—— 判据之二：用户在 PowerPoint
         # 里自己用 Ctrl+滚轮放大时，只有跟它比才看得出画面已经放大了。
         self._zoom_baseline: Optional[int] = None
+        #: 主循环拍了多少拍（只数轮询，不含命令后的即时刷新）—— 用于
+        #: 「每 5 拍补一次完整刷新」的节拍（见 ``run``）。
+        self._loop_ticks = 0
         self.heartbeat = _Heartbeat("COM 线程")
 
     # ---------------------------------------------------- 主线程侧（非阻塞）
@@ -1639,7 +1649,17 @@ class _ComThread(QThread):
                 try:
                     self._drain_commands()
                     self.heartbeat.enter("读放映快照")
-                    self._refresh_snapshot()
+                    # 每拍只读页码就够了（2026-10-17）。原先每拍都调
+                    # ``read_state``，为了总页数要摸 ``Presentation.Slides.Count``
+                    # （完整对象模型）—— 而总页数**在一场放映里是常量**。媒体重的
+                    # 页面上播放器正忙着渲染，这种纯重复的跨进程调用只会插队拖慢
+                    # 它（用户看到的是「翻页卡顿」，实际是我们在打断它）。
+                    # 每 5 拍补一次完整刷新：诊断字段（状态文本 / 墨迹色）的节拍
+                    # 与原来一致；退出放映那侧仍走完整路径，判定语义不变。
+                    snap = self._snapshot
+                    light = snap.presenting and snap.slide_total > 0
+                    self._loop_ticks += 1
+                    self._refresh_snapshot(light=light and self._loop_ticks % 5 != 0)
                 except Exception:  # COM 异常不能中断轮询
                     log.exception("放映状态 COM 探测失败")
                     self.heartbeat.finish(0.0, "上一轮出错")
@@ -1676,10 +1696,21 @@ class _ComThread(QThread):
                 slide_total = previous.slide_total
                 presenting = True
             else:
-                slide_index = previous.slide_index
-                slide_total = previous.slide_total
-                hwnd = previous.window_handle
-                presenting = False
+                # ⚠️ 放映中却读不到页码：**不能**据此判定「放映结束」（页码偶发
+                # 读空是常态，误判会让控制条整条消失）。退回全量判活那条路。
+                try:
+                    numbers = self._com.read_state()
+                except Exception:
+                    numbers = None
+                if numbers is not None:
+                    presenting = True
+                    slide_index, slide_total, hwnd = numbers
+                else:
+                    try:
+                        presenting = self._com.is_presenting()
+                    except Exception:
+                        presenting = False
+                    slide_index = slide_total = hwnd = 0
         else:
             try:
                 numbers = self._com.read_state()
@@ -1748,11 +1779,29 @@ class _ComThread(QThread):
         self.heartbeat.finish((time.perf_counter() - started) * 1000)
 
     def _drain_commands(self) -> None:
+        """把队列里的待办命令一次跑完：**翻页一类先走，缩略图导出垫底**。
+
+        2026-10-17 修「一页里塞满媒体时翻页卡顿」：队列只有一条，导出命令
+        按 500ms 一格往里投，而导出一页媒体多的幻灯片要几百毫秒到几秒 ——
+        用户按翻页键时 ``next`` 排在那些导出后面，整条路就成了「等图导完才翻」。
+        导出对时序**没有**要求（它就是后台补图，慢一拍没人看得出），翻页有。
+
+        所以只是**换执行顺序**，不丢命令、不改队列本身：非导出命令保持原有
+        先后，导出命令也保持它们之间的先后（页码顺序不变，补图结果一样）。
+        ⚠️ 正在执行的那一条没法抢 —— COM 单线程，这一行只能把「排队等待」压到
+        「最多等手上这一张」。
+        """
+        exports: List[Tuple[str, tuple]] = []
         while True:
             try:
                 name, args = self._commands.get_nowait()
             except queue.Empty:
-                return
+                break
+            if name == "export":
+                exports.append((name, args))
+                continue
+            self._dispatch(name, args)
+        for name, args in exports:
             self._dispatch(name, args)
 
     def _dispatch(self, name: str, args: tuple) -> None:
@@ -1761,23 +1810,22 @@ class _ComThread(QThread):
             log.warning("未知的控制命令: %s", name)
             return
         self.heartbeat.enter("执行命令「%s」" % name)
+        started = time.perf_counter()
         try:
             handler(*args)
         except Exception:
             log.exception("执行「%s」失败", name)
         finally:
-            # 命令执行完立刻刷一次，页码不必再等一个周期。
-            # 用轻量刷新：命令（尤其是翻页）后页码要马上跟上手势，但诊断字段
-            # 可以晚一拍 —— 两次跨进程诊断读会把「点击 → 页码更新」拉长成几百毫秒。
+            # 命令后**不**在这里刷快照（2026-10-17）。原先每条命令执行完都跟一次
+            # 跨进程页码读，可 ``_drain_commands`` 之后主循环**紧接着**就会刷一次
+            # ——那是同一次翻页里的两次重复跨进程调用，而播放器正好在渲染新的一页。
+            # 页码依然能第一时间跟上手势：拍就在命令后的微秒级。
             #
-            # ⚠️ ``export`` 例外：缩略图是一串后台任务（几十条连着投进来），
-            #    每条后面都跟一次跨进程页码读纯属浪费，还会让「补图」这段路
-            #    把 COM 线程占得更久。Luminalium 1 也是导出走独立队列、不碰页码。
-            if name != "export":
-                try:
-                    self._refresh_snapshot(light=True)
-                except Exception:  # pragma: no cover
-                    pass
+            # 只有慢命令值得留一条证据：媒体重的页面上 ``Next()`` 本身就要几百
+            # 毫秒，日志里能直接看出「卡的是演示软件还是我们」。
+            elapsed = (time.perf_counter() - started) * 1000
+            if elapsed > SLOW_COMMAND_MS:
+                log.debug("控制命令「%s」执行耗时 %.0fms", name, elapsed)
 
     # 命令实现（只在 COM 线程被调用）
 
@@ -2346,6 +2394,11 @@ class PptController(QObject):
         它忙不过来时要么拒绝调用（``RPC_E_CALL_REJECTED``）、要么把输入排队，
         用户看到的就是「点了没反应，然后突然连跳好几页」。Luminalium 1 同样有
         这道闸（``_consume_page_turn_token``，默认 2 次/秒）。
+
+        ⚠️ 但**丢弃**的代价是一秒：窗口是 1 秒滑动窗口，被吞的那一下得等窗口滑
+        过去才点得动。2026-10-17 就是靠日志里那条「翻页过快…本次丢弃」定位到
+        用户说的「翻页卡一秒」—— 所以上限改成了 4（见 ``PAGE_TURN_LIMIT_DEFAULT``
+        的注释）。闸门保留，只是别再卡得比手快。
         """
         now = time.monotonic()
         turns = self._page_turns

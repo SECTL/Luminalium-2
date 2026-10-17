@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 import RinUI as Rin
+import Luminalium
 import "components"
 
 /*!
@@ -16,9 +17,8 @@ import "components"
     * **横幅**：``contentHeader`` 里一张 ``Image``（``PreserveAspectCrop``），
       底部用 ``Qt5Compat`` 的 ``OpacityMask`` + 一条 0.7→1.0 的垂直渐变把横幅
       **溶进页面**（CW2 同一条渐变）；高度 ``max(window.height * 0.26, 200)``；
-      标题「主页」压在横幅左上（``leftMargin: 56 / topMargin: 38``，
-      ``Typography.Title``）—— 页面本体**不带** ``title``（CW2 也没有，头部
-      随之塌成 0，大标题就由横幅承担）；
+      CW2 还有一枚压在横幅左上的大标题（2026-10-17 已删，见下文）—— 页面
+      本体**不带** ``title``（CW2 也没有，头部随之塌成 0）；
     * **InfoBar**：``Severity.Warning`` 的常驻提示（CW2 那页同款，「仍在测试
       中，欢迎来 GitHub 提 Issue」），``objectName`` 沿用
       ``homeWarningBanner``（自检按名字找它）；
@@ -30,12 +30,24 @@ import "components"
     与 CW2 的**刻意差异**只有资源层（结构、尺寸、交互全部照抄）：
 
     * 横幅图：CW2 按 ``Theme.isDark()`` 在 ``banner/4-1_{dark,light}.png`` 里
-      二选一；本项目用通栏专用的 ``resources/banner-wide.png``（用户备好，
-      2026-10-05 替换原来的 banner.png；旧图仍在 resources/ 里备用）。将来补
-      浅色版时把 ``source`` 换成 ``Lumi.isDark ? … : …`` 即可（参照
-      ``MainInterface.qml`` 的推广卡）。
-    * 横幅大标题：CW2 用主题文本色（他们的图按主题配套）；本项目 banner 只有
-      深色一张，标题按用户指令写死**白色**。
+      二选一。本项目按**语言 × 颜色模式**在 ``resources/banner_wide_*.png``
+      里选（2026-10-17 用户指令「综合根据语言和颜色模式来进行显示」，命名
+      方案对齐 ``new_editor_maininterface_{dark,light}.png``）::
+
+          banner_wide_dark.png            中文（源语言）· 深色
+          banner_wide_light.png           中文（源语言）· 浅色
+          banner_wide_light_en_US.png     English · 浅色
+          banner_wide_light_ja_JP.png     日本語 · 浅色
+
+      语言后缀沿用 ``app.language`` 的取值（zh_CN / en_US / ja_JP / zh_TW /
+      ko_KR / yue_HK），源语言**不带后缀**（与翻译文件「zh_CN 无 .qm」同一条
+      约定）。深色目前只有中文一张 —— 非中文语言在深色下回落到它，浅色图也
+      一样：**没画横幅的语言（zh_TW / ko_KR / yue_HK）自然落到无后缀那张**，
+      加语言不必动这里。以后补了 ``banner_wide_<light|dark>_<lang>.png`` 再往
+      :meth:`bannerSource` 里加分支。
+    * 横幅大标题：2026-10-17 用户指令**删掉**（原先写死白色，是给唯一的
+      深色横幅配套的；横幅改按主题换图后白字压浅色图不成立，且页面头部的
+      「主页」二字没有信息量）—— 页面本体依旧不带 ``title``，头部塌成 0。
     * 两张卡的链接：CW2 是 GitHub / Discord；本项目对应 **GitHub 仓库** 与
       **GitHub Issues（反馈）**，URL 与「关于」页同一份口径。
 
@@ -55,6 +67,23 @@ Rin.FluentPage {
     readonly property string issuesUrl: repoUrl + "/issues/new/choose"
 
     // ================================================================ 横幅
+    /*! 横幅图按**语言 × 颜色模式**选源，见文件头注释的资源表。语言读
+        ``Backend.settings.language``，改语言要重启才生效，所以这里不用考虑
+        热切换；只有 en_US / ja_JP 画了浅色横幅，其余语言（含深色）都回落。 */
+    readonly property url bannerSource: {
+        const lang = String(Backend.settings.language || "zh_CN")
+        if (!Lumi.isDark) {
+            if (lang === "en_US") {
+                return Backend.resourceFile("banner_wide_light_en_US.png")
+            }
+            if (lang === "ja_JP") {
+                return Backend.resourceFile("banner_wide_light_ja_JP.png")
+            }
+            return Backend.resourceFile("banner_wide_light.png")
+        }
+        return Backend.resourceFile("banner_wide_dark.png")
+    }
+
     contentHeader: Item {
         id: homeBanner
 
@@ -73,7 +102,7 @@ Rin.FluentPage {
 
             objectName: "homeBannerImage"
             anchors.fill: parent
-            source: Backend.resourceFile("banner-wide.png")
+            source: page.bannerSource
             asynchronous: true
             fillMode: Image.PreserveAspectCrop
             mipmap: true
@@ -95,26 +124,9 @@ Rin.FluentPage {
             }
         }
 
-        /*! 大标题压在横幅左上（CW2：``leftMargin: 56 / topMargin: 38``）。
-            颜色写死**白色**（2026-10-05 用户指令「左上角的主页改成白色 因为
-            banner 是黑色底」）：banner.png 只有一张深色图，深浅主题都是黑底，
-            跟主题文本色走的话浅色主题下会变成黑字压黑底。 */
-        Column {
-            anchors {
-                top: parent.top
-                left: parent.left
-                leftMargin: 56
-                topMargin: 38
-            }
-            spacing: 8
-
-            Rin.Text {
-                objectName: "homeBannerTitle"
-                typography: Rin.Typography.Title
-                color: "#FFFFFF"
-                text: qsTr("主页")
-            }
-        }
+        /*! 大标题（CW2：``leftMargin: 56 / topMargin: 38`` 的「主页」）已于
+            2026-10-17 按用户指令删掉 —— 横幅改按主题换图后写死白色的标题
+            不再成立，见文件头注释。 */
     }
 
     // ================================================================ 信息条

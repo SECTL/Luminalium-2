@@ -347,6 +347,10 @@ class LuminaliumApplication:
         #   白白的跨线程往返（还会让 WPS 的快捷键回退通道多按一次 Ctrl+A）。
         self._current_tool = "arrow"
         self._ppt_pointer_is_arrow = False
+        #: 上一次收到的放映状态（``state.active``）。工具归位只在**翻转的边沿**
+        #: 做一次：``stateChanged`` 每次页码变化都会来一条，逐条归位会把用户
+        #: 刚选的笔当成残留清掉（见 ``_on_presentation_state``）。
+        self._presentation_active = False
 
         # ---- RinUI 引擎（共享一个 engine，所有窗口共用主题）----
         self.rinui = RinUIWindow()
@@ -452,6 +456,9 @@ class LuminaliumApplication:
         self.backend.quitRequested.connect(self.quit)
         self.backend.themeChangeRequested.connect(self._apply_theme)
         self.backend.accentChangeRequested.connect(self._apply_accent)
+        # 放映开始 / 结束的边沿 → 工具三态归位（2026-10-17，见 _reset_tool_state）。
+        # 接在这里而不是 QML：墨迹工具那一半只存在于 Python 侧，QML 看不见它。
+        self.ppt.stateChanged.connect(self._on_presentation_state)
 
         # 墨迹引擎：放映中切换即时改道（Config 只有一处来源，监听它而不是另存一份）。
         # self 模式下墨迹窗口的「意图」在启动时就登记好：WindowManager 只记意图，
@@ -667,6 +674,59 @@ class LuminaliumApplication:
         self.quit()
 
     # ============================================================ 放映控制
+
+    def _on_presentation_state(self, state) -> None:
+        """放映开始 / 结束的边沿 → 工具状态归位到「选择」（2026-10-17）。
+
+        病灶（用户报的「退出时的笔还亮在下一场」）：工具栏选中项
+        （``Backend._active_tool``）与墨迹工具都是**跨场保留**的，而 PowerPoint
+        结束放映时自己把指针收回 arrow。于是上一场用笔退出、下一场进来时，
+        控制条亮着「笔」、PPT 不在批注态、也不是「选择」—— 三处各说各话。
+
+        所以只在**翻转边沿**归位一次（页码变化也会发 stateChanged，逐条归位
+        会把用户刚选的笔清掉）。归位内容见 :meth:`_reset_tool_state`。
+
+        退出这一侧同时是「下一场从干净状态开始」的保证：退出时归位，下一场
+        进入时才有东西可同步；进入时也归位一次，是为了兜住「本进程启动前
+        演示软件里就留着笔态」这种历史状态。
+        """
+        active = bool(getattr(state, "active", False))
+        if active == self._presentation_active:
+            return
+        self._presentation_active = active
+        self._reset_tool_state()
+
+    def _reset_tool_state(self) -> None:
+        """把工具三态一起拨回 arrow（选择）。
+
+        三处**必须同时清**，只清一处就是换个地方不一致：
+
+        * ``Backend.activeTool`` —— 分段 ``currentIndex`` 的源，QML 那条
+          ``onActiveToolChanged`` 会连带把笔选单 / 放大镜收掉；
+        * ``_current_tool`` / ``_ppt_pointer_is_arrow`` —— 应用侧记忆；
+        * ``WindowManager._ink_tool`` —— 最容易漏的一处：它决定墨迹窗口是
+          「整窗吃输入」还是「整窗穿透」。残留的 pen 会让下一场的透明墨迹层
+          挡住放映窗口，用户点版面毫无反应。
+
+        ⚠️ **这里一次都不碰演示软件**，两个方向都不能碰：
+
+        * 退出时放映已结束，``ppt.set_tool`` 会退化成「往那个 hwnd 注入
+          Ctrl+A/P/E」（见 ``_cmd_tool``）；
+        * 进入时放映窗口的 ``View`` 还没进 ``SlideShowWindows`` 集合，
+          ``_cmd_tool`` 的重试阶梯会睡掉半秒再退回注入快捷键 —— 那正好卡在
+          控制条刚出现、页码最该跟上的那一拍。
+
+        指针本身不必我们管：每次新开放映，播放器都从 arrow 起（``PointerType``
+        跟着 ``SlideShowWindow`` 实例走）。
+        """
+        if self.backend.activeTool != "arrow":
+            log.info("放映状态翻转：工具归位到「选择」（原为 %s）", self.backend.activeTool)
+        self._current_tool = "arrow"
+        # 下一场第一次用工具时再确认一次箭头：别把上一场的记忆当成
+        # 「PPT 现在就是 arrow」
+        self._ppt_pointer_is_arrow = False
+        self.backend.resetTool()
+        self.windows.set_ink_tool("arrow")
 
     def _on_action(self, action: str) -> None:
         """控制条动作分发。

@@ -17,4 +17,6 @@
 """
 
 # 正式插件（2026-10-06 用户指令：计时器 / 小黑板 / 聚光灯首批落地）。
-PLUGINS: list[str] = ["timer", "blackboard", "spotlight"]
+# 2026-10-17 用户指令：原来的计时器换成从 Luminalium 1 移植的
+# ``timer_l1``（旧 ``timer`` 插件连同 ``ui/plugins/timer/`` 一起删除）。
+PLUGINS: list[str] = ["timer_l1", "blackboard", "spotlight"]

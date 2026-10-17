@@ -169,6 +169,7 @@ import app.config as app_config  # noqa: E402
 import app.paths as app_paths  # noqa: E402
 from app import ppt_controller  # noqa: E402
 from app import autostart  # noqa: E402
+from app import narration  # noqa: E402
 # 模块本身也要（遮罩「智能跟随」自检要临时替换模块里的 ``_foreground_window``）
 from app import windows as win_mod  # noqa: E402
 from app.application import LuminaliumApplication  # noqa: E402
@@ -4534,10 +4535,16 @@ def main() -> int:
             banner_ok = (
                 banner is not None
                 and banner.isVisible()
-                # 2026-10-05：首页横幅已切到通栏专用的 banner-wide.png
-                # （Home.qml 头注释），banner.png 旧图保留在 resources/ 里，
-                # 两个名字都认，语义不变（「横幅真的挂上并画出来了」）。
-                and banner_src.endswith(("banner.png", "banner-wide.png"))
+                # 2026-10-05：首页横幅切到通栏专用的 banner-wide.png；同日
+                # banner.png 旧图保留在 resources/ 里，两个名字都认。
+                # 2026-10-17：横幅改按「语言 × 颜色模式」选源并整体改名成
+                # banner_wide_{dark,light}[_<lang>].png（Home.qml 头注释），
+                # 这里认全部新名，语义不变（「横幅真的挂上并画出来了」）。
+                and banner_src.endswith((
+                    "banner.png", "banner-wide.png",
+                    "banner_wide_dark.png", "banner_wide_light.png",
+                    "banner_wide_light_en_US.png", "banner_wide_light_ja_JP.png",
+                ))
                 and painted_w > 100
                 # 「横幅在内容区顶部」——只拦「图没挂上」和「掉到卡片区去了」
                 # （卡片区在 y≈510+）。⚠️ 2026-10-05：bound 由 280 放宽到 500，
@@ -4558,19 +4565,15 @@ def main() -> int:
                 )) + ("" if banner_settled else "（沉淀等待超时，取最后一次值）"),
             )
 
-            # 大标题在横幅上（CW2：Typography.Title 的「Home」，leftMargin 56 /
-            # topMargin 38）；页面本体不带 title，头部塌成 0。
+            # 大标题：CW2 有一枚压在横幅左上的「主页」，2026-10-17 按用户指令
+            # 删掉（Home.qml 头注释）；页面本体依旧不带 title。这里反过来断言
+            # 「页面没标题、横幅上也找不到 homeBannerTitle」。
             page_root = _find_named(settings.contentItem(), "Home")
             page_title = page_root.property("title") if page_root is not None else None
             banner_title = _find_named(settings.contentItem(), "homeBannerTitle")
-            title_ok = (
-                page_title == ""
-                and banner_title is not None
-                and banner_title.isVisible()
-                and str(banner_title.property("text")) == "主页"
-            )
+            title_ok = page_title == "" and banner_title is None
             check(
-                "设置首页大标题压在横幅上（页面本体不带标题）",
+                "设置首页无大标题（页面本体不带标题、横幅上没有 homeBannerTitle）",
                 title_ok,
                 "" if title_ok else (
                     f"page title={page_title!r} "
@@ -6025,16 +6028,19 @@ def main() -> int:
                 )
                 # ---- 2026-10-06 用户指令：主题模式搬回「通用」----
                 # 「个性化」只剩强调色，本页因此变回 4 张卡。
+                # 2026-10-17 用户指令：语言组新增「旁白与配音语言」→ 5 张卡。
                 cards = _collect_type(general, "SettingCard")
                 keep = [
                     title for title in (
                         "开机自启", "应用主题", "快捷方式锁定", "界面语言",
+                        "旁白与配音语言",
                     )
                     if _find_text(general, title) is not None
                 ]
                 check(
-                    "通用页 4 张卡（开机自启 + 应用主题 + 快捷方式锁定 + 界面语言）",
-                    len(cards) == 4 and len(keep) == 4,
+                    "通用页 5 张卡（开机自启 + 应用主题 + 快捷方式锁定 + 界面语言"
+                    " + 旁白与配音语言）",
+                    len(cards) == 5 and len(keep) == 5,
                     f"卡数={len(cards)} 找到={keep}",
                 )
                 check(
@@ -6174,6 +6180,60 @@ def main() -> int:
                         _run_value() == prev_entry,
                         f"{_run_value()!r} 期望 {prev_entry!r}",
                     )
+
+                # ---- 旁白与配音语言（2026-10-17 用户指令）----
+                # ⚠️ 这一段**只做读侧断言**：冒烟脚本跑的是开发机的真实配置，
+                # 这里 setSetting 一嗓子就会把用户的配音语言改掉并落盘（不像
+                # 开机自启那样有 finally 还原的必要对象）。写路径由单元级的
+                # 验证覆盖：``app/narration.py`` 的归一 / 回退 + ``setSetting``。
+                narration_card = _find_named(general, "generalNarrationLanguage")
+                narration_combo = (
+                    None if narration_card is None
+                    else (_collect_type(narration_card, "ComboBox") or [None])[0]
+                )
+                check(
+                    "通用页有「旁白与配音语言」卡与下拉",
+                    narration_card is not None and narration_combo is not None,
+                    f"card={narration_card is not None} "
+                    f"combo={narration_combo is not None}",
+                )
+                codes = ("zh_CN", "en_US", "ja_JP")
+                check(
+                    "配音语言三档齐全（中配 / 英配 / 日配）",
+                    narration_combo is not None
+                    and int(narration_combo.property("count")) == len(codes),
+                    "count="
+                    f"{None if narration_combo is None else narration_combo.property('count')}",
+                )
+                expected_index = codes.index(narration.language(app.config))
+                actual_index = (
+                    None if narration_combo is None
+                    else int(narration_combo.property("currentIndex"))
+                )
+                check(
+                    "配音语言下拉回显配置值（默认 zh_CN）",
+                    actual_index == expected_index,
+                    f"currentIndex={actual_index} 期望 {expected_index}"
+                    f"（config={app.config.get('narration.language')!r}）",
+                )
+                preview_button = _find_named(general, "narrationPreviewButton")
+                check(
+                    "每档配音都有试听入口（示例音频齐全时按钮可用）",
+                    preview_button is not None
+                    and bool(preview_button.property("enabled"))
+                    == narration.sample_available(narration.language(app.config)),
+                    f"button={preview_button is not None} "
+                    f"enabled={None if preview_button is None else preview_button.property('enabled')}",
+                )
+                check(
+                    "SETTING_PATHS 里登记了 narration_language（否则 QML 写入会被丢弃）",
+                    "narration_language" in SETTING_PATHS,
+                )
+                check(
+                    "resources/ 下三条示例音频都在（缺一条对应按钮就是灰的）",
+                    all(narration.sample_available(code) for code in codes),
+                    f"{[(code, narration.sample_available(code)) for code in codes]}",
+                )
 
             # ---- 个性化页：只剩「强调色」（2026-10-06 主题模式搬回「通用」）----
             app.windows.show_settings("settings/Personalization.qml")

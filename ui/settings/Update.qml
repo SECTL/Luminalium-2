@@ -46,7 +46,8 @@ import Luminalium
         ``updateChangelogView`` 那段注释：Markdown 渲不了「限宽的图片」，
         大图会撑破页面）；其余档 → 居中的
         81×81 贴图 + 「已经是最新版啦，真棒，夸夸你哦♪」（对应 ClassIsland 那张
-        HoYo 贴图；本项目用 ``resources/up_to_date.png``，同尺寸 81）。
+        HoYo 贴图；本项目用 ``resources/up_to_date.png``，同尺寸 81；检查失败
+        那档换 ``resources/failed.png``，2026-10-17 用户指令）。
         ⚠️ 原版这块
         **没有**「查看更新日志」按钮（它看的是当前版本的日志，与本页「新版
         日志」方向相反），所以这里也不加。⚠️ ClassIsland 的日志在 Tab 内**自成
@@ -442,7 +443,9 @@ Rin.FluentPage {
 
         /*! 已是最新：居中的空状态（对应 ClassIsland 那张 81×81 的 HoYo 贴图 +
             一句夸）。贴图用 ``resources/up_to_date.png``（2026-10-05 用户备好，
-            162×162、带 alpha，显示尺寸 81 —— 与原版同规格）。
+            162×162、带 alpha，显示尺寸 81 —— 与原版同规格）；检查失败档
+            （``error``）换成 ``resources/failed.png``，同规格（2026-10-17
+            用户指令），别让失败档顶着「夸夸你」的图。
             ⚠️ 文案照抄原版的「已经是最新版啦，真棒，夸夸你哦♪」。原版这块
             **没有**「查看更新日志」按钮（它看的是当前版本的日志，与本页
             「有新版的日志」是相反方向），所以这里也不加。
@@ -467,7 +470,11 @@ Rin.FluentPage {
             Image {
                 objectName: "updateUpToDateImage"
                 Layout.alignment: Qt.AlignHCenter
-                source: Backend.resourceFile("up_to_date.png")
+                // 2026-10-17 用户指令：检查失败用 ``resources/failed.png``
+                // （同 162×162 的 HoYo 贴图），别再拿「夸夸你」那张装没事。
+                source: page.status === "error"
+                        ? Backend.resourceFile("failed.png")
+                        : Backend.resourceFile("up_to_date.png")
                 /*! ⚠️ 尺寸要用 ``Layout.preferredWidth/Height``，**不能写 ``width``**：
                 在 Layout 里项宽由布局按「隐式尺寸」决定，``width`` 会被直接覆盖
                 （``Image`` 的隐式尺寸 = 原图 162）→ 贴图会按 162 画。实测把

@@ -41,8 +41,8 @@ PresentationDock 的 Repeater 本就遍历这两个数组，插件贡献自动�
 
 2026-10-05（插件系统 Wave 3 任务 17）：设置窗口新增内建「插件」管理页 ——
 ``pluginItems`` 属性把 ``app.plugins.loader.loaded_plugins()`` 的加载清单
-合成成 QML 可消费的列表（id / 标题 / 版本 / 启用态 / 调试标记 / 加载结果 /
-跳过原因），``setPluginEnabled`` 槽写 ``plugins.<id>.enabled`` 配置（与
+合成成 QML 可消费的列表（id / 标题 / 版本 / 作者 / 图标 / 启用态 / 调试标记 /
+加载结果 / 跳过原因），``setPluginEnabled`` 槽写 ``plugins.<id>.enabled`` 配置（与
 ``setSetting`` 同一条「改内存 + 防抖落盘」路径）。**只改配置、不做任何
 动态增删**：启用 / 禁用重启后生效是唯一语义 —— 注册表在加载期末冻结
 （``registry.freeze()`` 后任何 ``add_*`` 抛 RuntimeError），窗口又全是
@@ -64,8 +64,10 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 import threading
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
@@ -76,6 +78,7 @@ from . import autostart
 from . import i18n
 from . import markdown_html
 from . import monitors
+from . import narration
 from . import update_checker
 from .config import Config
 from .paths import RESOURCES_DIR, UI_DIR
@@ -91,6 +94,11 @@ SETTING_PATHS: Dict[str, str] = {
     "theme": "app.theme",
     "accent": "app.accent",
     "language": "app.language",
+    # 旁白 / 配音语言（设置 → 通用 → 语言 →「旁白与配音语言」，2026-10-17 用户指令）。
+    # ⚠️ 与 ``app.language`` **不是一回事**：那个换 UI 文案与字体，这个换旁白的声音，
+    #    两者可以自由组合（英文界面 + 中文旁白合法）。读写的归一与回退全在
+    #    ``app/narration.py``；这里只登记扁平键，让 QML 能 ``Backend.settings`` 读写。
+    "narration_language": "narration.language",
     "log_level": "app.log_level",
     # ⚠️ ``autostart`` 是**特例**：它的本体是 Windows 注册表（见 ``app/autostart.py``），
     #    配置里的 ``app.autostart`` 只是给日志 / 排查看的一份影子。读写两边都走
@@ -212,8 +220,9 @@ _KeyEffect = Dict[str, Any]
 #: ② 清单由 Python 侧集中维护（就是下面这个 frozenset），而不是散在各页面里。
 #:
 #: **入选理由（``language``）**：翻译（``app/i18n.py::install_translators`` 装载
-#: ``luminalium_*.qm``）与 UI 字体（``apply_ui_font``，``ja_JP`` 切 Yu Gothic UI）
-#: 都在 ``application.py`` 里装配**一次**，之后没有任何重新装配的路径。
+#: ``luminalium_*.qm``）与 UI 字体（``apply_ui_font``，按
+#: ``app/i18n.py::UI_FONTS`` 换字体）都在 ``application.py`` 里装配**一次**，
+#: 之后没有任何重新装配的路径。
 #:
 #: ⚠️ **刻意没收 ``dev_watermark``**：它经 ``Backend.devWatermark``（``constant=True``）
 #: 出给 QML，窗口构造时求值一次 → 改完确实是「老窗口不变、新窗口跟着变」的半吊子
@@ -289,6 +298,57 @@ _BUILTIN_SETTINGS_NAV: Tuple[Tuple[str, str, str, Optional[int]], ...] = (
 )
 
 
+#: ``META.icon`` 里「是字形名而不是图片」的判据。Fluent 字形名全形如
+#: ``ic_fluent_puzzle_piece_20_regular``，与文件名不会撞。
+_GLYPH_ICON_PREFIX = "ic_fluent_"
+
+#: 带 scheme 的图片地址（``file:`` / ``qrc:`` / ``data:`` / ``http:``）—— 原样透传。
+_ICON_URL_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
+
+
+def _plugin_icon(raw: Any, root: Any) -> Tuple[str, str]:
+    """把插件 ``META.icon`` 归一成 ``(字形名, 图片 URL)``，两者最多一个非空。
+
+    2026-10-17 用户指令「给插件的信息增加图标……的接口」：插件写的那一个字段
+    有两种合法形态，这里替 QML 分流（QML 侧只认 ``Rin.Icon`` 的 ``name`` /
+    ``source`` 两个出口，让它自己判断「这是路径还是图标名」既啰嗦又容易看漏）：
+
+    * ``ic_fluent_*`` → 字形名，QML 走 ``Icon.name``，跟随主题色；
+    * 带 scheme 的 URL（``file:`` / ``qrc:`` / ``data:``）→ 原样给 ``Icon.source``；
+    * 其余按**相对插件目录的图片路径**（``"icon.png"`` / ``"assets/icon.svg"``）
+      解析成绝对 ``file:`` URL —— 相对路径必须以插件自己的 ``plugin.py`` 所在
+      目录为基准，插件作者不该知道「装到用户目录还是打包进 exe」这件事。
+
+    解析不出来（文件不存在、路径越出插件目录、类型不是字符串）一律返回空，
+    QML 回落到插件类型自带的字形 —— **图标是装饰，不能因为它让整页报错或露空**。
+    越出目录的路径直接拒绝：``META.icon`` 是插件单方面写的字符串，没理由让它
+    触及插件目录之外的文件。
+    """
+    if not isinstance(raw, str):
+        return "", ""
+    text = raw.strip()
+    if not text:
+        return "", ""
+    if text.startswith(_GLYPH_ICON_PREFIX):
+        return text, ""
+    if _ICON_URL_RE.match(text):
+        return "", text
+    if not root:
+        return "", ""
+    try:
+        base = Path(str(root)).resolve()
+        candidate = (base / text).resolve()
+    except OSError:  # 非法路径 / 盘符不存在之类，按「没图标」处理
+        return "", ""
+    if not candidate.is_relative_to(base) or not candidate.is_file():
+        # ``debug`` 而不是 ``warning``：``pluginItems`` 是个属性，QML 每读一次
+        # （绑定求值、每次重建代理）都会重跑这里，写成 warning 的话一条坏路径
+        # 能把日志刷几十行。
+        log.debug("插件图标不可用（越界或不存在）: %s", text)
+        return "", ""
+    return "", QUrl.fromLocalFile(str(candidate)).toString()
+
+
 class Backend(QObject):
     """面向 QML 的应用后端。"""
 
@@ -324,6 +384,10 @@ class Backend(QObject):
     monitorListChanged = Signal()
     quickPanelConfigChanged = Signal()
     settingsChanged = Signal()
+    #: 配音试听的播放状态（``code, playing``）。设置页那颗试听按钮靠它把图标
+    #: 在「喇叭 / 停止」之间切换 —— 没有这个回声，点下去界面毫无反应，用户
+    #: 会以为没播（示例音频有半秒左右的前奏，静音环境下更是完全无感）。
+    narrationPreviewState = Signal(str, bool)
     #: 设置窗口导航清单变了（插件设置页注册进 ``registry.settings_pages()``）。
     #: 注册时机固定在加载期（冻结前），早于任何 QML 窗口创建，属性现算现读即可；
     #: 若将来出现运行期注册，由注册方负责发这个信号。
@@ -932,6 +996,18 @@ class Backend(QObject):
             return
         cache.request(int(start), int(end))
 
+    @Slot()
+    def pauseThumbnails(self) -> None:
+        """页码快速跳转面板收起 → 停掉后台补图（2026-10-17）。
+
+        面板关着的时候那几十张图没人看得见，而每张导出都要占住 PowerPoint 的
+        UI 线程 —— 与翻页抢的就是这一条。停掉只是「不再派发」，已加载的结果与
+        磁盘缓存不动，重开面板缺哪张补哪张（见 ``slide_thumbs.pause``）。
+        """
+        cache = self._slide_thumbs
+        if cache is not None:
+            cache.pause()
+
     def _get_active_tool(self) -> str:
         return self._active_tool
 
@@ -1308,6 +1384,50 @@ class Backend(QObject):
         "QVariantMap", _get_settings_config, notify=settingsChanged
     )
 
+    # ================================================================ 旁白语言
+    # 2026-10-17 用户指令：「通用 → 语言」新增「旁白与配音语言」，作为对外暴露
+    # 的全局配音语种配置，供主程序各模块与日后插件的旁白 / 配音场景统一读取。
+    # 语种表、素材映射、归一与回退都在 ``app/narration.py``，这里只是三面镜子：
+    # 给 QML 的只读列表（生成下拉 + 判断试听按钮是否可用）、给 QML / Python 的
+    # 归一值、以及试听播放的两个槽。**不要**在别处再写一份语种表。
+
+    @Property("QVariantList", constant=True)
+    def narrationLanguages(self) -> List[Dict[str, Any]]:
+        """配音语言候选：``[{code, name, sampleAvailable}, ...]``（顺序即界面顺序）。"""
+        return narration.preview_languages()
+
+    def narration_language(self) -> str:
+        """全局旁白 / 配音语言（保证落在 ``zh_CN`` / ``en_US`` / ``ja_JP`` 之一）。
+
+        这是**主程序模块与插件的统一读法**：插件经
+        ``ctx.narration_language()`` 转手到这里（插件拿不到 config，也不该拿）。
+        每次都现读配置 —— 配音往往在很久之后才被用到（放映到某页、点某个
+        动作），读缓存反而要多维护一份失效通知。
+        """
+        return narration.language(self._config)
+
+    @Property(str, notify=settingsChanged)
+    def narrationLanguage(self) -> str:
+        """QML 侧的同一个值（``settingsChanged`` 时重读，改完立即回显）。"""
+        return self.narration_language()
+
+    @Slot(str, result=bool)
+    def playNarrationSample(self, code: str) -> bool:
+        """试听某一档配音的示例音频；素材缺失 / 无多媒体后端时返回 False。
+
+        播放状态经 ``narrationPreviewState`` 回给 QML（按钮切图标 + 再点一下
+        停止）。失败只记日志、不弹错误框：试听是辅助功能，素材缺失不该在
+        设置页里炸出一张报错窗。
+        """
+        return narration.play_sample(
+            code, on_state=lambda c, playing: self.narrationPreviewState.emit(c, playing)
+        )
+
+    @Slot()
+    def stopNarrationSample(self) -> None:
+        """停止试听（用户再点一次那颗按钮）。"""
+        narration.stop_sample()
+
     def _get_settings_nav_items(self) -> List[Dict[str, Any]]:
         """设置窗口左侧导航的数据源（2026-10-05 插件系统 Wave 2 任务 7）。
 
@@ -1383,6 +1503,13 @@ class Backend(QObject):
         * ``title``：``META.name``，插件没声明就回落 id（管理页总得有个
           能给人看的名字）；``version``：``META.version``，可空；``category``：
           可选分类 id，缺省归 ``other``，保证设置页类别筛选不会漏掉老插件；
+        * ``author``：``META.author``，可空（2026-10-17 用户指令「给插件的
+          信息增加图标和作者的接口」）；
+        * ``iconName`` / ``iconSource``：``META.icon`` 归一后的两个出口 ——
+          字形名走 ``iconName``，图片走 ``iconSource``（``file:`` URL），
+          解析规则见 :func:`_plugin_icon`。两者最多一个非空，QML 直接分别
+          喂给 ``Rin.Icon`` 的 ``name`` / ``source``（注意**不能同时给**：
+          那个组件两条渲染路径都在，同时给会画出两层）；
         * ``enabled``：**从正式 Config 现读** ``plugins.<id>.enabled``
           （默认 true），不照抄清单里那份 —— 清单是加载时刻的快照，而
           这个属性在 ``setPluginEnabled`` 之后还要被重读，读快照就永远
@@ -1394,12 +1521,18 @@ class Backend(QObject):
         for entry in loader.loaded_plugins():
             pid = str(entry.get("id", ""))
             meta = entry.get("meta") or {}
+            icon_name, icon_source = _plugin_icon(meta.get("icon"),
+                                                 entry.get("root"))
+            author = meta.get("author")
             items.append(
                 {
                     "id": pid,
                     "title": str(meta.get("name") or pid),
                     "version": meta.get("version"),
+                    "author": author.strip() if isinstance(author, str) else "",
                     "category": str(meta.get("category") or "other"),
+                    "iconName": icon_name,
+                    "iconSource": icon_source,
                     "enabled": bool(
                         self._config.get(f"plugins.{pid}.enabled", True)
                     ),
@@ -1524,6 +1657,19 @@ class Backend(QObject):
         if key == "autostart":
             self._apply_autostart(bool(value))
             return
+
+        # 旁白语言：写入侧也归一一次。读取侧（``app/narration.py``）本来就容错，
+        # 但让脏值进 config 没有任何好处 —— 手改过 config.json 的人下次会用
+        # 「为什么我写了 xx_YY 却还是中文」来问，不如当场拒掉并留一条日志。
+        if key == "narration_language":
+            normalized = narration.normalize(value)
+            if normalized is None:
+                log.warning(
+                    "旁白语言取值非法: %r（可选 %s），已忽略",
+                    value, "/".join(narration.SAMPLES),
+                )
+                return
+            value = normalized
 
         current = self._config.get(path)
         if isinstance(current, bool):
@@ -1776,6 +1922,26 @@ class Backend(QObject):
             self._active_tool = tool
             self.activeToolChanged.emit()
         self.actionTriggered.emit(f"tool:{tool}")
+
+    @Slot()
+    def resetTool(self) -> None:
+        """把工具栏的工具状态**只拨回「选择」**，不派发任何动作（2026-10-17）。
+
+        与 :meth:`selectTool` 的区别是关键：那个会发 ``tool:arrow`` 让应用层去
+        碰演示软件，而这里只改本对象的状态 —— 放映**退出**那一刻调它时，放映
+        已经结束，再往那个窗口发工具命令会退化成「注入 Ctrl+A/P/E」。
+
+        为什么归位要经过 bridge：``activeTool`` 是分段 ``currentIndex`` 的源，
+        不经过它清，QML 那边就还亮着上一场的笔（详见
+        ``application.py::_reset_tool_state``）。放大镜同理一起关：新一场的画面
+        恒为 100%，旧的高亮留着就是假状态。
+        """
+        if self._active_tool != "arrow":
+            self._active_tool = "arrow"
+            self.activeToolChanged.emit()
+        if self._zoom_active:
+            self._zoom_active = False
+            self.zoomActiveChanged.emit()
 
     @Slot(bool)
     def setZoomActive(self, active: bool = True) -> None:

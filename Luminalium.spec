@@ -99,7 +99,7 @@ hiddenimports = [
     # 导入的（app/plugins/__init__.py 的 PLUGINS 表只是 id 字符串），静态分析
     # 看不到这层引用 —— 不列出来打包后所有正式插件都会「导入失败」跳过。
     # 新增正式插件时这里要同步加一行。
-    "app.plugins.timer.plugin",
+    "app.plugins.timer_l1.plugin",
     "app.plugins.blackboard.plugin",
     "app.plugins.spotlight.plugin",
     # 自建墨迹包（2026-10-07）：application.py / 工具脚本都是在函数体里
@@ -109,6 +109,11 @@ hiddenimports = [
     "app.ink",
     "app.ink.layer",
     "app.ink.model",
+    # 配音试听（2026-10-17「旁白与配音语言」）：``app/narration.py`` 把
+    # ``QMediaPlayer`` / ``QAudioOutput`` 的导入放在 ``_ensure_player()`` 函数体里
+    # （缺多媒体后端时要能优雅降级），与 ink 同一个理由 —— 不显式列出来，打包后
+    # 试听按钮点了没声音、也不报错，属于最难查的那类静默失效。
+    "PySide6.QtMultimedia",
 ]
 
 a = Analysis(

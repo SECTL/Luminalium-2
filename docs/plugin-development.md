@@ -1,9 +1,10 @@
 # Luminalium 2 插件开发指南
 
 写给想给 Luminalium 2 写插件的人。不需要读过任何内部计划，只需要这份文档、
-三个正式插件（`app/plugins/timer/`、`app/plugins/blackboard/`、
+三个正式插件（`app/plugins/timer_l1/`、`app/plugins/blackboard/`、
 `app/plugins/spotlight/`，2026-10-06 落地的活范例，比夹具复杂得多，照着
-实物抄最快）、两个验收夹具（`app/plugins/_demo/` 与
+实物抄最快；`timer_l1` 是 2026-10-17 从 Luminalium 1 移植的计时器，
+取代了原来那个同名插件）、两个验收夹具（`app/plugins/_demo/` 与
 `app/plugins/_demo_dep/`），再加上仓库根目录 `AGENTS.md` 里的通用约定
 （界面文案中文、QML 头注释习惯、窗口不加 `Qt.FramelessWindowHint` 等，
 本文不再重复，直接去读它）。
@@ -72,11 +73,32 @@ def register(ctx) -> None:                     # 必填，加载期回调
 |---|---|---|---|
 | `id` | 是 | str | 唯一标识，必须与目录名一致，不一致启动时按导入失败跳过 |
 | `name` | 否 | str | 设置窗口「插件」管理页的显示名；不填回落成 id（管理页总得有个能给人看的名字）。⚠️ 顶层写中文源文即可，翻译在 `register()` 里重写（见「翻译约定」） |
-| `version` | 否 | str | 管理页标题栏显示为 `名称  v<version>`；不填不显示 |
+| `version` | 否 | str | 管理页副文案显示为 `v<version>`；不填不显示 |
+| `author` | 否 | str | 管理页副文案里紧跟版本号的作者名（2026-10-17 新增）；不填整段跳过，不留空档 |
+| `icon` | 否 | str | 管理页行首图标（2026-10-17 新增），三种写法见下；不填按插件类型用默认字形 |
 | `depends` | 否 | list[str] | 依赖的其他插件 id，详见「依赖与故障语义」 |
 
 管理页的数据来自 `loader.loaded_plugins()` 的加载清单，合成逻辑在
 `app/bridge.py` 的 `_get_plugin_items`（`title = META.name or id`）。
+
+`icon` 的三种写法（`app/bridge.py::_plugin_icon` 解析，**最多命中一种**）：
+
+```python
+META = {
+    "id": "my_tool",
+    "author": "你的名字",
+    # ① Fluent 字形名：跟随主题文字色，最省事
+    "icon": "ic_fluent_puzzle_piece_20_regular",
+    # ② 相对插件目录的图片：png / svg 都行，路径以 plugin.py 所在目录为基准
+    "icon": "assets/icon.png",
+    # ③ 带 scheme 的地址：原样透传给 Image（qrc: / data: 也认）
+    "icon": "file:///D:/icons/my_tool.png",
+}
+```
+
+⚠️ ② 的相对路径**不许越出插件目录**（`../` 出去的会被拒绝，日志里记一条
+debug），文件不存在也按「没图标」处理 —— 图标是装饰，不该因为它让管理页
+报错或露空。图片按 20×20 绘制（`Lumi.pluginRowIconSize`），给正方形素材最稳。
 
 ---
 
@@ -276,7 +298,7 @@ ctx.register_setting(
   落盘之后、发信号之前调用。
 
 **Python 侧怎么感知 / 读取设置值**：`PluginContext` 刻意不提供公共的
-Backend 访问器（插件与宿主的通道收束到这 9 个 API），所以没有「随时读
+Backend 访问器（插件与宿主的通道收束到这 10 个 API），所以没有「随时读
 一个键」的通用入口。设计上插件应该是**变更驱动**的：在 `side_effect`
 回调里接收新值并更新自己的内部状态，而不是需要时去查。`_demo` 夹具走
 内部引用写键只是验收脚本的特权做法，真实插件不要学。
@@ -441,6 +463,27 @@ ctx.subscribe(topic: str, handler: Callable[[Any], None]) -> None
 `ctx.publish("_demo_dep:hello", "ping")`。拓扑序保证 `_demo` 先注册、订阅
 已就绪，`_demo_dep` 发布时消息必达。
 
+### 10. narration_language：全局旁白 / 配音语言
+
+```python
+ctx.narration_language() -> str   # "zh_CN" / "en_US" / "ja_JP"
+```
+
+面向**旁白 / 配音 / 语音播报**类插件的只读接口：用户在「设置 → 通用 →
+语言 → 旁白与配音语言」里选的那一档（主程序里所有出声的模块也读同一个
+值，源头是 `app/narration.py`）。
+
+* 返回值**保证**落在三档之内：用户从没配过、配置被手改坏、`config.json`
+  缺这个键，一律回退 `zh_CN`。所以拿到就能用，不用再判空或做兜底。
+* 它与界面语言 `app.language` 是**两个独立维度**：界面可以切英文而旁白
+  仍是中文。插件别把 `ctx.narration_language()` 当成 `QSysInfo` 那种
+  locale 推断，也别自己往配置里加一份语种项。
+* 不是热更新推送：需要跟着变的场景，在真正要出声的那一刻现读一次即可
+  （一次 dict 读取，成本可忽略）。
+* 示例音频只为设置页试听而存在（`resources/narration_testaudio_*.mp3`），
+  **不是**插件可用的配音素材库 —— 插件自己的旁白资源自己带，别去引用
+  那三条。
+
 ---
 
 ## 配置约定与铁律
@@ -532,8 +575,8 @@ Python tr 的原因。
 | `_demo_dep/plugin.py` | `META.depends` 依赖声明、register 期 publish、拓扑序保证 |
 | `ui/plugins/_demo/DemoWindow.qml` | 插件窗口标准写法：Rin.FluentWindow、visible:false、onClosing 关窗链路 |
 | `ui/plugins/_demo/DemoSettings.qml` | 插件设置页：Rin.FluentPage、SettingCard、开关绑 `Backend.settings.<key>`、`Qt.binding` 重装绑定的坑 |
-| `app/plugins/timer/plugin.py` | **正式插件**：Python 侧状态引擎（藏在窗口背后继续走）、动作串带参（`start:300000`）、设置键 side_effect、winsound 铃声 |
-| `ui/plugins/timer/TimerWindow.qml` | 正式插件的窗口写法：Python 推状态、QML 纯绑定、全按钮走动作通道 |
+| `app/plugins/timer_l1/plugin.py` | **正式插件**：Python 侧状态引擎（藏在窗口背后继续走）、动作串带参（`start:90`，单位秒）、设置键 side_effect、winsound 系统提示音 |
+| `ui/plugins/timer_l1/TimerWindow.qml` | 正式插件的窗口写法：Python 推状态、QML 纯绑定、全按钮走动作通道；多页切换用「锚定页」而不是 StackLayout（后者不给子项铺满，注释里有坑） |
 | `app/plugins/spotlight/plugin.py` | 叠加窗口 + 光标轮询 + 全局键轮询（`GetAsyncKeyState`）+ 叠加窗口的 `set_hole` 喂洞 |
 
 上手路径建议：开 `app.debug` 把这两个夹具跑起来，设置「插件」页里能看到

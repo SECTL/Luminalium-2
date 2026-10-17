@@ -12,12 +12,24 @@
   组件不生效。
 * ``apply_locale`` 把 Qt 的**默认 QLocale** 设成配置里的 UI 语言。除了
   影响数字/日期的本地化格式，它还是 RinUI 字体补丁（``app/rinui_patch.py``）
-  的语言信号 —— 补丁在 QML 单例里读 ``Qt.locale().name()`` 判断要不要把
-  默认字体切成 Yu Gothic UI，因此**必须先于任何 QML 加载**调用。
+  的语言信号 —— 补丁在 QML 单例里读 ``Qt.locale().name`` 挑字体，因此
+  **必须先于任何 QML 加载**调用。
 * ``apply_ui_font`` 管 ``Rin.Text``/``Rin.TextField`` **之外**的控件：
   RinUI 的按钮、菜单、托盘等没有显式指定字体，走 QApplication 默认字体
-  （Windows 上随系统语言）。UI 语言为日语时显式设成 Yu Gothic UI，与
-  RinUI 补丁的行为一致；其它语言不动、跟随系统。
+  （Windows 上随系统语言）。UI 语言在 ``UI_FONTS`` 里的显式设成对应字体
+  （与 RinUI 补丁 ``app/rinui_patch.py`` 的 ``fontFamily`` 同一张表）；
+  其余语言不动、跟随系统。
+
+新增一门语言要动的地方
+----------------------
+
+1. ``translations/luminalium_<lang>.ts``（QML 侧，lupdate 生成）+ ``translations/
+   luminalium_py_<lang>.ts``（Python 侧，手工维护），lrelease 合成
+   ``luminalium_<lang>.qm`` —— 见 ``tools/update_translations.py``；
+2. ``ui/settings/General/Index.qml`` 的 ``languages`` 名单；
+3. 需要专属 UI 字体时：只改本文件的 ``UI_FONTS`` —— ``rinui_patch`` 按它
+   生成 QML 表达式、``apply_ui_font`` 按它设 QApplication 字体，两处共用
+   这一份，不存在「两边不一致」的空间。
 """
 
 from __future__ import annotations
@@ -38,8 +50,21 @@ SOURCE_LANGUAGE = "zh_CN"
 #: 下拉里有、但还没有翻译文件的语言：安静跳过（界面保持中文原文），
 #: 不刷 warning —— 这是「暂未翻译」的已知状态，不是故障（见
 #: ``config/default_config.json`` 的 ``//language`` 注释）。
-#: 目前四种语言（zh_CN 源语言 / en_US / ja_JP）都已齐翻译，此集合留空备用。
+#: 目前六种语言（zh_CN 源语言 / en_US / ja_JP / zh_TW / ko_KR / yue_HK）
+#: 都已齐翻译，此集合留空备用。
 UNTRANSLATED: set[str] = set()
+
+#: 语言前缀 -> 该语言专用的 Windows UI 字体（``apply_ui_font`` 与
+#: ``app/rinui_patch.py`` 的 QML 侧 ``fontFamily`` 共用同一张表，改要一起改）。
+#: 微软雅黑能显示简繁汉字与韩文，但繁体字缺香港增补字形、韩文也没那么好看，
+#: 所以繁体与粤语给 JhengHei UI、韩语给 Malgun Gothic。表外的语言跟随系统。
+UI_FONTS: dict[str, str] = {
+    "ja": "Yu Gothic UI",
+    "ko": "Malgun Gothic",
+    "yue": "Microsoft JhengHei UI",
+    "zh_TW": "Microsoft JhengHei UI",
+    "zh_HK": "Microsoft JhengHei UI",
+}
 
 #: 已安装的翻译器。必须持有引用 —— QTranslator 被回收后翻译会整体失效。
 _translators: list[QTranslator] = []
@@ -89,12 +114,23 @@ def tr(context: str, source: str) -> str:
 
 
 def apply_ui_font(qt_app: QApplication, language: str) -> None:
-    """日语 UI 时把应用默认字体设成 Yu Gothic UI（其余语言跟随系统）。
+    """按 UI 语言设应用默认字体（表外语言跟随系统）。
 
     只影响没有显式指定字体的控件（按钮 / 菜单 / 托盘等）；``Rin.Text``
     与 ``Rin.TextField`` 的字体由 RinUI 补丁在 QML 侧解决。
     """
-    if not language.startswith("ja"):
+    family = _font_for(language)
+    if family is None:
         return
-    qt_app.setFont(QFont("Yu Gothic UI"))
-    log.info("UI 字体: Yu Gothic UI（语言 %s）", language)
+    qt_app.setFont(QFont(family))
+    log.info("UI 字体: %s（语言 %s）", family, language)
+
+
+def _font_for(language: str) -> str | None:
+    """查 ``UI_FONTS``：先整串匹配（``zh_TW``），再按前缀（``ja``/``ko``）。"""
+    if language in UI_FONTS:
+        return UI_FONTS[language]
+    for prefix, family in UI_FONTS.items():
+        if "_" not in prefix and language.startswith(prefix):
+            return family
+    return None

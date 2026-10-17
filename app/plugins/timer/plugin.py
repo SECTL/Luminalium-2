@@ -1,45 +1,50 @@
-"""计时器插件（倒计时 / 正计时 / 时钟）—— Luminalium 2 第一个正式插件。
+"""计时器插件（HTML 原版移植）—— 2026-10-17 用户指令「把 Lmn-copy 的计时器
+原汁原味搬过来，替换现有实现」。
 
-2026-10-06 用户指令「做一个计时器[包含倒计时、正计时、时钟等功能]」落地。
-功能语义参考了 Lmn-copy 项目的 ``plugins/builtins/timer``（开始 / 暂停 /
-继续 / 停止 / 加时 / 结束铃声 / 末 3 秒秒滴），但该项目是 WebView(HTML)
-形态，本项目按 ``AGENTS.md``「没有网页前端」的规矩用 RinUI 原生 QML 重写，
-只保留功能契约与铃声资产（``assets/alarm.wav`` 即原项目 ``3s.wav``；
-``assets/tick.wav`` 是本仓库生成的 0.14s / 880Hz 秒滴）。
+本插件经历过两代：
 
-架构要点（为什么这样写，别改回去）：
+* 2026-10-06 初代：参考 Lmn-copy 的功能语义，用 RinUI 原生 QML 重写
+  （那时守「没有网页前端」的规矩，只拿走了功能契约与铃声资产）。
+* 2026-10-17 本代：用户明确要求 HTML 版**原样**回来，QML 版废弃删除
+  （``ui/plugins/timer/TimerWindow.qml``、``assets/*.wav`` 已移除）。
+  ``web/timer.html`` 是 Lmn-copy ``plugins/builtins/timer/timer.html``
+  的逐字节副本，一个字符都没改 —— 它只能跑在 QWebEngineView 里，
+  宿主在 ``webview.py``（两条硬规矩的明文例外，理由写在那里的头注释）。
 
-* **倒计时引擎在 Python，不在 QML**。窗口是懒创建、只藏不销毁的，但用户
-  会把窗口关掉继续讲课 —— 倒计时必须藏在窗口背后继续走、走完了照响；
-  走完且窗口藏着时引擎还会把窗口自己弹出来（铃声最长循环 180s，屏幕上
-  看不到来源就是「响铃找不到入口」的事故现场；弹窗既是视觉来源也是关闭
-  入口，与提示音开关解耦 —— 关了声音照弹）。
-  这也是 ``context.py`` 铁规 1（驻留组件的状态放 Python 侧）的窗口版。
-  引擎用 ``time.monotonic()`` 逐拍累计（QTimer 只当节拍器），不靠间隔数
-  数，定时器漂移 / 挂起不会让表走慢。
-* **QML 只做显示**。Python 引擎每拍把状态（模式 / 剩余 / 跑没跑 / 走完没）
-  经 ``QQuickWindow.setProperty`` 推给窗口根属性，QML 纯绑定渲染 ——
-  窗口还没建（懒创建）时推空操作，窗口藏起来时照推（代价是几个属性写）。
-* **QML → Python 的通道只有动作**。窗口上的开始 / 暂停 / 预设时长按钮全走
-  ``Backend.triggerAction("plugin:timer:...")``，参数（时长毫秒数）编进
-  动作后缀由处理器解析 —— 这是 ``docs/plugin-development.md`` 动作动词
-  一节「处理器拿到完整动作串自己解析后缀」的正用；插件不碰 Backend 的
-  专用槽，也不私开 context property。
+架构（与 Lmn-copy 同构）：
 
-窗口 / 磁贴 / 控制条 / 设置页四路入口都注册：快捷面板磁贴与放映控制条
-动作是 ``plugin:timer:toggle``，设置页管「提示音」开关（经 side_effect
-实时改引擎，不用重启）。
+* HTML 页面是自己的引擎：窗口开着时倒计时 / 秒表 / 时钟全在页面里跑，
+  经 pywebview 垫片调 Python 的 ``TimerApi`` 同步状态。
+* Python 侧的 ``TimerManager``（``timer_manager.py``，原版逐行移植）是
+  权威状态源：窗口藏起来（本应用窗口只藏不销毁）后页面其实还在跑，
+  重开窗口时 ``get_timer_state`` 从这里恢复。
+* 铃声由 HTML 自己播（Windows 系统音，``Timer.EnableSoundEffects`` 控制），
+  Python 不再 winsound —— 设置页「提示音」开关经 ``plugins.timer.alarm``
+  落进 ``EnableSoundEffects`` 喂给页面；「试听」走动作通道在 Python 侧
+  用 winsound 播同一个系统音（页面藏着时也能听到）。
+
+入口与设置键的 id 与初代完全一致（``timer_panel`` 磁贴、
+``plugin:timer:toggle`` 动作、``timer_page`` 设置页、
+``plugins_timer_alarm`` 设置键），老用户的配置与面板布局不受影响。
+
+⚠️ WebEngine 懒加载：``webview.py`` 的 QtWebEngine 是模块级导入，所以
+本模块只在第一次开窗时才 import 它（``_ensure_window`` 里）。register
+阶段 import 会让全体用户白付 WebEngine 初始化成本（已验证 Qt 6.9 允许
+在 QApplication 创建之后再初始化 WebEngine）。
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
-import time
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from ...paths import UI_DIR
-from ... import i18n
+from PySide6.QtWidgets import QApplication
+
+from ... import __version__, i18n
+from .timer_manager import TimerManager
 
 log = logging.getLogger(__name__)
 
@@ -50,333 +55,278 @@ META = {
     "category": "utility",
 }
 
-#: ``plugins.timer.*`` 的默认值（dict 型贡献，经阶段一注入默认层，不落盘）。
+#: ``plugins.timer.*`` 默认值（dict 型贡献，注入默认层不落盘）。
+#: ``alarm`` = HTML 侧的 ``Timer.EnableSoundEffects``（走完 / 重置提示音）。
 DEFAULTS = {"alarm": True}
 
-#: 倒计时走完之后铃声最长响多久（秒）—— 循环铃声必须有个上限，否则用户
-#: 关了窗口又忘了这回事，铃声能一路响到天荒地老。
-_ALARM_MAX_SECONDS = 180
+_WEB_DIR = Path(__file__).resolve().parent / "web"
+_TIMER_HTML = _WEB_DIR / "timer.html"
 
-#: 末尾多少秒开始秒滴（对齐参考实现的「3、2、1」倒数提示）。
-_TICK_LAST_SECONDS = 3
+# ---------------------------------------------------------------- 模块状态
 
-_ASSETS = Path(__file__).resolve().parent / "assets"
-_ALARM_WAV = _ASSETS / "alarm.wav"
-_TICK_WAV = _ASSETS / "tick.wav"
-
-# ---------------------------------------------------------------- 引擎状态
-
-#: ``register`` 期捕获的窗口句柄（PluginContext 不留公共 Backend 访问器，
-#: 插件需要的引用都在注册期自己存好）。
-_window_handle: Optional[Any] = None
-_tick_timer: Optional[Any] = None
-
-_mode = "countdown"           # countdown | stopwatch | clock
-# 倒计时
-_cd_total_ms = 5 * 60 * 1000
-_cd_remaining_ms = _cd_total_ms
-_cd_running = False
-_cd_finished = False
-_cd_last_beep_second: Optional[int] = None
-# 正计时
-_sw_ms = 0
-_sw_running = False
-
-_alarm_enabled = True
-_alarm_playing = False
-_alarm_started_at = 0.0
-
-_last_stamp = 0.0
-#: 上次推给窗口的属性快照 —— 值没变就不写（setProperty 会打断 QML 侧绑定，
-#: 也会触发绑定重求值，100ms 一拍没必要全量推）。
-_last_pushed: Dict[str, Any] = {}
+#: 窗口与桥接（懒创建，只藏不销毁；webengine 模块同样懒 import）
+_window: Optional[Any] = None
+_api: Optional[Any] = None
+_timer_manager: Optional[TimerManager] = None
+_backend: Optional[Any] = None
+_sound_enabled = True
 
 
-# ---------------------------------------------------------------- 声音
-
-def _play(path: Path, loop: bool) -> None:
-    """异步播放 wav（不阻塞主线程）。winsound 是 Windows 独占 stdlib，本项目
-    本来就是 Win32 专用的（``ppt_controller`` / ``windows.py`` 满篇 user32）。"""
-    try:
-        import winsound
-
-        flags = winsound.SND_FILENAME | winsound.SND_ASYNC
-        if loop:
-            flags |= winsound.SND_LOOP
-        winsound.PlaySound(str(path), flags)
-    except Exception:
-        log.warning("播放 %s 失败", path.name, exc_info=True)
+# ---------------------------------------------------------------- 设置合成
 
 
-def _stop_sound() -> None:
-    try:
-        import winsound
+def _resolve_is_dark(theme_mode: str) -> bool:
+    """app.theme（auto/light/dark）→ HTML 要的 ResolvedIsDark。"""
+    mode = theme_mode.strip().lower()
+    if mode == "dark":
+        return True
+    if mode == "light":
+        return False
+    # auto：读 Windows 应用深浅色
+    if sys.platform == "win32":
+        try:
+            import winreg
 
-        winsound.PlaySound(None, winsound.SND_PURGE)
-    except Exception:  # pragma: no cover - winsound 理论上不会炸
-        pass
+            key = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            )
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            winreg.CloseKey(key)
+            return int(value) == 0
+        except Exception:
+            pass
+    return False
 
 
-def _start_alarm() -> None:
-    global _alarm_playing, _alarm_started_at
-    if not _alarm_enabled:
-        return
-    _alarm_playing = True
-    _alarm_started_at = time.monotonic()
-    _play(_ALARM_WAV, loop=True)
+def _build_settings() -> Dict[str, Any]:
+    """把 Luminalium 2 的配置合成 Lmn-copy settings.json 的形状喂给 HTML。
 
-
-def _stop_alarm() -> None:
-    global _alarm_playing
-    _alarm_playing = False
-    _stop_sound()
-
-
-# ---------------------------------------------------------------- 引擎推进
-
-def _tick() -> None:
-    """引擎节拍（100ms）：推进倒计时 / 正计时、管秒滴与铃声、推状态。
-
-    一拍只有两次浮点加减和一次属性对比，空转代价可忽略 —— 刻意**不停表**：
-    启停定时器的状态机比永远转着的空拍更容易写出「忘了重启」的悬案。
+    HTML 读：General.Language（zh-CN 式）、Appearance.ThemeMode
+    （Light/Dark/Auto 首字母大写式）、Appearance.ThemeId（恒 default）、
+    Appearance.ResolvedIsDark、Fonts.CustomFont（恒 False 走内置字体栈）、
+    Window.TimerFullscreenBehavior（恒 fullscreen）、
+    Timer.EnableSoundEffects（提示音开关）。QuickAddPresets 不给 ——
+    HTML 有内置默认值，Lmn-copy 的默认配置里也没有这一项。
     """
-    global _last_stamp, _cd_remaining_ms, _cd_running, _cd_finished
-    global _cd_last_beep_second, _sw_ms
+    cfg = _backend._config if _backend is not None else None
 
-    now = time.monotonic()
-    dt_ms = max(0.0, (now - _last_stamp) * 1000.0)
-    _last_stamp = now
+    def _get(path: str, default: Any) -> Any:
+        try:
+            return cfg.get(path, default) if cfg is not None else default
+        except Exception:
+            return default
 
-    if _cd_running:
-        _cd_remaining_ms -= dt_ms
-        whole = int(max(0.0, _cd_remaining_ms) / 1000.0) + 1
-        if 0 < whole <= _TICK_LAST_SECONDS and whole != _cd_last_beep_second:
-            # 进入末 3 秒：每个整秒滴一声（whole 是「还剩多少个整秒含当前」）
-            _cd_last_beep_second = whole
-            if _alarm_enabled:
-                _play(_TICK_WAV, loop=False)
-        if _cd_remaining_ms <= 0:
-            _cd_remaining_ms = 0.0
-            _cd_running = False
-            _cd_finished = True
-            _start_alarm()
-            # 走完时窗口若藏着就自己弹出来：铃声最长循环 180s，屏幕上看不到
-            # 来源就是「响铃找不到入口」的事故现场 —— 弹窗本身就是视觉来源
-            # 与关闭入口。与铃声解耦：提示音关了照弹（用户关声音 ≠ 不要提醒）。
-            # 只判句柄不判 .window is None 后的语义 —— ``handle.window is None``
-            # 恰是「窗口还没建 / 藏着」的一部分，此时 show() 会懒创建，正是要的
-            # 行为；已显示时绝不二次 show（不抢焦点 / 不重定位）。
-            if _window_handle is not None:
-                window = _window_handle.window
-                if window is None or not window.isVisible():
-                    _window_handle.show()
-                    # show() 返回后窗口已建，立即推一帧真实状态再走本拍末尾的
-                    # 例行推送（同 toggle/open 分支 2026-10-07 首帧闪 0:00 的
-                    # 修复时序 —— 别指望 QML 的 sync 动作，懒创建路径上它会早退）。
-                    _push_state()
-            log.info("倒计时结束，铃声已起（最长 %ds，重置 / 切页 / 关提示音即停）", _ALARM_MAX_SECONDS)
-    if _sw_running:
-        _sw_ms += dt_ms
-
-    if _alarm_playing and (now - _alarm_started_at) > _ALARM_MAX_SECONDS:
-        _stop_alarm()
-
-    _push_state()
-
-
-def _push_state() -> None:
-    """把引擎状态推给窗口根属性（值没变不推；窗口没建就什么都不做）。"""
-    if _window_handle is None:
-        return
-    window = _window_handle.window
-    if window is None:
-        return
-    state: Dict[str, Any] = {
-        "mode": _mode,
-        "cdTotal": int(_cd_total_ms),
-        "cdRemaining": int(round(max(0.0, _cd_remaining_ms))),
-        "cdRunning": bool(_cd_running),
-        "cdFinished": bool(_cd_finished),
-        "swMs": int(_sw_ms),
-        "swRunning": bool(_sw_running),
+    theme_raw = str(_get("app.theme", "dark"))
+    theme_mode = {"dark": "Dark", "light": "Light"}.get(
+        theme_raw.strip().lower(), "Auto"
+    )
+    language = str(_get("app.language", "zh_CN")).replace("_", "-")
+    return {
+        "General": {"Language": language},
+        "Appearance": {
+            "ThemeMode": theme_mode,
+            "ThemeId": "default",
+            "ResolvedIsDark": _resolve_is_dark(theme_raw),
+        },
+        "Fonts": {"CustomFont": False},
+        "Window": {"TimerFullscreenBehavior": "fullscreen"},
+        "Timer": {"EnableSoundEffects": bool(_sound_enabled)},
     }
-    for key, value in state.items():
-        if _last_pushed.get(key) != value:
-            try:
-                window.setProperty(key, value)
-            except RuntimeError:  # pragma: no cover - 窗口正被销毁
-                return
-            _last_pushed[key] = value
 
 
-# ---------------------------------------------------------------- 动作处理
+def _device_uuid() -> str:
+    """开发版水印用的设备短码：Windows MachineGuid 的 md5 前 8 位。"""
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            key = winreg.OpenKey(
+                winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography"
+            )
+            guid, _ = winreg.QueryValueEx(key, "MachineGuid")
+            winreg.CloseKey(key)
+            return hashlib.md5(str(guid).encode()).hexdigest()[:8]
+        except Exception:
+            pass
+    return "00000000"
+
+
+def _build_version() -> Dict[str, Any]:
+    codename = ""
+    try:
+        if _backend is not None:
+            codename = str(_backend._config.get("app.codename", ""))
+    except Exception:
+        pass
+    return {
+        "version": __version__,
+        "code_name": codename,
+        "device_uuid": _device_uuid(),
+    }
+
+
+# ---------------------------------------------------------------- 窗口
+
+
+def _ensure_window():
+    """懒创建 WebView 窗口（第一次开窗时才拉起 WebEngine）。"""
+    global _window, _api, _timer_manager
+    if _window is not None:
+        return _window
+
+    from .webview import TimerApi, TimerWebWindow  # 懒 import，见头注释
+
+    if _timer_manager is None:
+        _timer_manager = TimerManager()
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(_timer_manager.shutdown)
+
+    _api = TimerApi(_timer_manager, _build_settings, _build_version)
+
+    screen = QApplication.primaryScreen()
+    screen_geo = screen.geometry() if screen is not None else None
+    if screen_geo is not None:
+        # 窗口尺寸公式与 Lmn-copy 一致：随屏幕取比例并封顶
+        width_val = int(
+            min(max(600, screen_geo.width() * 0.35), screen_geo.width() * 0.5)
+        )
+        height_val = int(
+            min(max(500, screen_geo.height() * 0.45), screen_geo.height() * 0.6)
+        )
+        width = int(min(width_val + 350, screen_geo.width()))
+        height = int(min(height_val + 150, screen_geo.height()))
+    else:
+        width, height = 950, 650
+
+    _window = TimerWebWindow(
+        i18n.tr("timer", "计时器"),
+        str(_TIMER_HTML),
+        _api,
+        width,
+        height,
+        _build_settings(),
+    )
+    return _window
+
+
+def _open_window() -> None:
+    window = _ensure_window()
+    # 藏着期间可能换过主题 / 语言 / 开关，重推一遍设置再亮相
+    window.apply_settings(_build_settings())
+    if window.isMinimized():
+        window.showNormal()
+    window.show()
+    window.raise_()
+    window.activateWindow()
+
+
+def _close_window() -> None:
+    if _window is not None:
+        _window.hide()
+
+
+def _toggle_window() -> None:
+    if _window is not None and _window.isVisible():
+        _close_window()
+    else:
+        _open_window()
+
+
+def _preview_alarm() -> None:
+    """「试听铃声」：播 HTML 走完时用的同一个系统音（单次，异步）。"""
+    if sys.platform != "win32":
+        return
+    try:
+        import winsound
+
+        winsound.PlaySound(
+            r"C:\Windows\Media\Windows Notify Email.wav",
+            winsound.SND_FILENAME | winsound.SND_ASYNC,
+        )
+    except Exception:
+        log.exception("试听铃声播放失败")
+
+
+# ---------------------------------------------------------------- 动作分发
 
 
 def _on_action(action: str) -> None:
-    """``plugin:timer:`` 前缀动作的处理器：后缀分发，参数编在动作串里。
-
-    ⚠️ 入口只判 ``_window_handle is None``（注册没成功），**不能**再判
-    ``.window is None``：窗口是懒创建的，第一次 ``show()`` 之前 ``.window``
-    就是 None —— 那道守卫会把唯一能触发创建的调用拦在门外，磁贴 / 控制条
-    就永远「点了没反应」（2026-10-07 实锤的上线 bug，聚光灯能用恰是它的
-    处理器不做这道检查）。``toggle()/show()/hide()`` 自己处理懒创建。
-    """
-    global _mode, _cd_total_ms, _cd_remaining_ms, _cd_running, _cd_finished
-    global _cd_last_beep_second, _sw_ms, _sw_running
-
     prefix = "plugin:timer:"
     if action == prefix + "toggle":
-        if _window_handle is not None:
-            _window_handle.toggle()
-            _push_state()
-        return
-    if action == prefix + "open":
-        if _window_handle is not None:
-            _window_handle.show()
-            _push_state()
-        return
-    if action == prefix + "close":
-        if _window_handle is not None:
-            _window_handle.hide()
-        return
-    if action == prefix + "sync":
-        # 窗口 Component.onCompleted 里要一次全量状态。⚠️ 这一步在懒创建
-        # 路径上通常是空操作：onCompleted 触发时 ``_create()`` 还没返回，
-        # 句柄的 ``.window`` 仍是 None，``_push_state`` 直接早退。真正的
-        # 兜底是 toggle / open 分支里 show() 返回**之后**的那次
-        # ``_push_state()``（窗口已存在，首帧就能拿到真实状态）——
-        # 2026-10-07 插件巡检修的「首帧闪 0:00」就是这个时序。
-        _push_state()
-        return
-    if action == prefix + "preview-alarm":
-        # 设置页「试听」：单次播放，不进循环。PlaySound 进程内独占，新
-        # 播放本来就会顶掉正在响的循环铃声 —— 先显式停掉，免得
-        # ``_alarm_playing`` 揣着旧时间戳假装铃声还在响。
-        _stop_alarm()
-        _play(_ALARM_WAV, loop=False)
-        return
-    if action.startswith(prefix + "mode:"):
-        mode = action[len(prefix + "mode:"):]
-        if mode in ("countdown", "stopwatch", "clock") and mode != _mode:
-            _mode = mode
-            _stop_alarm()  # 换页 = 换心情，铃声不该跟着人跑
-            _push_state()
-        return
-
-    # ---- 倒计时 ----
-    if action.startswith(prefix + "start:"):
-        # 时长编在动作后缀里（毫秒）；窗口的预设按钮与自选框都走这条
-        try:
-            total = int(action.rsplit(":", 1)[1])
-        except ValueError:
-            log.warning("倒计时时长解析失败: %s", action)
-            return
-        total = max(1000, min(total, 24 * 3600 * 1000))
-        _stop_alarm()
-        _cd_total_ms = total
-        _cd_remaining_ms = total
-        _cd_running = True
-        _cd_finished = False
-        _cd_last_beep_second = None
-        _mode = "countdown"
-    elif action == prefix + "pause":
-        _cd_running = False
-    elif action == prefix + "resume":
-        if not _cd_finished and _cd_remaining_ms > 0:
-            _cd_running = True
-            _cd_last_beep_second = None
-    elif action.startswith(prefix + "add:"):
-        # 走完之后加时 = 复活倒计时；跑动中加时 = 顺延
-        try:
-            extra = int(action.rsplit(":", 1)[1])
-        except ValueError:
-            return
-        extra = max(0, min(extra, 60 * 60 * 1000))
-        _stop_alarm()
-        _cd_total_ms += extra
-        _cd_remaining_ms += extra
-        _cd_finished = False
-        _cd_last_beep_second = None
-    elif action == prefix + "reset":
-        _stop_alarm()
-        _cd_running = False
-        _cd_finished = False
-        _cd_remaining_ms = _cd_total_ms
-        _cd_last_beep_second = None
-
-    # ---- 正计时 ----
-    elif action == prefix + "sw-start":
-        _sw_running = True
-    elif action == prefix + "sw-pause":
-        _sw_running = False
-    elif action == prefix + "sw-reset":
-        _sw_running = False
-        _sw_ms = 0
+        _toggle_window()
+    elif action == prefix + "open":
+        _open_window()
+    elif action == prefix + "close":
+        _close_window()
+    elif action == prefix + "preview-alarm":
+        _preview_alarm()
     else:
         log.info("计时器收到未知动作: %s", action)
-        return
-    _push_state()
 
 
 def _on_alarm_setting(config, key, value) -> None:
-    """「提示音」设置的 side_effect：实时改引擎；关掉时连响着的铃声一起停。"""
-    global _alarm_enabled
-    _alarm_enabled = bool(value)
-    if not _alarm_enabled:
-        _stop_alarm()
+    """「提示音」开关的 side_effect：实时合成进下次喂给 HTML 的设置，
+    窗口开着就立刻推过去。"""
+    global _sound_enabled
+    _sound_enabled = bool(value)
+    if _window is not None:
+        _window.apply_settings(_build_settings())
+
+
+def _on_settings_changed() -> None:
+    """主题 / 语言变化时跟进（settingsChanged 是宽信号，推一遍设置成本很低）。"""
+    if _window is not None:
+        _window.apply_settings(_build_settings())
 
 
 # ---------------------------------------------------------------- 注册
 
+
 def register(ctx) -> None:
-    """两处入口 + 控制条动作 + 设置页 + 提示音设置键 + 自管窗口。"""
-    global _window_handle, _tick_timer, _last_stamp, _alarm_enabled
+    """磁贴 + 控制条动作 + 设置页 + 提示音设置键；窗口在动作触发时才建。"""
+    global _backend, _sound_enabled
 
     def tr(source: str) -> str:
         return i18n.tr("timer", source)
 
-    # ⚠️ META["name"] 在这里才翻译（2026-10-07 插件巡检）：模块 import 发生在
-    # 阶段一 collect_defaults（Config() 构造之前），那时翻译器一个都没装，
-    # i18n.tr 只能回中文原文 —— 英文/日文界面上插件管理页的名称会永远是
-    # 中文。register 跑在 install_translators 之后，这里重写才是真译文。
+    # ⚠️ META["name"] 在这里才翻译（register 跑在翻译器安装之后，
+    # 模块顶层 tr 只能回中文 —— 2026-10-07 插件巡检实锤）。
     META["name"] = tr("计时器")
+
+    _backend = ctx._backend
+    try:
+        _sound_enabled = bool(ctx._backend._config.get("plugins.timer.alarm", True))
+    except Exception:
+        _sound_enabled = True
 
     # ① 快捷面板磁贴
     ctx.add_shortcut(
         "timer_panel", tr("计时器"), "ic_fluent_timer_20_regular",
         "plugin:timer:toggle",
     )
-    # ② 动作处理器（窗口按钮全走这条通道）
+    # ② 动作处理器（开关窗 / 试听都走这条通道）
     ctx.add_action_handler("plugin:timer:", _on_action)
     # ③ 放映控制条动作（讲课中途开计时器是高频操作）
     ctx.add_dock_action(
         "plugin:timer:toggle", tr("计时器"), "ic_fluent_timer_20_regular",
         tooltip=tr("打开 / 收起计时器"),
     )
-    # ④ 设置页
+    # ④ 设置页（提示音开关 + 试听）
     ctx.add_settings_page(
         "timer_page", tr("计时器"), "TimerSettings.qml",
         "ic_fluent_clock_alarm_20_regular",
     )
-    # ⑤ 设置键：提示音（side_effect 实时生效）。初始值走
-    # ``backend._config`` 内部引用（loader 读启用态同款通道；ctx 刻意不
-    # 给公共读取器，插件与宿主的通道收束在 ctx 的 8 个 API 上）。
-    _alarm_enabled = bool(ctx._backend._config.get("plugins.timer.alarm", True))
+    # ⑤ 设置键：提示音（side_effect 实时喂给页面，不用重启）
     ctx.register_setting(
         "plugins_timer_alarm", "plugins.timer.alarm",
         side_effect=_on_alarm_setting,
     )
-    # ⑥ 自管窗口（懒创建；引擎先跑起来，窗口第一次 show 就能拿到当前状态）
-    _window_handle = ctx.register_window(
-        "timer", UI_DIR / "plugins" / "timer" / "TimerWindow.qml",
-        label=tr("计时器"),
-    )
+    # ⑥ 主题 / 语言跟进
+    try:
+        ctx._backend.settingsChanged.connect(_on_settings_changed)
+    except Exception:
+        pass
 
-    _last_stamp = time.monotonic()
-    from PySide6.QtCore import QTimer
-
-    _tick_timer = QTimer()
-    _tick_timer.setInterval(100)
-    _tick_timer.timeout.connect(_tick)
-    _tick_timer.start()
-    log.info("计时器插件已注册（提示音 %s）", "开" if _alarm_enabled else "关")
+    log.info("计时器插件已注册（HTML 版，提示音 %s）", "开" if _sound_enabled else "关")

@@ -1,13 +1,6 @@
 # Luminalium 2 插件开发指南
 
 写给想给 Luminalium 2 写插件的人。不需要读过任何内部计划，只需要这份文档、
-三个正式插件（`app/plugins/timer_l1/`、`app/plugins/blackboard/`、
-`app/plugins/spotlight/`，2026-10-06 落地的活范例，比夹具复杂得多，照着
-实物抄最快；`timer_l1` 是 2026-10-17 从 Luminalium 1 移植的计时器，
-取代了原来那个同名插件）、两个验收夹具（`app/plugins/_demo/` 与
-`app/plugins/_demo_dep/`），再加上仓库根目录 `AGENTS.md` 里的通用约定
-（界面文案中文、QML 头注释习惯、窗口不加 `Qt.FramelessWindowHint` 等，
-本文不再重复，直接去读它）。
 两个正式插件（`app/plugins/blackboard/`、`app/plugins/spotlight/`，
 2026-10-06 落地的活范例，比夹具复杂得多，照着实物抄最快）、两个验收
 夹具（`app/plugins/_demo/` 与 `app/plugins/_demo_dep/`），再加上仓库根
@@ -585,8 +578,6 @@ Python tr 的原因。
 | `_demo_dep/plugin.py` | `META.depends` 依赖声明、register 期 publish、拓扑序保证 |
 | `ui/plugins/_demo/DemoWindow.qml` | 插件窗口标准写法：Rin.FluentWindow、visible:false、onClosing 关窗链路 |
 | `ui/plugins/_demo/DemoSettings.qml` | 插件设置页：Rin.FluentPage、SettingCard、开关绑 `Backend.settings.<key>`、`Qt.binding` 重装绑定的坑 |
-| `app/plugins/timer_l1/plugin.py` | **正式插件**：Python 侧状态引擎（藏在窗口背后继续走）、动作串带参（`start:90`，单位秒）、设置键 side_effect、winsound 系统提示音 |
-| `ui/plugins/timer_l1/TimerWindow.qml` | 正式插件的窗口写法：Python 推状态、QML 纯绑定、全按钮走动作通道；多页切换用「锚定页」而不是 StackLayout（后者不给子项铺满，注释里有坑） |
 | `app/plugins/blackboard/plugin.py` | **正式插件**：dock 驻留组件注册、自管窗口、导出对话框走动作通道（不私开 Backend 槽） |
 | `ui/plugins/blackboard/BlackboardWindow.qml` | 正式插件的窗口写法：Canvas 墨迹、数据走导出目录 file URL |
 | `app/plugins/spotlight/plugin.py` | 叠加窗口 + 光标轮询 + 全局键轮询（`GetAsyncKeyState`）+ 叠加窗口的 `set_hole` 喂洞 |

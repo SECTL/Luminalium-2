@@ -413,7 +413,7 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
                 continue
             by_id[pid]["loaded"] = True
             # 重拍 meta 快照：插件按约定在 register() 里才把 META["name"]
-            # 换成已翻译文案（import 期翻译器未装，见 timer_l1/plugin.py 的
+            # 换成已翻译文案（import 期翻译器未装，见 timer/plugin.py 的
             # register 注释）—— 上面那份是 register 前的旧值，不重拍的话
             # 插件管理页永远显示中文原文。
             by_id[pid]["meta"] = dict(modules[pid].META)

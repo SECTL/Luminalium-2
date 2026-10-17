@@ -100,7 +100,7 @@ hiddenimports = [
     # 导入的（app/plugins/__init__.py 的 PLUGINS 表只是 id 字符串），静态分析
     # 看不到这层引用 —— 不列出来打包后所有正式插件都会「导入失败」跳过。
     # 新增正式插件时这里要同步加一行。
-    "app.plugins.timer_l1.plugin",
+    "app.plugins.timer.plugin",
     "app.plugins.blackboard.plugin",
     "app.plugins.spotlight.plugin",
     # 计时器 HTML 版（2026-10-17）懒加载 WebEngine：webview.py 只在第一次

@@ -6029,19 +6029,21 @@ def main() -> int:
                 # ---- 2026-10-06 用户指令：主题模式搬回「通用」----
                 # 「个性化」只剩强调色，本页因此变回 4 张卡。
                 # 2026-10-17 用户指令：语言组新增「旁白与配音语言」→ 5 张卡。
+                # ⚠️ 按 **objectName** 认卡、不按标题认：本机把界面语言切到
+                #    粵語（``app.language = yue_HK``）时，标题全变成译文，
+                #    按中文标题找必然全部落空（2026-10-17 实测就是这么红的）。
+                #    卡片数量 + 身份都不受翻译影响，断言才有意义。
                 cards = _collect_type(general, "SettingCard")
-                keep = [
-                    title for title in (
-                        "开机自启", "应用主题", "快捷方式锁定", "界面语言",
-                        "旁白与配音语言",
-                    )
-                    if _find_text(general, title) is not None
+                card_names = [
+                    "generalAutostart", "generalTheme", "generalShortcutsLock",
+                    "generalInterfaceLanguage", "generalNarrationLanguage",
                 ]
+                found = [n for n in card_names if _find_named(general, n) is not None]
                 check(
                     "通用页 5 张卡（开机自启 + 应用主题 + 快捷方式锁定 + 界面语言"
                     " + 旁白与配音语言）",
-                    len(cards) == 5 and len(keep) == 5,
-                    f"卡数={len(cards)} 找到={keep}",
+                    len(cards) == 5 and len(found) == 5,
+                    f"卡数={len(cards)} 找到={found}",
                 )
                 check(
                     "「强调色」没被一起搬回通用页（留在「个性化」）",

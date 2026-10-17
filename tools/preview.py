@@ -112,7 +112,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import time
 import sys
 from pathlib import Path
 
@@ -1343,15 +1342,13 @@ def _run_plugin_seams() -> int:
       有实体可聚焦 —— 空组区块高度为零，取景矩形会塌掉）；
     * ``plugin_demo_window.png`` —— ``_demo`` 夹具窗口（组件直接建实例，
       ``onClosing`` 的动作链路不演示）；
-    * ``plugin_timer_window(_picker)`` / ``plugin_blackboard_window`` /
-      ``plugin_spotlight_overlay`` / ``plugin_timer_settings`` /
-      ``plugin_spotlight_settings`` —— 三个正式插件的窗口与设置页
-      （计时器出两张：``_picker`` 是起跑前的滚轮页，主图是跑动态）
-      （2026-10-07 插件巡检补的覆盖：此前正式插件界面从没进过预览管线；
-      黑板灌两笔一幕展示例，走的是引擎 / QML 的真实数据通道，不是截图改图。
-      2026-10-17 计时器换成 HTML 版后，它的五个窗口场景随
-      ``ui/plugins/timer/TimerWindow.qml`` 一起撤出预览管线 —— WebView
-      窗口不走 QML 离屏渲染，设置页保留）。
+    * ``plugin_blackboard_window`` / ``plugin_spotlight_overlay`` /
+      ``plugin_timer_settings`` / ``plugin_spotlight_settings`` ——
+      正式插件的窗口与设置页（2026-10-07 插件巡检补的覆盖：此前正式插件
+      界面从没进过预览管线；黑板灌两笔一幕展示例，走的是引擎 / QML 的
+      真实数据通道，不是截图改图。2026-10-17 计时器换成 HTML 版后，它的
+      窗口场景随 ``ui/plugins/timer/TimerWindow.qml`` 一起撤出预览管线
+      —— WebView 窗口不走 QML 离屏渲染，设置页保留）。
 
     浅色主题（继承主进程的 ``LUMI_PREVIEW_THEME``）下文件名带 ``_light``
     后缀，不覆盖深色版。锁屏可跑（离屏渲染，窗口摆屏幕外）。
@@ -1440,14 +1437,14 @@ def _run_plugin_seams() -> int:
         return host
 
     page_host = _make_page_host(Path("plugins") / "_demo" / "DemoSettings.qml", 1800)
-    timer_host = _make_page_host(Path("plugins") / "timer_l1" / "TimerSettings.qml", 4200)
+    timer_host = _make_page_host(Path("plugins") / "timer" / "TimerSettings.qml", 4200)
     spotlight_host = _make_page_host(
         Path("plugins") / "spotlight" / "SpotlightSettings.qml", 5400
     )
     # 插件管理页：**列表填满**的那一版（空态那张由主进程出，名字不变）。
     # 顺手把计时器的启用开关拨到 off（只改内存）：好让「已禁用」这一档在图上
     # 有个实例 —— 行副文案与开关的关态都得看得见，不然两样都只能靠真机试。
-    config.set("plugins.timer_l1.enabled", False, persist=False)
+    config.set("plugins.timer.enabled", False, persist=False)
     backend.reload_from_config()
     plugins_page_host = _make_page_host(Path("settings") / "Plugins.qml", 6600)
 
@@ -1552,27 +1549,10 @@ def _run_plugin_seams() -> int:
         window._plugin_component = component  # 持有引用防引擎回收
         if setup is not None:
             # ⚠️ 灌状态必须等 show() 之后（见下面 show 循环里的注释）：
-            # 窗口还没暴露时 Canvas 类（计时器圆环）不落笔，先灌再显示会抓到
-            # 一张「有布局没画面」的图（2026-10-17 计时器换 timer_l1 时实锤）。
+            # 窗口还没暴露时 Canvas 类不落笔，先灌再显示会抓到一张
+            # 「有布局没画面」的图（2026-10-17 实锤）。
             window._pending_setup = setup
         return window
-
-    def _seed_timer(window):
-        # 引擎没在跑（stub 句柄 .window 恒 None），手动灌一拍「剩 2:22」的
-        # 状态 —— 走的正是 Python 引擎 setProperty 的同一条显示通道。
-        # 2026-10-17 起计时器换成从 L1 移植的 ``timer_l1``，属性名跟着换
-        # （``page`` / ``tmState`` / ``tmTotal`` / ``tmRemaining``），并且要
-        # 显式给 ``page = timer`` + ``running`` 才会渲染跑动版式（默认页是
-        # 秒表，跟 L1 一致）。``quickAdds`` 同理由：引擎心跳没跑，快捷加时
-        # 按钮不会自己出现，灌两份默认值（1 分 / 15 秒）。
-        window.setProperty("page", "timer")
-        window.setProperty("tmState", "running")
-        window.setProperty("tmTotal", 300000)
-        window.setProperty("tmRemaining", 142000)
-        window.setProperty("quickAdds", [
-            {"value": 1, "unit": "minute", "seconds": 60},
-            {"value": 15, "unit": "second", "seconds": 15},
-        ])
 
     def _seed_blackboard(window):
         # 直接灌两笔已落定的笔画 + 一个单击点（点路径 2026-10-07 才有，
@@ -1590,10 +1570,6 @@ def _run_plugin_seams() -> int:
         window.setProperty("strokes", strokes)
         window.setProperty("dirtyAll", True)
 
-    plugin_windows.append(_make_plugin_window(
-        Path("timer_l1") / "TimerWindow.qml",
-        {"visible": True}, _seed_timer,
-    ))
     plugin_windows.append(_make_plugin_window(
         Path("blackboard") / "BlackboardWindow.qml",
         {"visible": True}, _seed_blackboard,
@@ -1690,30 +1666,9 @@ def _run_plugin_seams() -> int:
             f"plugin_blackboard_window{suffix}.png",
             f"plugin_spotlight_overlay{suffix}.png",
         ]
-        # ⚠️ 侧边栏版的计时器把三页交给 NavigationView 按需加载（异步创建 +
-        # 入场动画），且外部 ``push`` 会排在自己的首推之后 —— 直接抓会拿到
-        # 「侧栏在、页面还是默认页」的中间态。抓它之前先转一会儿事件循环
-        # （2026-10-17 实测必需，约 800ms 才收敛）。
-        timer_window = plugin_windows[0] if plugin_windows else None
-        if timer_window is not None:
-            for _ in range(40):
-                qt_app.processEvents()
-                time.sleep(0.02)
-
         for name, window in zip(names, plugin_windows):
             if window is not None and not _grab(name, window):
                 failed = True
-        # 计时器「起跑前」那一版单独出一张（2026-10-17 按 L1 版式重做后补）：
-        # 滚轮 + 常用时间才是 L1 的主版式，只出跑动态那张等于这一页没进视觉回归。
-        if timer_window is not None:
-            timer_window.setProperty("tmState", "picker")
-            # 页内三层（起跑前 / 跑动 / 时间到）是 opacity 过渡，切完要等一拍
-            for _ in range(15):
-                qt_app.processEvents()
-                time.sleep(0.02)
-            if not _grab(f"plugin_timer_window_picker{suffix}.png", timer_window):
-                failed = True
-            timer_window.setProperty("tmState", "running")
         if plugin_top is not None and not _grab(
             f"plugin_top_window{suffix}.png", plugin_top
         ):

@@ -127,6 +127,8 @@ Rin.FluentPage {
     }
 
     Rin.SettingCard {
+        objectName: "generalShortcutsLock"
+
         Layout.fillWidth: true
         title: qsTr("快捷方式锁定")
         description: qsTr("锁定后面板上的「编辑」按钮消失，防止误改")
@@ -156,6 +158,8 @@ Rin.FluentPage {
 
     Rin.SettingCard {
         id: card
+        objectName: "generalInterfaceLanguage"
+
         Layout.fillWidth: true
         title: qsTr("界面语言")
         description: qsTr("切换后需要重新加载应用")
@@ -218,8 +222,10 @@ Rin.FluentPage {
         也不共用一个下拉。
 
         版式：下拉（与「界面语言」同款同宽，保持语言类设置项的一致观感）+
-        紧邻的一颗试听按钮，即 Windows 11「辅助功能 → 语音」那套「下拉 + 预览」
-        的做法。为什么不做成「下拉里每一项右侧各挂一颗按钮」：RinUI 的
+        紧邻的一颗试听按钮（放在下拉**左侧**：同一组里两张卡的下拉右沿因此落在
+        同一条竖线上 —— 按钮若挂在右边，这一行的下拉会被挤左 40px，看着像没对齐）。
+        这是 Windows 11「辅助功能 → 语音」那套「下拉 + 预览」的做法。
+        为什么不做成「下拉里每一项右侧各挂一颗按钮」：RinUI 的
         ``ComboBox`` 弹出层是它自己的 ``ContextMenu``（``model: delegateModel``），
         没有 delegate 注入口，硬做就得改 site-packages —— 仓储铁律不允许。
         当前选中项就是试听对象，切一档点一下就听到那一档，功能上等价。
@@ -239,7 +245,7 @@ Rin.FluentPage {
 
         Layout.fillWidth: true
         title: qsTr("旁白与配音语言")
-        description: qsTr("旁白与配音类语音统一使用的语种，可点右侧按钮试听")
+        description: qsTr("旁白与配音类语音统一使用的语种，可试听该语种的示例")
         icon.name: "ic_fluent_speaker_2_20_regular"
 
         //: 候选表来自后端（每项 { code, name, sampleAvailable }）。
@@ -272,31 +278,8 @@ Rin.FluentPage {
             }
         }
 
-        Rin.ComboBox {
-            id: narrationCombo
-            Layout.preferredWidth: 150
-
-            model: narrationCard.languages
-            textRole: "name"
-            currentIndex: {
-                var index = 0
-                for (var i = 0; i < narrationCard.languages.length; ++i) {
-                    if (narrationCard.languages[i].code === Backend.narrationLanguage) {
-                        index = i
-                        break
-                    }
-                }
-                return index
-            }
-            // 换语种时先把还在放的那条停掉，否则会听到上一档的尾音。
-            onActivated: {
-                if (narrationCard.previewingCode !== "")
-                    Backend.stopNarrationSample()
-                Backend.setSetting("narration_language",
-                                   narrationCard.languages[currentIndex].code)
-            }
-        }
-
+        // 试听按钮排在**下拉之前**：同一组里「界面语言」那张卡的下拉右沿与
+        // 这张卡的下拉右沿因此落在同一条竖线上（按钮挂右侧会把下拉挤左 40px）。
         Rin.ToolButton {
             id: previewButton
             objectName: "narrationPreviewButton"
@@ -325,6 +308,31 @@ Rin.FluentPage {
                          ? qsTr("停止试听")
                          : qsTr("试听该语种的配音示例"))
                 visible: parent.hovered
+            }
+        }
+
+        Rin.ComboBox {
+            id: narrationCombo
+            Layout.preferredWidth: 150
+
+            model: narrationCard.languages
+            textRole: "name"
+            currentIndex: {
+                var index = 0
+                for (var i = 0; i < narrationCard.languages.length; ++i) {
+                    if (narrationCard.languages[i].code === Backend.narrationLanguage) {
+                        index = i
+                        break
+                    }
+                }
+                return index
+            }
+            // 换语种时先把还在放的那条停掉，否则会听到上一档的尾音。
+            onActivated: {
+                if (narrationCard.previewingCode !== "")
+                    Backend.stopNarrationSample()
+                Backend.setSetting("narration_language",
+                                   narrationCard.languages[currentIndex].code)
             }
         }
     }

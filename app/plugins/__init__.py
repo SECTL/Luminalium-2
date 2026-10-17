@@ -17,6 +17,10 @@
 """
 
 # 正式插件（2026-10-06 用户指令：计时器 / 小黑板 / 聚光灯首批落地）。
-# 2026-10-17 用户指令：原来的计时器换成从 Luminalium 1 移植的
-# ``timer_l1``（旧 ``timer`` 插件连同 ``ui/plugins/timer/`` 一起删除）。
-PLUGINS: list[str] = ["timer_l1", "blackboard", "spotlight"]
+# 2026-10-17 计时器定为 Lmn-copy HTML 版原样移植（WebView，见
+# ``timer/plugin.py`` 头注释），id 仍是 ``timer``。当日曾一度改挂 RinUI
+# 重写的 ``timer_l1``（只有 QML 侧与这张表，Python 插件始终没建起来，
+# 启动即 ModuleNotFoundError），用户拍板「留 HTML 版的那套」后整套撤回。
+# 那段实现在提交 74e102d 里；哪天要翻回来，先把 app/plugins/timer_l1/
+# 补全再动这张表。
+PLUGINS: list[str] = ["timer", "blackboard", "spotlight"]

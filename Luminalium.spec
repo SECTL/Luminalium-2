@@ -70,13 +70,14 @@ datas = [
 # ``RinUI/...``（collect_data_files 默认就是这样）。
 datas += collect_data_files("RinUI")
 
-# 正式插件的资产（2026-10-06 计时器插件）：app/plugins/<id>/ 下的数据文件
+# 正式插件的资产：app/plugins/<id>/ 下的数据文件
 # PyInstaller 不会自动带，必须显式列。目标路径要和插件运行时的取法对齐 ——
-# plugin.py 用 ``Path(__file__).parent / "assets"``，冻结后 __file__ 落在
+# plugin.py 用 ``Path(__file__).parent / ...``，冻结后 __file__ 落在
 # ``_MEIPASS/app/plugins/<id>/``，所以第二段保持同样的相对结构。
+# timer（2026-10-17 起为 HTML 版）：web/timer.html 是页面本体。
 datas += [
-    (str(ROOT / "app" / "plugins" / "timer" / "assets"),
-     os.path.join("app", "plugins", "timer", "assets")),
+    (str(ROOT / "app" / "plugins" / "timer" / "web"),
+     os.path.join("app", "plugins", "timer", "web")),
 ]
 
 # ------------------------------------------------------------------ 隐藏导入
@@ -102,6 +103,12 @@ hiddenimports = [
     "app.plugins.timer_l1.plugin",
     "app.plugins.blackboard.plugin",
     "app.plugins.spotlight.plugin",
+    # 计时器 HTML 版（2026-10-17）懒加载 WebEngine：webview.py 只在第一次
+    # 开窗时才被 import，静态分析看不到，冻结后必须显式带这三件，否则
+    # 打包版开计时器直接 ImportError。
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineWidgets",
+    "PySide6.QtWebChannel",
     # 自建墨迹包（2026-10-07）：application.py / 工具脚本都是在函数体里
     # 延迟导入（``from .ink import register_qml_types``），PyInstaller 的静态
     # 分析可能扫不到这层引用；漏带的话打包后 QML 里 ``import Luminalium.Ink``

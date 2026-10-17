@@ -8,6 +8,16 @@
 `app/plugins/_demo_dep/`），再加上仓库根目录 `AGENTS.md` 里的通用约定
 （界面文案中文、QML 头注释习惯、窗口不加 `Qt.FramelessWindowHint` 等，
 本文不再重复，直接去读它）。
+两个正式插件（`app/plugins/blackboard/`、`app/plugins/spotlight/`，
+2026-10-06 落地的活范例，比夹具复杂得多，照着实物抄最快）、两个验收
+夹具（`app/plugins/_demo/` 与 `app/plugins/_demo_dep/`），再加上仓库根
+目录 `AGENTS.md` 里的通用约定（界面文案中文、QML 头注释习惯、窗口不加
+`Qt.FramelessWindowHint` 等，本文不再重复，直接去读它）。
+
+⚠️ `app/plugins/timer/` 也是正式插件，但 2026-10-17 起它是用户指令要求
+原样移植的 HTML（WebView）版，自建 widget 窗口、页面内注标题栏，是
+「没有网页前端 / 窗口走 register_window / 禁 FramelessWindowHint」三条
+规矩的**一次性例外** —— 写新插件请抄 blackboard / spotlight，别抄它。
 
 插件能做什么：往快捷面板加磁贴、往放映控制条加工具和动作、往设置窗口加
 整页、注册自己的设置键、往主界面编辑器加分组、开自己的窗口、开自己的
@@ -577,6 +587,8 @@ Python tr 的原因。
 | `ui/plugins/_demo/DemoSettings.qml` | 插件设置页：Rin.FluentPage、SettingCard、开关绑 `Backend.settings.<key>`、`Qt.binding` 重装绑定的坑 |
 | `app/plugins/timer_l1/plugin.py` | **正式插件**：Python 侧状态引擎（藏在窗口背后继续走）、动作串带参（`start:90`，单位秒）、设置键 side_effect、winsound 系统提示音 |
 | `ui/plugins/timer_l1/TimerWindow.qml` | 正式插件的窗口写法：Python 推状态、QML 纯绑定、全按钮走动作通道；多页切换用「锚定页」而不是 StackLayout（后者不给子项铺满，注释里有坑） |
+| `app/plugins/blackboard/plugin.py` | **正式插件**：dock 驻留组件注册、自管窗口、导出对话框走动作通道（不私开 Backend 槽） |
+| `ui/plugins/blackboard/BlackboardWindow.qml` | 正式插件的窗口写法：Canvas 墨迹、数据走导出目录 file URL |
 | `app/plugins/spotlight/plugin.py` | 叠加窗口 + 光标轮询 + 全局键轮询（`GetAsyncKeyState`）+ 叠加窗口的 `set_hole` 喂洞 |
 
 上手路径建议：开 `app.debug` 把这两个夹具跑起来，设置「插件」页里能看到

@@ -323,6 +323,21 @@ class InkLayer(QQuickItem):
     def currentPage(self) -> int:  # noqa: N802 - 与 Qt 侧命名风格一致
         return self._page
 
+    # ------------------------------------------------- canUndo / canRedo
+    # 2026-10-08 小黑板搬到 InkLayer（用户指令：照搬叠加层自建批注）：撤销 /
+    # 重做按钮的 enabled 要绑层的真操作栈，QML 侧此前自己维护快照栈。
+    # 只读 + notify=inkChanged：每次落笔 / 撤销 / 重做 / 清屏都会发 inkChanged，
+    # 按钮态随每一次模型变动刷新，不需要独立的变更信号。
+
+    def _get_can_undo(self) -> bool:
+        return self.store.can_undo(self._page)
+
+    def _get_can_redo(self) -> bool:
+        return self.store.can_redo(self._page)
+
+    canUndo = Property(bool, _get_can_undo, notify=inkChanged)
+    canRedo = Property(bool, _get_can_redo, notify=inkChanged)
+
     # ------------------------------------------------------------ 笔画 API
 
     def _mode_for_tool(self) -> StrokeMode | None:

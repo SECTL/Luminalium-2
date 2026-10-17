@@ -19,6 +19,22 @@
   键盘用 ``GetAsyncKeyState`` 全局轮询，不依赖焦点。调整是**会话级**的，
   不写回配置（默认值走设置页的滑条）。
 
+2026-10-08 修复「✕ 按钮被光斑吞掉」：光斑跟光标走，光标一靠近顶部胶囊，
+胶囊就掉进镂空里被 ``SetWindowRgn`` 一起裁掉，主退出路径断。现在 QML 侧
+胶囊把自身几何经 ``plugin:spotlight:pill-rect:<x>,<y>,<w>,<h>`` 上报，
+本模块存为 ``_pill_rect``，每次 ``set_hole`` 都把它作为**保留矩形**带上 ——
+窗口管理器塑形时镂空算完再把这个矩形 ``RGN_OR`` 补回，任何光斑位置下
+胶囊都可见可点。
+
+2026-10-08 跨屏粘滞迁移：早期激活时按光标定屏后就把 ``_screen`` 锁死，
+光标跑到另一块屏，光斑只能贴边傻等（双屏教室是常态，「关了重开」不是
+答案）。现在每拍比对 ``screenAt(光标)`` 与 ``_screen``：不同就计数、
+相同就清零，连续 ``_SCREEN_MIGRATE_TICKS`` 拍（25ms×12≈300ms）稳定停
+在另一屏才把整只遮罩迁过去（``RegisteredOverlay.move_to_screen``），
+圆心归新屏中心、半径按新屏短边重算。迟滞计数是为屏边缘抖动 —— 交界
+处来回晃几拍不该搬一次家；单屏环境 ``screenAt`` 恒等于 ``_screen``，
+计数器天然不触发。
+
 设置：遮罩浓度 ``plugins.spotlight.dim``（0–85）、光斑大小
 ``plugins.spotlight.radius``（屏宽短边的百分比，6–70），都经设置页滑条
 实时生效（浓度是 QML 直接绑设置键，大小经 side_effect 改本模块并立即
@@ -61,6 +77,11 @@ _RADIUS_STEP_PERCENT = 2
 #: 且 CPU 占用可忽略（一拍一次 GetCursorPos + 一次区域重算）。
 _POLL_INTERVAL_MS = 25
 
+#: 跨屏迁移的迟滞阈值（轮询拍数）。光标在屏边缘抖动（交界处两块屏之间
+#: 来回晃几拍）不该把整块遮罩反复搬家 —— 连续 12 拍（25ms×12≈300ms）
+#: 稳定停在另一屏上才认定用户真的换了屏。
+_SCREEN_MIGRATE_TICKS = 12
+
 #: 键盘 ``+`` / ``-``（VK_OEM_PLUS / VK_OEM_MINUS）与小键盘 ``+`` / ``-``
 #: （VK_ADD / VK_SUBTRACT）的虚拟键码。
 _VK_OEM_PLUS = 0xBB
@@ -73,12 +94,21 @@ _poll_timer: Optional[Any] = None
 
 #: 遮罩是否开着（轮询器只在这时跑）
 _active = False
-#: 光斑当前所在屏（激活那一刻按光标定死；光标跑出这块屏就贴边等着）
+#: 光斑当前所在屏（激活时按光标定屏；之后光标跨屏稳定停留约 300ms
+#: 即粘滞迁移过去，见模块头注释 2026-10-08 跨屏条目）
 _screen: Optional[Any] = None
+#: 光标连续停留在另一块屏上的拍数（回到本屏即清零；阈值见
+#: ``_SCREEN_MIGRATE_TICKS``）
+_screen_migrate_ticks = 0
 #: 光斑圆心（屏幕局部逻辑坐标）；初始 = 屏幕中心，之后跟光标
 _center = QPoint(0, 0)
 _radius_percent = 24
 _radius_px = 0.0
+
+#: QML 控制胶囊上报的自身几何 ``(x, y, w, h)``（窗口局部逻辑坐标）。
+#: 塑形时作为保留矩形补回（理由见模块头注释 2026-10-08 条目）；
+#: 未上报时为 None —— 塑形照常，只是退回「胶囊可能被裁」的旧行为，不炸。
+_pill_rect: Optional[tuple[int, int, int, int]] = None
 
 #: ``+`` / ``-`` 键状态（边沿触发 + 按住连调）
 _plus_prev = False
@@ -102,7 +132,10 @@ def _apply_radius() -> None:
     short_side = min(geometry.width(), geometry.height())
     _radius_px = short_side * _radius_percent / 100.0
     if _overlay_handle is not None and _active:
-        _overlay_handle.set_hole(_center.x(), _center.y(), _radius_px)
+        _overlay_handle.set_hole(
+            _center.x(), _center.y(), _radius_px,
+            [_pill_rect] if _pill_rect else None,
+        )
 
 
 def _adjust_radius(delta: int) -> None:
@@ -114,25 +147,60 @@ def _adjust_radius(delta: int) -> None:
     _apply_radius()
 
 
-def _poll() -> None:
-    """轮询节拍：光斑跟光标 + 全局 ``+`` / ``-`` 调大小。
+def _migrate_to_screen(screen) -> None:
+    """把遮罩迁到 ``screen``：换屏、圆心归新屏中心、半径按新屏重算。
 
-    光标跑出光斑所在屏就把圆心**夹回屏内** —— 光斑贴边等着，光标回来
-    立刻跟上（跨屏就交给用户重新开一次，一只遮罩盖两块屏没有好答案）。
+    半径是「屏短边的百分比」，换屏后短边可能不同，必须经
+    :func:`_apply_radius` 重算；它内部那次 ``set_hole`` 照常带上胶囊
+    保留矩形，迁移不丢塑形上下文（计数器清零，防止落地第一拍又触发）。
+    """
+    global _screen, _center, _screen_migrate_ticks
+    old_name = _screen.name() if _screen is not None else "?"
+    _screen = screen
+    geometry = screen.geometry()
+    _center = QPoint(geometry.width() // 2, geometry.height() // 2)
+    _screen_migrate_ticks = 0
+    if _overlay_handle is not None:
+        _overlay_handle.move_to_screen(screen)
+    _apply_radius()
+    log.info("聚光灯遮罩已迁到屏幕 %s（原 %s）", screen.name(), old_name)
+
+
+def _poll() -> None:
+    """轮询节拍：光斑跟光标 + 跨屏粘滞迁移 + 全局 ``+`` / ``-`` 调大小。
+
+    光标在本屏：照常跟手。光标到了另一块屏：先计数不搬 —— 屏边缘抖动
+    （交界处来回晃）会把遮罩反复搬家，连续 ``_SCREEN_MIGRATE_TICKS`` 拍
+    （≈300ms）都停在新屏上才迁移；未满阈值时圆心照旧夹回本屏贴边等着。
+    单屏环境 ``screenAt`` 恒等于 ``_screen``，计数器天然不触发。
     """
     global _plus_prev, _minus_prev, _last_adjust, _center
+    global _screen, _screen_migrate_ticks
 
     if _screen is None:
         return
-    geometry = _screen.geometry()
     cursor = QCursor.pos()
+    hovered = QGuiApplication.screenAt(cursor)
+    # QScreen 的 == 按底层指针判等（PySide 对 QObject 的约定），同一台
+    # 显示器每次 screenAt 拿到的都是同一对象，直接比即可
+    if hovered is not None and hovered != _screen:
+        _screen_migrate_ticks += 1
+        if _screen_migrate_ticks >= _SCREEN_MIGRATE_TICKS:
+            _migrate_to_screen(hovered)
+    else:
+        _screen_migrate_ticks = 0
+
+    geometry = _screen.geometry()
     x = cursor.x() - geometry.left()
     y = cursor.y() - geometry.top()
     x = max(0, min(geometry.width(), x))
     y = max(0, min(geometry.height(), y))
     _center = QPoint(x, y)
     if _overlay_handle is not None:
-        _overlay_handle.set_hole(x, y, _radius_px)
+        _overlay_handle.set_hole(
+            x, y, _radius_px,
+            [_pill_rect] if _pill_rect else None,
+        )
 
     now = time.monotonic()
     plus = _key_down(_VK_OEM_PLUS) or _key_down(_VK_ADD)
@@ -149,12 +217,13 @@ def _poll() -> None:
 
 
 def _show_overlay() -> None:
-    global _active, _screen, _center
+    global _active, _screen, _center, _screen_migrate_ticks
     screen = QGuiApplication.screenAt(QCursor.pos()) \
         or QGuiApplication.primaryScreen()
     if screen is None:
         return
     _screen = screen
+    _screen_migrate_ticks = 0
     geometry = screen.geometry()
     _center = QPoint(geometry.width() // 2, geometry.height() // 2)
     _overlay_handle.show()
@@ -191,6 +260,19 @@ def _on_action(action: str) -> None:
     elif action == "plugin:spotlight:smaller":
         if _active:
             _adjust_radius(-_RADIUS_STEP_PERCENT)
+    elif action.startswith("plugin:spotlight:pill-rect:"):
+        # 动作后缀带参（插件开发指南约定）：QML 胶囊上报自身几何，
+        # 逗号分隔 4 个整数；非法负载只记日志，不动旧值
+        global _pill_rect
+        try:
+            parts = [int(float(v))
+                     for v in action.rsplit(":", 1)[1].split(",")]
+        except ValueError:
+            parts = []
+        if len(parts) == 4 and parts[2] > 0 and parts[3] > 0:
+            _pill_rect = (parts[0], parts[1], parts[2], parts[3])
+        else:
+            log.info("聚光灯收到非法胶囊几何: %s", action)
     else:
         log.info("聚光灯收到未知动作: %s", action)
 

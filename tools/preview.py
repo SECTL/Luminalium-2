@@ -124,7 +124,7 @@ for _path in (str(ROOT), str(TOOLS)):
 os.chdir(ROOT)
 
 from PySide6.QtCore import QCoreApplication, QObject, QTimer, QUrl  # noqa: E402
-from PySide6.QtGui import QGuiApplication  # noqa: E402
+from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlComponent  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 from RinUI import BackdropEffect, RinUIWindow, Theme  # noqa: E402
@@ -1348,8 +1348,10 @@ def _run_plugin_seams() -> int:
       ``plugin_spotlight_settings`` —— 三个正式插件的窗口与设置页
       （计时器出两张：``_picker`` 是起跑前的滚轮页，主图是跑动态）
       （2026-10-07 插件巡检补的覆盖：此前正式插件界面从没进过预览管线；
-      计时器灌一拍「剩 2:22」、黑板灌两笔一幕展示例，走的都是引擎 /
-      QML 的真实数据通道，不是截图改图）。
+      黑板灌两笔一幕展示例，走的是引擎 / QML 的真实数据通道，不是截图改图。
+      2026-10-17 计时器换成 HTML 版后，它的五个窗口场景随
+      ``ui/plugins/timer/TimerWindow.qml`` 一起撤出预览管线 —— WebView
+      窗口不走 QML 离屏渲染，设置页保留）。
 
     浅色主题（继承主进程的 ``LUMI_PREVIEW_THEME``）下文件名带 ``_light``
     后缀，不覆盖深色版。锁屏可跑（离屏渲染，窗口摆屏幕外）。
@@ -1526,8 +1528,9 @@ def _run_plugin_seams() -> int:
             demo_window.setPosition(OFFSCREEN_X - 2400, OFFSCREEN_Y - 1000)
             demo_window.show()
 
-    # ---- 三个正式插件的窗口（2026-10-07 插件巡检补的覆盖：此前正式插件
-    # 的窗口 / 设置页从没进过预览管线，版式坏了只能靠真机肉眼）----
+    # ---- 正式插件的窗口（2026-10-07 插件巡检补的覆盖：此前正式插件
+    # 的窗口 / 设置页从没进过预览管线，版式坏了只能靠真机肉眼。
+    # 计时器 2026-10-17 起是 HTML 版，WebView 窗口不进本管线）----
     plugin_windows = []
 
     def _make_plugin_window(file_name, initial=None, setup=None):
@@ -1684,7 +1687,6 @@ def _run_plugin_seams() -> int:
         if settings_win is not None:
             targets.append((f"settings_nav_plugin_sep{suffix}.png", settings_win))
         names = [
-            f"plugin_timer_window{suffix}.png",
             f"plugin_blackboard_window{suffix}.png",
             f"plugin_spotlight_overlay{suffix}.png",
         ]

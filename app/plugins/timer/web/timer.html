@@ -6,29 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Timer</title>
   <style>
-    @font-face {
-      font-family: "Google Sans Flex";
-      src: url("../../../fonts/Google Sans Flex.ttf") format("truetype");
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "MiSans VF";
-      src: url("../../../fonts/MiSansVF.ttf") format("truetype");
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "MiSans Japanese VF";
-      src: url("../../../fonts/MiSansJapaneseVF.ttf") format("truetype");
-      font-display: swap;
-    }
-
-    @font-face {
-      font-family: "MiSans TC VF";
-      src: url("../../../fonts/MiSansTCVF.ttf") format("truetype");
-      font-display: swap;
-    }
+    /* 2026-10-19 插件审计 t6（F6）：此处原有四条 @font-face（Google Sans
+       Flex / MiSans 三个变体，src 指向 ../../../fonts/*.ttf）。仓库自
+       Lmn-copy 原样移植起就不存在 app/fonts 目录，四条声明全部 404，
+       实际从未生效过。按「原样移植=修缺陷+同步注释」口径删除；字体
+       栈（--font-stack）在这些家族名后接有 "Segoe UI"/system-ui 回落，
+       页面实际渲染走系统字体栈，观感与删除前一致。 */
 
 
     :root[data-disable-animations="true"] *,
@@ -150,16 +133,6 @@
       gap: 4px;
       flex-shrink: 0;
       margin-top: 0;
-    }
-
-    .drag-area {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 40px;
-      -webkit-app-region: drag;
-      z-index: 100;
     }
 
     .nav-item {
@@ -1223,8 +1196,12 @@
       border-radius: 12px;
       border: 1px solid var(--divider);
       box-shadow: none;
-      width: 320px;
-      height: 380px;
+      /* 迷你窗可缩放（WM_NCHITTEST 边缘热区仍活跃），卡片必须跟随窗口。
+         原尺寸 340x400 窗口下 calc(100% - 20px) = 320x380，与旧固定值
+         完全一致；固定值会造成放大死区/缩小裁切（2026-10-19 插件审计
+         F8：移植只搬了缩小档位的一半）。 */
+      width: calc(100% - 20px);
+      height: calc(100% - 20px);
       position: absolute;
       top: 50%;
       left: 50%;
@@ -1406,10 +1383,6 @@
       fill: currentColor;
     }
 
-    body.mini-mode .mini-bottom-text {
-      display: none !important;
-    }
-
     body:not(.mini-mode) .mini-top-bar {
       display: none;
     }
@@ -1419,10 +1392,6 @@
     }
 
     body:not(.mini-mode) .mini-controls {
-      display: none;
-    }
-
-    body:not(.mini-mode) .mini-bottom-text {
       display: none;
     }
 
@@ -1759,8 +1728,6 @@
               </button>
             </div>
 
-            <div class="mini-bottom-text" id="miniBottomText">计时中</div>
-
             <div class="mini-exit-overlay" onclick="toggleMiniMode()">
               <div class="icon-restore">
                 <svg viewBox="0 0 24 24">
@@ -1823,7 +1790,7 @@
     const I18N = {
       "zh-CN": {
         "app.timer": "计时器",
-        "app.name": "荧素万演",
+        "app.name": "Luminalium 2",
         "nav.stopwatch": "秒表",
         "nav.timer": "计时",
         "nav.clock": "时钟",
@@ -1838,6 +1805,7 @@
         "timer.targetInfo": "将在 <span class=\"highlight\">{time}</span> 后响铃",
         "timer.targetInfoPast": "目标时间已过，将设为明天",
         "timer.totalSeconds": "共{n}秒",
+        "timer.miniTotal": "总计 {n} 分钟",
         "timer.quickAdd.short.second": "秒",
         "timer.quickAdd.short.minute": "分",
         "timer.presets": "常用时间",
@@ -1845,7 +1813,8 @@
         "timer.exitFullscreen": "退出全屏",
         "bell.timeUp": "时间到",
         "dialog.exit.title": "确认退出",
-        "dialog.exit.desc": "计时器正在运行，退出将清空当前计时进度。确定要退出吗？",
+        "dialog.exit.desc": "计时器将在后台继续运行。确定要关闭窗口吗？",
+        "dialog.exit.descIdle": "确定要关闭窗口吗？",
         "dialog.cancel": "取消",
         "dialog.confirm": "确定",
         "watermark.1": "开发中版本",
@@ -1871,6 +1840,7 @@
         "timer.targetInfo": "將在 <span class=\"highlight\">{time}</span> 後響鈴",
         "timer.targetInfoPast": "目標時間已過，將設為明天",
         "timer.totalSeconds": "共{n}秒",
+        "timer.miniTotal": "總計 {n} 分鐘",
         "timer.quickAdd.short.second": "秒",
         "timer.quickAdd.short.minute": "分",
         "timer.presets": "常用時間",
@@ -1879,6 +1849,7 @@
         "bell.timeUp": "時間到",
         "dialog.exit.title": "確認關閉",
         "dialog.exit.desc": "計時器將在後台繼續運行。確定要關閉窗口嗎？",
+        "dialog.exit.descIdle": "確定要關閉窗口嗎？",
         "dialog.cancel": "取消",
         "dialog.confirm": "確定",
         "watermark.1": "開發中版本",
@@ -1904,6 +1875,7 @@
         "timer.targetInfo": "將在 <span class=\"highlight\">{time}</span> 後響鈴",
         "timer.targetInfoPast": "目標時間已過，將設為明天",
         "timer.totalSeconds": "總共 {n} 秒",
+        "timer.miniTotal": "總共 {n} 分鐘",
         "timer.quickAdd.short.second": "秒",
         "timer.quickAdd.short.minute": "分",
         "timer.presets": "常用時間",
@@ -1912,6 +1884,7 @@
         "bell.timeUp": "時間到喇",
         "dialog.exit.title": "確認關閉",
         "dialog.exit.desc": "計時器會喺後台繼續行。確定要關閉窗口？",
+        "dialog.exit.descIdle": "確定要關閉窗口？",
         "dialog.cancel": "算啦",
         "dialog.confirm": "確定",
         "watermark.1": "開發中版本",
@@ -1937,6 +1910,7 @@
         "timer.targetInfo": "<span class=\"highlight\">{time}</span> 後に通知",
         "timer.targetInfoPast": "過ぎた時刻は明日に設定",
         "timer.totalSeconds": "合計 {n} 秒",
+        "timer.miniTotal": "合計 {n} 分",
         "timer.quickAdd.short.second": "秒",
         "timer.quickAdd.short.minute": "分",
         "timer.presets": "よく使う時間",
@@ -1944,7 +1918,8 @@
         "timer.exitFullscreen": "全画面を終了",
         "bell.timeUp": "時間になりました",
         "dialog.exit.title": "終了の確認",
-        "dialog.exit.desc": "タイマーが実行中です。終了すると現在の計時はリセットされます。終了してもよろしいですか？",
+        "dialog.exit.desc": "タイマーはバックグラウンドで動き続けます。ウィンドウを閉じますか？",
+        "dialog.exit.descIdle": "ウィンドウを閉じてもよろしいですか？",
         "dialog.cancel": "キャンセル",
         "dialog.confirm": "OK",
         "watermark.1": "開発中バージョン",
@@ -1970,6 +1945,7 @@
         "timer.targetInfo": "Rings in <span class=\"highlight\">{time}</span>",
         "timer.targetInfoPast": "Time passed, set for tomorrow",
         "timer.totalSeconds": "Total {n} seconds",
+        "timer.miniTotal": "Total {n} min",
         "timer.quickAdd.short.second": "s",
         "timer.quickAdd.short.minute": "m",
         "timer.presets": "Common Times",
@@ -1977,7 +1953,8 @@
         "timer.exitFullscreen": "Exit Fullscreen",
         "bell.timeUp": "Time is up",
         "dialog.exit.title": "Confirm exit",
-        "dialog.exit.desc": "Timer is running. Exiting will clear the current progress. Are you sure?",
+        "dialog.exit.desc": "The timer will keep running in the background. Close this window?",
+        "dialog.exit.descIdle": "Close this window?",
         "dialog.cancel": "Cancel",
         "dialog.confirm": "Confirm",
         "watermark.1": "In-Development",
@@ -2034,8 +2011,27 @@
       return animationsDisabled() ? 0 : ms;
     }
 
+    // F14（2026-10-19 todo 24）：滚轮程序滚动的唯一入口。目标值落定前
+    // 登记 wheelTarget 作为读取权威（getWheelValue/getTargetWheelValue
+    // 优先返回它），smooth 动画照常慢慢落；scroll 监听见收敛即清、
+    // pointerdown/wheel 监听见用户接管即清，交还 scrollTop 作数。
+    function scrollWheelTo(container, val) {
+      container.dataset.wheelTarget = String(val);
+      container.scrollTo({ top: val * 80, behavior: motionBehavior() });
+    }
+
     function timerSoundEnabled() {
       return settings?.Timer?.EnableSoundEffects !== false;
+    }
+
+    // 默认音 URL 由 Python 经 settings 注入（2026-10-19 todo T8/F12：
+    // 旧版把系统盘写死在页面里，改过系统盘盘符的机器静音）。
+    function alarmSoundUrl() {
+      return settings?.Timer?.AlarmSoundUrl || "";
+    }
+
+    function bellOffSoundUrl() {
+      return settings?.Timer?.BellOffSoundUrl || "";
     }
 
     async function refreshSettingsForAudio() {
@@ -2054,7 +2050,9 @@
 
     async function playSystemAudio(fileUrl) {
       await refreshSettingsForAudio();
-      if (!timerSoundEnabled()) return;
+      // 空串 URL（settings 未到/推导异常）直接跳过：不落回写死盘符，
+      // 到点铃声的权威回落在 Python（_alarm_sound_fallback），页面不崩。
+      if (!timerSoundEnabled() || !fileUrl) return;
       const audio = new Audio(fileUrl);
       audio.play().catch(e => console.error('Audio play error:', e));
     }
@@ -2177,7 +2175,7 @@
       const exitTitleEl = document.querySelector(".dialog-title");
       if (exitTitleEl) exitTitleEl.textContent = getText("dialog.exit.title") || exitTitleEl.textContent;
       const exitDescEl = document.querySelector(".dialog-desc");
-      if (exitDescEl) exitDescEl.textContent = getText("dialog.exit.desc") || exitDescEl.textContent;
+      if (exitDescEl) exitDescEl.textContent = exitDescText() || exitDescEl.textContent;
       const cancelBtn = document.querySelector(".dialog-btn.cancel");
       if (cancelBtn) cancelBtn.textContent = getText("dialog.cancel") || cancelBtn.textContent;
       const confirmBtn = document.querySelector(".dialog-btn.confirm");
@@ -2197,7 +2195,22 @@
 
     const exitDialog = document.getElementById('exitDialog');
 
+    function exitDescText() {
+      // 退出确认文案按状态取字面（2026-10-18 plugin-audit F3/A2）：计时中
+      // 对齐 zh-TW 语义「关窗=后台继续运行」；非计时状态不提「正在运行」。
+      // 语言包没有 idle 键（ug-CN 不在本轮改动范围）→ 用包内原 desc，
+      // 绝不回落到别语言的字面。
+      const running = tmState === 'running' || tmState === 'paused';
+      if (!running) {
+        const pack = I18N[currentLanguage];
+        if (pack && "dialog.exit.descIdle" in pack) return getText("dialog.exit.descIdle");
+      }
+      return getText("dialog.exit.desc");
+    }
+
     function showExitDialog() {
+      const exitDescEl = document.querySelector(".dialog-desc");
+      if (exitDescEl) exitDescEl.textContent = exitDescText() || exitDescEl.textContent;
       exitDialog.style.display = 'flex';
     }
 
@@ -2270,20 +2283,6 @@
       }
     }
 
-    function updateTheme(themeMode, themeId) {
-      if (!settings.Appearance) settings.Appearance = {};
-      if (themeMode) settings.Appearance.ThemeMode = themeMode;
-      if (themeId) settings.Appearance.ThemeId = themeId;
-      applyTheme(settings.Appearance.ThemeMode || themeMode || 'Light', settings.Appearance.ThemeId || themeId);
-    }
-
-    function updateAccentColor(hex) {
-      if (hex) {
-        document.documentElement.style.setProperty('--accent-color', hex);
-      }
-    }
-
-
     const navItems = document.querySelectorAll('.nav-item');
     const sections = document.querySelectorAll('.view-section');
     const pageTitle = document.getElementById('pageTitle');
@@ -2332,6 +2331,13 @@
         } else {
           currentMode = 'timer';
         }
+        // F22（2026-10-19 todo 24）：离开时钟页清掉秒级 interval——进页
+        // 已有防重守卫，此前离开不清，时钟在后台永远空转白费刷新；
+        // 重新进页 startClock 会重新置表
+        if (currentMode !== 'clock' && clockInterval) {
+          clearInterval(clockInterval);
+          clockInterval = null;
+        }
         setCountdownActive(currentMode === 'timer' && countdownUI.classList.contains('active'));
 
         const targetSec = document.getElementById(targetId);
@@ -2346,28 +2352,6 @@
         updateButtonState();
       });
     });
-
-    function updateButtonState() {
-      if (currentMode === 'stopwatch') {
-        mainIcon.className = swRunning ? 'icon-pause' : 'icon-play';
-      } else {
-        const isRunning = tmState === 'running';
-        mainIcon.className = isRunning ? 'icon-pause' : 'icon-play';
-        const miniPlayIcon = document.getElementById('miniPlayIcon');
-        if (miniPlayIcon) {
-          miniPlayIcon.innerHTML = isRunning 
-            ? '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>' 
-            : '<path d="M8 5v14l11-7z"/>';
-        }
-        const miniBottomText = document.getElementById('miniBottomText');
-        if (miniBottomText) {
-          if (tmState === 'running') miniBottomText.textContent = '计时中';
-          else if (tmState === 'paused') miniBottomText.textContent = '已暂停';
-          else if (tmState === 'finished') miniBottomText.textContent = '时间到';
-          else miniBottomText.textContent = '请设置时间';
-        }
-      }
-    }
 
     let swInterval, swStartTime, swElapsed = 0, swRunning = false;
     const swDisplay = document.getElementById('stopwatchDisplay');
@@ -2409,7 +2393,6 @@
     // --- Wheel Picker Logic ---
     function initWheel(id, max) {
       const container = document.getElementById(id);
-      const itemHeight = 80;
 
       // Create items
       const fragment = document.createDocumentFragment();
@@ -2425,15 +2408,22 @@
 
       // Scroll Handler
       container.addEventListener('scroll', () => {
+        // F14：滚动收敛到登记的目标值即清 wheelTarget，回落到读 scrollTop
+        const t = container.dataset.wheelTarget;
+        if (t !== undefined && Math.round(container.scrollTop / 80) === parseInt(t, 10)) {
+          delete container.dataset.wheelTarget;
+        }
         updateActiveItem(container);
       });
+      // 用户手动接管（拖动/点击/滚轮）即清 wheelTarget：之后的 scrollTop
+      // 才是用户改出来的值（F14）
+      container.addEventListener('pointerdown', () => { delete container.dataset.wheelTarget; });
+      container.addEventListener('wheel', () => { delete container.dataset.wheelTarget; }, { passive: true });
 
       // Click to select
       container.addEventListener('click', (e) => {
         if (e.target.classList.contains('wheel-item')) {
-          const val = parseInt(e.target.dataset.val);
-          const targetScroll = val * itemHeight;
-          container.scrollTo({ top: targetScroll, behavior: motionBehavior() });
+          scrollWheelTo(container, parseInt(e.target.dataset.val));
         }
       });
 
@@ -2473,7 +2463,6 @@
 
     function initTargetTimeWheel(id, max) {
       const container = document.getElementById(id);
-      const itemHeight = 80;
 
       const fragment = document.createDocumentFragment();
       for (let i = 0; i <= max; i++) {
@@ -2486,15 +2475,21 @@
       container.appendChild(fragment);
 
       container.addEventListener('scroll', () => {
+        // F14：滚动收敛到登记的目标值即清 wheelTarget，回落到读 scrollTop
+        const t = container.dataset.wheelTarget;
+        if (t !== undefined && Math.round(container.scrollTop / 80) === parseInt(t, 10)) {
+          delete container.dataset.wheelTarget;
+        }
         updateTargetActiveItem(container);
         updateTargetTimeInfo();
       });
+      // 用户手动接管即清 wheelTarget（F14），同 initWheel
+      container.addEventListener('pointerdown', () => { delete container.dataset.wheelTarget; });
+      container.addEventListener('wheel', () => { delete container.dataset.wheelTarget; }, { passive: true });
 
       container.addEventListener('click', (e) => {
         if (e.target.classList.contains('target-time-item')) {
-          const val = parseInt(e.target.dataset.val);
-          const targetScroll = val * itemHeight;
-          container.scrollTo({ top: targetScroll, behavior: motionBehavior() });
+          scrollWheelTo(container, parseInt(e.target.dataset.val));
         }
       });
 
@@ -2518,27 +2513,32 @@
 
     function getTargetWheelValue(id) {
       const container = document.getElementById(id);
-      const itemHeight = 80;
-      return Math.round(container.scrollTop / itemHeight);
+      // F14：程序滚动落定前 wheelTarget 是读取权威——smooth 中途的
+      // scrollTop 会随动画漂移，拿来当结果必错
+      const pending = container.dataset.wheelTarget;
+      if (pending !== undefined) return parseInt(pending, 10);
+      return Math.round(container.scrollTop / 80);
     }
 
     function setTargetWheelValue(id, val) {
       const container = document.getElementById(id);
       if (!container) return;
-      const itemHeight = 80;
-      container.scrollTo({ top: val * itemHeight, behavior: motionBehavior() });
+      scrollWheelTo(container, val);
     }
 
     function formatDurationText(totalSeconds) {
       const h = Math.floor(totalSeconds / 3600);
       const m = Math.floor((totalSeconds % 3600) / 60);
       const s = totalSeconds % 60;
+      // 单位词走 I18N（2026-10-18 plugin-audit F5：此前「小时/分/秒」
+      // 硬编码中文，英文用户在到点页看到 "Rings in 1小时 30分 0秒"）。
+      // 复用现成的 timer.hour/minute/second 键（各包已有，en 为 H/M/S）。
       if (h > 0) {
-        return `${h}小时 ${m}分 ${s}秒`;
+        return `${h}${getText("timer.hour")} ${m}${getText("timer.minute")} ${s}${getText("timer.second")}`;
       } else if (m > 0) {
-        return `${m}分 ${s}秒`;
+        return `${m}${getText("timer.minute")} ${s}${getText("timer.second")}`;
       }
-      return `${s}秒`;
+      return `${s}${getText("timer.second")}`;
     }
 
     function updateTargetTimeInfo() {
@@ -2616,9 +2616,7 @@
     function setWheelValue(id, val) {
       const container = document.getElementById(id);
       if (!container) return;
-      const itemHeight = 80;
-      const targetScroll = val * itemHeight;
-      container.scrollTo({ top: targetScroll, behavior: motionBehavior() });
+      scrollWheelTo(container, val);
     }
 
     function formatPresetLabel(sec) {
@@ -2653,6 +2651,11 @@
 
     // --- Countdown Logic ---
     let tmTotal = 0, tmRemaining = 0, tmInterval = null;
+    // 墙钟截止时刻（2026-10-18 plugin-audit F7）：interval 逐拍递减在系统
+    // 睡眠后会从睡前剩余继续走（铃声晚响），每拍改以 deadline 现算剩余
+    // —— 睡眠唤醒即补算、到点即发。deadline 是墙钟（Date.now()），
+    // 与「到 HH:MM 响铃」的目标时刻模式同一语义。
+    let tmDeadline = 0;
     let tmRunning = false;
 
     // --- Theme Sync Logic ---
@@ -2675,7 +2678,18 @@
       // Sync timer state from Python
       if (window.pywebview && window.pywebview.api && window.pywebview.api.get_timer_state) {
         window.pywebview.api.get_timer_state().then(state => {
-          if (state && state.is_running) {
+          if (state && state.finished) {
+            // 「时间到」恢复（2026-10-18 plugin-audit F15）：到过点的重开
+            // 直接回到铃铛页 —— 到点当场看到什么收尾，恢复后就什么样子
+            // （此前只有 running/paused 两分支，到过点落回秒表设置页）
+            tmRemaining = 0;
+            tmTotal = (state.total || 0) * 1000;
+            tmState = 'finished';
+            hideTimerSetupUI();
+            bellUI.style.display = 'flex';
+            setTimeUpMode(true);
+            updateButtonState();
+          } else if (state && state.is_running) {
             setTimeUpMode(false);
             tmRemaining = state.remaining * 1000;
             tmTotal = (state.total || state.remaining) * 1000;
@@ -2696,13 +2710,15 @@
             hideTimerSetupUI();
             countdownUI.classList.add('active');
             setCountdownActive(true);
-            document.getElementById('totalTimeDisplay').textContent = formatTotalSecondsText(state.remaining);
+            document.getElementById('totalTimeDisplay').textContent = formatTotalSecondsText(state.total || state.remaining);
             updateCountdownUI();
 
             // Start local UI timer
             if (tmInterval) clearInterval(tmInterval);
+            // 恢复也走墙钟语义（F7）：睡眠唤醒后重开窗口同样按 deadline 现算
+            tmDeadline = Date.now() + tmRemaining;
             tmInterval = setInterval(() => {
-              tmRemaining -= 100;
+              tmRemaining = tmDeadline - Date.now();
               if (tmRemaining <= 0) {
                 finishCountdown();
               } else {
@@ -2734,7 +2750,7 @@
             hideTimerSetupUI();
             countdownUI.classList.add('active');
             setCountdownActive(true);
-            document.getElementById('totalTimeDisplay').textContent = formatTotalSecondsText(state.remaining);
+            document.getElementById('totalTimeDisplay').textContent = formatTotalSecondsText(state.total || state.remaining);
             updateCountdownUI();
             updateButtonState();
             
@@ -2748,17 +2764,6 @@
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       initTheme();
     });
-
-    function updateTheme(mode) {
-      applyTheme(mode);
-    }
-
-    function updateAccentColor(hex) {
-      if (hex) {
-        document.documentElement.style.setProperty('--accent-color', hex);
-      }
-    }
-
 
     let tmState = 'picker'; // picker, running, paused, finished
 
@@ -2868,17 +2873,56 @@
       setCountdownFullscreen(next);
     }
 
+    // 进迷你前借掉视图所需的记录（2026-10-19 插件审计 t20 收尾发现）：
+    // 迷你入口悬浮按钮（#miniModeToggle）挂在全局 control-layer，秒表/
+    // 时钟页也能合法进入迷你，而迷你窗的全部样式只为倒计时圆环设计，
+    // 秒表 120px 大字在卡片内必裁切（实拍取证见
+    // .omo/evidence/plugin-audit-fixes/task-20-debug-viewport.py）。
+    // 语义收口：迷你窗 = 悬浮倒计时展示，非计时视图进入时借道切换，
+    // 退出时还原原视图；已在计时视图（含运行中）则进出无任何改动。
+    let miniSavedView = null;
+    let miniBorrowedCountdown = false;
+
     function toggleMiniMode() {
       const body = document.body;
       const isMini = body.classList.contains('mini-mode');
       const next = !isMini;
 
       if (next) {
+        const active = document.querySelector('.view-section.active');
+        if (active && active.id !== 'view-timer') {
+          miniSavedView = active.id;
+          // 空闲（picker 态）借显示：给倒计时容器补 active 让圆环接管
+          // 迷你窗，只显不计时（startCountdown 自带 0 秒守卫）；
+          // 运行/暂停态本来就带着 active，无需借。
+          if (!countdownUI.classList.contains('active') && tmState === 'picker') {
+            countdownUI.classList.add('active');
+            miniBorrowedCountdown = true;
+          }
+          // 借道切换走真实 nav 点击处理器（currentMode/标题联动全保留）
+          const nav = document.querySelector('[data-target="view-timer"]');
+          if (nav && !nav.classList.contains('active')) nav.click();
+        }
         body.classList.add('mini-mode');
         setupMiniModeResizeListener();
       } else {
         body.classList.remove('mini-mode');
         removeMiniModeResizeListener();
+        // 归还：计时器真的在跑/暂停时保留 active（与正常窗口显隐语义
+        // 一致，由 finish/reset 走各自路径撤）；空闲或已结束则收回，
+        // 恢复原视图后选择器页不至于带出一个假圆环。
+        if (miniBorrowedCountdown && (tmState === 'picker' || tmState === 'finished')) {
+          countdownUI.classList.remove('active');
+        }
+        miniBorrowedCountdown = false;
+        // 到点铃声页优先：finishCountdown 自动退迷你时不把用户拽离铃铛。
+        if (miniSavedView && !document.body.classList.contains('time-up-mode')) {
+          const nav = document.querySelector(`[data-target="${miniSavedView}"]`);
+          miniSavedView = null;
+          if (nav && !nav.classList.contains('active')) nav.click();
+        } else {
+          miniSavedView = null;
+        }
       }
 
       if (window.pywebview && window.pywebview.api && window.pywebview.api.set_mini_mode) {
@@ -2890,8 +2934,11 @@
       const body = document.body;
       if (!body.classList.contains('mini-mode')) return;
 
-      // 获取窗口宽度
-      const width = window.innerWidth;
+      // 档位基准是**卡片**宽度（main-container = 窗口 - 20px 透明边距），
+      // 不是窗口宽：阈值 150/220 直接对应卡片内容能力（F8 修复前档位
+      // 量窗口宽，卡片却不跟窗，档位形同虚设）。
+      const card = document.querySelector('.main-container');
+      const width = card ? card.offsetWidth : window.innerWidth;
 
       // 移除所有模式的类
       body.classList.remove('mini-compact', 'mini-tiny');
@@ -2930,14 +2977,6 @@
       toggleMiniMode();
     }
 
-    function toggleMiniModeFromFullscreen() {
-      setCountdownFullscreen(false);
-      // Wait for fullscreen exit animation/state change
-      setTimeout(() => {
-        toggleMiniMode();
-      }, motionDelay(100));
-    }
-
     function bindMiniDragHandle() {
       const bar = document.querySelector('.mini-top-bar');
       if (!bar || bar.dataset.dragBound === 'true') return;
@@ -2969,12 +3008,22 @@
 
     function getWheelValue(id) {
       const container = document.getElementById(id);
-      const itemHeight = 80;
-      const index = Math.round(container.scrollTop / itemHeight);
-      return index;
+      // F14：点完预设立刻点开始，不能读 smooth 滚动中途的 scrollTop——
+      // 登记的目标值落定前就是结果
+      const pending = container.dataset.wheelTarget;
+      if (pending !== undefined) return parseInt(pending, 10);
+      return Math.round(container.scrollTop / 80);
     }
 
     function formatTime(sec) {
+      // ≥1h 用 H:MM:SS（2026-10-18 plugin-audit F13：此前 20 小时显示成
+      // "1200:00"——分位无限膨胀；全屏态 formatFullTime 本就是三段式）
+      if (sec >= 3600) {
+        const h = Math.floor(sec / 3600).toString().padStart(2, '0');
+        const m = Math.floor((sec % 3600) / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
+      }
       const mTotal = Math.floor(sec / 60).toString().padStart(2, '0');
       const s = (sec % 60).toString().padStart(2, '0');
       return `${mTotal}:${s}`;
@@ -3055,6 +3104,7 @@
 
       tmTotal = totalSec * 1000;
       tmRemaining = tmTotal;
+      tmDeadline = Date.now() + tmTotal;
 
       tmState = 'running';
       setTimeUpMode(false);
@@ -3067,7 +3117,8 @@
       updateCountdownUI();
 
       tmInterval = setInterval(() => {
-        tmRemaining -= 100;
+        // 墙钟语义（见 tmDeadline 注释）：睡眠唤醒即补算、到点即发
+        tmRemaining = tmDeadline - Date.now();
         if (tmRemaining <= 0) {
           finishCountdown();
         } else {
@@ -3103,7 +3154,7 @@
       if (miniUnit) {
         if (isMiniMode && tmTotal > 0) {
           const totalMins = Math.ceil(tmTotal / 60000);
-          miniUnit.textContent = `总计 ${totalMins} 分钟`;
+          miniUnit.textContent = getText("timer.miniTotal").replace("{n}", String(totalMins));
           miniUnit.style.display = 'block';
         } else {
           miniUnit.style.display = 'none';
@@ -3170,6 +3221,8 @@
 
     function pauseCountdown() {
       clearInterval(tmInterval);
+      // 冻结在暂停瞬间（墙钟语义下 remaining 平时由 deadline 现算）
+      tmRemaining = tmDeadline ? tmDeadline - Date.now() : tmRemaining;
       tmState = 'paused';
 
       // Call Python API
@@ -3188,8 +3241,10 @@
         window.pywebview.api.resume_timer();
       }
 
+      // 从冻结的剩余重建墙钟截止时刻（暂停期间时间不该流失）
+      tmDeadline = Date.now() + tmRemaining;
       tmInterval = setInterval(() => {
-        tmRemaining -= 100;
+        tmRemaining = tmDeadline - Date.now();
         if (tmRemaining <= 0) {
           finishCountdown();
         } else {
@@ -3203,6 +3258,11 @@
     }
 
     function finishCountdown() {
+      // 幂等守卫（2026-10-18 Python 权威收口）：窗口藏着时 Python 会在
+      // show/raise 后推一次 finishCountdown，页面自己的 interval 检测
+      // （节流解除后）也可能再进一次 —— 二次进入直接返回，避免铃铛页
+      // 重放、铃声双响
+      if (tmState === 'finished') return;
       clearInterval(tmInterval);
       tmRemaining = 0;
       updateCountdownUI();
@@ -3229,7 +3289,7 @@
       bellUI.style.display = 'flex';
       setTimeUpMode(true);
 
-      playSystemAudio('file:///C:/Windows/Media/Windows%20Notify%20Email.wav');
+      playSystemAudio(alarmSoundUrl());
 
       updateButtonState();
     }
@@ -3250,7 +3310,7 @@
         window.pywebview.api.stop_timer();
       }
 
-      playSystemAudio('file:///C:/Windows/Media/Speech%20Off.wav');
+      playSystemAudio(bellOffSoundUrl());
 
       updateButtonState();
     }
@@ -3291,6 +3351,10 @@
         // Optimistically update local state to feel responsive
         tmRemaining += seconds * 1000;
         tmTotal += seconds * 1000; // Extend total time as well? Usually yes for progress bar logic
+        // 加时同步墙钟截止（与 Python 侧 add_time 的 deadline 平移同源，
+        // 2026-10-18 plugin-audit F16/F7）；暂停态的 deadline 会在 resume
+        // 时从冻结的 remaining 重建，这里平移无副作用
+        tmDeadline += seconds * 1000;
         updateCountdownUI();
         
         if (window.pywebview.api.update_timer) {

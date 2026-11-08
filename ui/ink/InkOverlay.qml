@@ -22,6 +22,18 @@ import Luminalium.Ink 1.0
     * 几何由 Python 跟随放映窗口矩形摆放，QML 侧只 ``anchors.fill``。
     * ``objectName`` 是 Python 侧按名查找的契约（``inkOverlay`` /
       ``inkLayer``），派生类名带 ``_QMLTYPE_<n>``，别按类名找。
+    * 2026-10-09 橡皮幻影：``EraserGhost`` 与 InkLayer 同一坐标系铺在层上，
+      绑层的 ``eraserGhost*`` 属性（缘由见 EraserGhost.qml 头注释）——
+      ``enabled: false`` 不吃输入，笔画事件原样落层。
+    * 2026-10-10 鼠标/触控橡皮适配：鼠标移动在画布上时橡皮擦始终显示（放映控制条
+      胶囊区域由 WindowManager 挂入 capsule_hit_hook 排除）；触控下仅按下才显。
+    * 2026-10-13 自建批注手势防穿透：底色不能用纯 ``"transparent"``（``#00000000``）。
+      Qt 6 RHI D3D11 对带透明通道的顶层窗口走 ``WS_EX_LAYERED`` + DirectComposition
+      预乘 Alpha 交换链，画布无墨迹处像素 ``alpha == 0`` 会被 DWM 视觉树与 Office
+      ``DirectManipulation`` 命中测试当成「镂空像素」直接穿透到底下 PowerPoint
+      ``screenClass``，导致手画横线被 PPT 识别为翻页手势。改用 ``#01000000``
+      （``alpha = 1/255``，肉眼完全透明）封死 DWM 像素级穿透；指针态与抑制态仍由
+      Python 侧 ``WS_EX_TRANSPARENT`` 保证整窗 100% 穿透。
 */
 Window {
     id: inkOverlay
@@ -29,12 +41,18 @@ Window {
     objectName: "inkOverlay"
     title: qsTr("墨迹")
     visible: false
-    color: "transparent"
+    color: "#01000000"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
         | Qt.WindowDoesNotAcceptFocus
 
     InkLayer {
+        id: inkLayer
         objectName: "inkLayer"
         anchors.fill: parent
+    }
+
+    EraserGhost {
+        anchors.fill: parent
+        inkLayer: inkLayer
     }
 }

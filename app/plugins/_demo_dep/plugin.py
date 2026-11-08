@@ -14,6 +14,11 @@
 门控与 ``_demo`` 相同：不进 ``PLUGINS``，只在 ``include_debug=True``
 （``app.debug`` 配置键）时加载。``_demo`` 被禁用时，本插件因依赖缺失被
 loader 跳过（加载清单与 warning 日志列明因果链）。
+
+⚠️ 写键残留透明化（2026-10-18 plugin-audit E4）：本插件 register 期发布
+的 ``hello`` 会经 ``_demo`` 的订阅把 ``plugins._demo.note`` 写成 ``ping``
+—— **加载即写、永久留在真用户的 config.json**（``app.debug`` 关掉后没有
+人把它改回默认值）。语义与代价的完整说明见 ``_demo/plugin.py`` 头注释。
 """
 
 from __future__ import annotations

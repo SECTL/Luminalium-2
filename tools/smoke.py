@@ -2334,6 +2334,21 @@ def _check_plugin_suite() -> None:
 # ---------------------------------------------------- 场景子进程（内部入口）
 
 
+def _iter_settings_nav_items(items):
+    """遍历设置导航的全部层级：顶层项 + 递归各条的 ``subItems``。
+
+    （2026-10-20 t32，E9/审计 F9：bridge 2026-10-16 起把未指定 position
+    的插件设置页收进「插件」条目的 ``subItems``（
+    ``bridge.py::_get_settings_nav_items``），单层扫顶层已找不到插件页。
+    凡「设置导航里有没有某页」的断言一律走这个全层级遍历 —— 当前消费
+    方：full 的夹具页出现断言、disabled 的夹具缺席断言。）
+    """
+    for item in items or []:
+        yield item
+        if isinstance(item, dict):
+            yield from _iter_settings_nav_items(item.get("subItems"))
+
+
 class _LogTap(logging.Handler):
     """把 ``app.*`` 日志收进内存列表（场景断言「错误入日志 / 注册顺序」用）。"""
 
@@ -2470,7 +2485,7 @@ def _scenario_full(app, ctx: _ScenarioCtx) -> None:
     # ---- ④ 夹具设置页 ----
     nav = backend.settingsNavItems
     demo_nav = [
-        item for item in nav
+        item for item in _iter_settings_nav_items(nav)
         if str(item.get("page", "")).endswith("ui/plugins/_demo/DemoSettings.qml")
     ]
     _pcheck(
@@ -2634,7 +2649,8 @@ def _scenario_disabled(app, ctx: _ScenarioCtx) -> None:
 
     backend = app.backend
     nav_absent = not any(
-        "_demo" in str(item.get("page", "")) for item in backend.settingsNavItems
+        "_demo" in str(item.get("page", ""))
+        for item in _iter_settings_nav_items(backend.settingsNavItems)
     )
     catalog = {str(item.get("id")) for item in backend.availableShortcutItems}
     pres = backend.presentationConfig

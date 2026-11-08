@@ -186,6 +186,93 @@ Rin.FluentWindowBase {
     // 全部状态就这四个属性（外加平移偏移），舞台的缩放与位移全是从它们**派生**
     // 出来的绑定 —— 别在别处再存一份「当前缩放」，两份状态一定漂。
 
+    /*! 预览副本的**摆位记账**（角落 → Item / 已摆位）。
+
+        ⚠️⚠️ 为什么是「窗口里的一层 Item」而不是根节点上的属性：``Repeater`` 生成
+        delegate 时，delegate 的 QML 作用域只看得到**比自己更深**的对象 —— 写
+        「往窗口属性上赋值」会抛 ``ReferenceError``（2026-11-03 实测：副本的
+        ``objectName`` 一直设不上、表永远是空的，而这个窗口没人打印 QML 运行期
+        错误，看着就是「什么都没发生」）。``dockLayout`` 挂在 delegate 的上层，
+        往上找就能找到，全程不碰窗口自己的属性。 */
+    Item {
+        id: dockLayout
+
+        property var items: ({})
+        property var placed: ({})
+
+        function record(cornerName, item) {
+            var next = ({})
+            for (var key in items)
+                next[key] = items[key]
+            next[String(cornerName)] = item
+            items = next
+        }
+
+        function item(cornerName) {
+            var found = items[String(cornerName)]
+            return found !== undefined ? found : null
+        }
+
+        function markPlaced(cornerName) {
+            var next = ({})
+            for (var key in placed)
+                next[key] = placed[key]
+            next[String(cornerName)] = true
+            placed = next
+        }
+
+        function isPlaced(cornerName) {
+            return placed[String(cornerName)] === true
+        }
+
+        /*! 一个角落副本的**可见表面**（屏幕平面坐标，扣掉投影余量）。
+
+            ⚠️ 量纲别混：副本的 ``width/height`` 是**屏幕像素**（组件里乘过
+            ``presentation.scale``），而 ``x/y`` 与 ``shadowMargin`` 是**设计
+            单位**（与 ``windows.py::_position_dock`` 同源）。混着加减会得到一个
+            1880 宽的假框（实测），取景直接飞出屏幕。 */
+        function boundsOf(cornerName) {
+            if (!isPlaced(cornerName))
+                return Qt.rect(0, 0, 0, 0)
+            var target = item(cornerName)
+            if (!target)
+                return Qt.rect(0, 0, 0, 0)
+            var factor = editorWindow.dockScaleFactor
+            var margin = target.shadowMargin !== undefined
+                    ? Number(target.shadowMargin) : 0
+            var visibleW = Number(target.width) / factor - margin * 2
+            var visibleH = Number(target.height) / factor - margin * 2
+            if (!(visibleW > 0) || !(visibleH > 0))
+                return Qt.rect(0, 0, 0, 0)
+            return Qt.rect(Number(target.x) + margin, Number(target.y) + margin,
+                           visibleW, visibleH)
+        }
+
+        /*! 摆完位：记账 + 立刻刷新取景。
+
+            ⚠️ 必须在这里催 ``updateFocusRect()``：取景矩形是**算**出来的、没有绑定
+            盯着 ``x/y``，只在尺寸变化时刷新的话，选中那一拍可能拿到的是「x/y 还
+            全 0」算出来的假框（= 屏幕左上角，竖版翻页条正好落在左翻页那一带）——
+            相机先飞过去、下一拍才被真实坐标纠正，看上去就是「先转到左边、再滑到
+            右边」（2026-11-03 用户报的就是这个）。 */
+        function commit(target, cornerName) {
+            if (!target || !cornerName || cornerName.length === 0)
+                return
+            markPlaced(cornerName)
+            if (editorWindow.selectedCorner === cornerName)
+                editorWindow.updateFocusRect()
+        }
+    }
+
+    /*! 副本的 ``presentation.scale`` 倍率（与组件内部 ``scaleFactor`` 同一份配置）。 */
+    readonly property real dockScaleFactor: {
+        var cfg = Backend.presentationConfig
+        var value = cfg && cfg.scale !== undefined ? Number(cfg.scale) : 1.0
+        if (!(value > 0))
+            return 1.0
+        return Math.max(0.25, Math.min(4.0, value))
+    }
+
     /*! 选中的角落名（``bottom_center`` / ``middle_left`` / ...）；空串 = 全景态。 */
     property string selectedCorner: ""
 
@@ -332,6 +419,10 @@ Rin.FluentWindowBase {
 
         item.x = x
         item.y = y
+        // ⚠️ 摆放与记账都在 ``dockLayout`` 里（它比本窗口作用域**深一层**，
+        //    ``Repeater`` 的 delegate 够得着；根节点自己的属性在 delegate 里
+        //    读不到，见那边的注释）。摆完它会顺手把 ``focusRect`` 刷新一次。
+        dockLayout.commit(item, cornerName)
     }
 
     // ============================================================ 组件语义
@@ -668,17 +759,16 @@ Rin.FluentWindowBase {
         panDY = 0
     }
 
-    /*! 按角落名找预览里的控制条副本（还没加载完 / 已卸载 → null）。 */
+    /*! 按角落名找预览里的控制条副本（还没加载完 / 已卸载 → null）。
+
+        ⚠️ 数据源是 ``dockLayout.items``（``Loader`` 装好时记的账），**不要**改回
+        ``dockRepeater.itemAt(i)`` 现查：2026-11-03 实测它在这条链路上返回
+        ``null``（副本明明已经建好、图也画出来了），于是所有「按角落找副本」的
+        读全部落空，``focusRect`` 一直是空矩形。 */
     function findDockItem(cornerName) {
-        var repeater = dockRepeater
-        if (!repeater)
+        if (!cornerName || cornerName.length === 0)
             return null
-        for (var i = 0; i < repeater.count; ++i) {
-            var loader = repeater.itemAt(i)
-            if (loader && loader.cornerName === cornerName)
-                return loader.item
-        }
-        return null
+        return dockLayout.item(cornerName)
     }
 
     /*! **平面坐标**下的命中测试 → 角落名（没命中返回空串）。
@@ -687,14 +777,12 @@ Rin.FluentWindowBase {
         —— 鼠标事件被 ``editorStageShield`` 拦住，由这里反查点到的是谁。
         判定用 ``interactiveRect``（**可见表面**，已扣掉投影余量）而不是整个
         Item：投影那 24px 是看不见的，不该抢点击。
-        从后往前遍历 —— 与绘制顺序相反，先命中后画（更靠上）的那条。 */
+        遍历 ``enabledCorners`` 的**倒序** —— 与绘制顺序相反，先命中后画
+        （更靠上）的那条。 */
     function dockAt(planeX, planeY) {
-        var repeater = dockRepeater
-        if (!repeater)
-            return ""
-        for (var i = repeater.count - 1; i >= 0; --i) {
-            var loader = repeater.itemAt(i)
-            var item = loader ? loader.item : null
+        var corners = enabledCorners
+        for (var i = corners.length - 1; i >= 0; --i) {
+            var item = findDockItem(corners[i])
             if (!item)
                 continue
             var rect = item.interactiveRect
@@ -702,7 +790,7 @@ Rin.FluentWindowBase {
                 continue
             if (planeX >= item.x + rect.x && planeX <= item.x + rect.x + rect.width
                     && planeY >= item.y + rect.y && planeY <= item.y + rect.y + rect.height)
-                return loader.cornerName
+                return corners[i]
         }
         return ""
     }
@@ -714,16 +802,12 @@ Rin.FluentWindowBase {
     function updateFocusRect() {
         if (selectedCorner.length === 0)
             return
-        var item = findDockItem(selectedCorner)
-        if (!item || item.width <= 0 || item.height <= 0) {
-            focusRect = Qt.rect(0, 0, 0, 0)
-            return
-        }
-        var margin = item.shadowMargin !== undefined ? Number(item.shadowMargin) : 0
-        focusRect = Qt.rect(
-            item.x + margin, item.y + margin,
-            Math.max(item.width - margin * 2, 1),
-            Math.max(item.height - margin * 2, 1))
+        // 取景目标 = 选中的那一条（``dockLayout.boundsOf``）。
+        // ``dockLayout`` 里没有它（还没摆好 / 正在重建）就保持原样，别把相机往
+        // (0,0) 带 —— 那正是「先转到左边再回来」的来源。
+        var box = dockLayout.boundsOf(selectedCorner)
+        if (box.width > 0 && box.height > 0)
+            focusRect = Qt.rect(box.x, box.y, box.width, box.height)
     }
 
     /*! 翻页组件换形态时的**对应角落**（竖版两侧 ↔ 横版下部）。
@@ -1125,10 +1209,24 @@ Rin.FluentWindowBase {
                         // property content」。
                         source: Qt.resolvedUrl(editorWindow.previewSourceFor(cornerName))
 
-                        onLoaded: {
-                            item.objectName = "editorPreviewDock_" + cornerName
-                            item.corner = cornerName
-                            previewLoader.place()
+                        /*! 副本装好 → 写 objectName / corner、记进 ``dockLayout``。
+
+                            ⚠️⚠️ 位置**不在 ``onLoaded`` 里**（2026-11-03 实测：``Repeater``
+                            生成 delegate 的过程中它在这条链路上不跑，图照常画出来、
+                            账却一条都没记上）。``statusChanged`` 派发更稳，进 ``Ready``
+                            就说明 item 已经在手上。 */
+                        Connections {
+                            target: previewLoader
+                            function onStatusChanged() {
+                                if (previewLoader.status !== Loader.Ready
+                                        || !previewLoader.item)
+                                    return
+                                var dock = previewLoader.item
+                                dock.objectName = "editorPreviewDock_" + previewLoader.cornerName
+                                dock.corner = previewLoader.cornerName
+                                dockLayout.record(previewLoader.cornerName, dock)
+                                previewLoader.place()
+                            }
                         }
 
                         /*! 组件尺寸是异步就绪的（implicitWidth/Height 要等内容
@@ -1145,8 +1243,6 @@ Rin.FluentWindowBase {
                             editorWindow.placePreviewDock(
                                 previewLoader.item, previewLoader.cornerName,
                                 planeLayer.width, planeLayer.height)
-                            // 尺寸变了 → 面板上的尺寸与取景矩形都要跟着走
-                            editorWindow.updateFocusRect()
                         }
                     }
                 }

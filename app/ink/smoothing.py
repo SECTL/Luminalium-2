@@ -4,6 +4,14 @@
 输出 (x, y, w) 直接喂 InkLayer.beginStroke/extendStroke/endStroke，x/y 与输入同单位（逻辑像素），
 w 是宽度因子（1.0 = penWidth）。
 
+2026-10-10 触控体验调优（用户反馈『触控模式下体验感还是有点不好』）：
+针对触控屏幕（手指直接贴着屏幕看墨迹）调优动力学参数：
+1. 抽稀延迟：MAX_SEGMENT 从 12px 降为 4.0px，MAX_HOLD 从 16ms 降为 8ms，触控下高密吐点，墨迹紧咬指尖，消除跟手滞后；
+2. 1€ 滤波自适应：触控下 MIN_CUTOFF=1.2, BETA=0.035，快划截止频率拉高，滞后显著减小；
+3. 起笔饱满：触控下 START_FLOOR 提升到 0.75，START_TAPER_PX 缩至 4.0px，绝不吞短点短横；
+4. 速度变细克制：触控下 SPEED_THIN 降到 0.18，连笔快划不忽粗忽细、不出现暴瘦断墨；
+5. 收笔防倒钩：电容屏离屏瞬间指腹变形必定伴随微小跳变；触控抬笔时在近程（<=14px）直接以滤波终点自然收拢，绝不向脱离噪点拉折线，彻底杜绝尾部倒刺甩尾。
+
 设计取舍：
 1. 为什么用 1€ 滤波（Casiez 等，CHI 2012）：定截止频率的低通只能在"慢时不抖"和"快时不拖"之间二选一。
    1€ 按速度自适应截止频率——慢速时截止低，手抖被压平；快速时截止升高，滞后变小。
@@ -73,6 +81,16 @@ END_FLOOR = 0.4
 # 全局宽度兜底：锥度 × 速度变细叠加时不至于细到看不见。
 W_MIN = 0.2
 W_MAX = PRESSURE_W_MAX
+
+# 触控设备专属参数（2026-10-10 触控体验调优）：
+TOUCH_MIN_CUTOFF = 1.2
+TOUCH_BETA = 0.035
+TOUCH_MAX_SEGMENT = 4.0
+TOUCH_MAX_HOLD = 0.008
+TOUCH_START_FLOOR = 0.75
+TOUCH_START_TAPER_PX = 4.0
+TOUCH_SPEED_THIN = 0.18
+TOUCH_END_FLOOR = 0.6
 
 
 def _alpha(cutoff: float, dt: float) -> float:
@@ -167,13 +185,29 @@ class StrokeSmoother:
         self,
         *,
         has_pressure: bool,
+        device: str = "mouse",
         min_distance: float = 0.75,
-        min_cutoff: float = MIN_CUTOFF,
-        beta: float = BETA,
+        min_cutoff: float | None = None,
+        beta: float | None = None,
+        max_segment: float | None = None,
+        max_hold: float | None = None,
     ) -> None:
+        self._device = device
         self._has_pressure = has_pressure
         self._min_dist = min_distance
-        self._filter = OneEuroFilter2D(min_cutoff=min_cutoff, beta=beta)
+
+        # 针对触控设备的动力学自适应（2026-10-10 触控体验调优）
+        is_touch = (device == "touch")
+        actual_min_cutoff = (TOUCH_MIN_CUTOFF if is_touch else MIN_CUTOFF) if min_cutoff is None else min_cutoff
+        actual_beta = (TOUCH_BETA if is_touch else BETA) if beta is None else beta
+        self._max_segment = (TOUCH_MAX_SEGMENT if is_touch else MAX_SEGMENT) if max_segment is None else max_segment
+        self._max_hold = (TOUCH_MAX_HOLD if is_touch else MAX_HOLD) if max_hold is None else max_hold
+        self._start_floor = TOUCH_START_FLOOR if is_touch else START_FLOOR
+        self._start_taper_px = TOUCH_START_TAPER_PX if is_touch else START_TAPER_PX
+        self._speed_thin = TOUCH_SPEED_THIN if is_touch else SPEED_THIN
+        self._end_floor = TOUCH_END_FLOOR if is_touch else END_FLOOR
+
+        self._filter = OneEuroFilter2D(min_cutoff=actual_min_cutoff, beta=actual_beta)
         self._last: _Sample | None = None
         self._held: list[_Sample] = []
         self._start = self._raw = self._prev = (0.0, 0.0)
@@ -184,12 +218,12 @@ class StrokeSmoother:
         if self._has_pressure:
             p = min(1.0, max(0.0, MOUSE_PRESSURE if pressure is None else pressure))
             return PRESSURE_W_MIN + (PRESSURE_W_MAX - PRESSURE_W_MIN) * p
-        return 1.0 - SPEED_THIN * _ease_out(min(1.0, self._filter.speed / SPEED_FULL))
+        return 1.0 - self._speed_thin * _ease_out(min(1.0, self._filter.speed / SPEED_FULL))
 
     def _taper(self) -> float:
         if self._has_pressure:
             return 1.0
-        return START_FLOOR + (1.0 - START_FLOOR) * _ease_out(min(1.0, self._length / START_TAPER_PX))
+        return self._start_floor + (1.0 - self._start_floor) * _ease_out(min(1.0, self._length / self._start_taper_px))
 
     def _emit(self, s: _Sample, out: list[OutPoint]) -> None:
         out.append((s[0], s[1], s[2]))
@@ -237,7 +271,7 @@ class StrokeSmoother:
                 last = held[-2]
                 held = self._held = [newest]
         d = math.dist(last[:2], newest[:2])
-        if d >= self._min_dist and (d >= MAX_SEGMENT or newest[3] - last[3] >= MAX_HOLD or len(held) >= MAX_HELD):
+        if d >= self._min_dist and (d >= self._max_segment or newest[3] - last[3] >= self._max_hold or len(held) >= MAX_HELD):
             self._emit(newest, out)
             self._held = []
         elif len(held) >= MAX_HELD:
@@ -261,12 +295,19 @@ class StrokeSmoother:
         self._held = []
         gap = math.hypot(rx - last[0], ry - last[1])
         if gap > 0.0:
-            # 追赶滤波滞后，保证笔画精确停在最后一个原始位置；锥度铺在这段上（头注释第 4 条）。
-            n = max(1, math.ceil(gap / END_STEP_PX))
-            for k in range(1, n + 1):
-                f = k / n
-                scale = 1.0 if self._has_pressure else 1.0 - (1.0 - END_FLOOR) * _ease_out(f)
-                out.append((last[0] + (rx - last[0]) * f, last[1] + (ry - last[1]) * f, _clamp_w(last[2] * scale)))
+            if self._device == "touch" and gap <= 14.0:
+                # 2026-10-10 触控体验调优：手指从电容屏表面抬起（lift-off）瞬间伴随指肉形变与抖动漂移；
+                # 在普通滞后范围（<= 14px）内，滤波点 last 已经是对书写意图的最佳估计。
+                # 若向脱离噪点 (rx, ry) 硬拉直线追赶，必定在笔画末端生成难看的倒钩与尖刺。
+                # 因此触控模式下不向脱离点追赶，让圆头笔帽在滤波终点自然收拢。
+                pass
+            else:
+                # 追赶滤波滞后，保证笔画精确停在最后一个原始位置；锥度铺在这段上（头注释第 4 条）。
+                n = max(1, math.ceil(gap / END_STEP_PX))
+                for k in range(1, n + 1):
+                    f = k / n
+                    scale = 1.0 if self._has_pressure else 1.0 - (1.0 - self._end_floor) * _ease_out(f)
+                    out.append((last[0] + (rx - last[0]) * f, last[1] + (ry - last[1]) * f, _clamp_w(last[2] * scale)))
         self._last = None
         return out
 

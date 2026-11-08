@@ -20,6 +20,15 @@ debug 关闭时 ``plugins._demo.*`` 连默认值都不存在。
 文案约定：夹具文案直接写中文字面量（``add_shortcut`` / ``add_settings_page`` 的
 ``title`` 等）。正式插件应走 ``app.i18n.tr(<插件id>, ...)``（约定见
 ``app/plugins/registry.py`` 头注释第 6 条），夹具不翻。
+
+⚠️ 写键残留透明化（2026-10-18 plugin-audit E4）：本夹具运行期写下的键
+（加载即写的 ``plugins._demo.note``、总线同款、开关 ``plugins._demo.flag``
+与工具点击 ``plugins._demo.tool``）会**永久留在真用户的 config.json**——
+「与默认层不同才落盘、恢复默认后该键消失」的语义对它们照常成立（见
+``bridge.setPluginEnabled`` 的注释），但 ``app.debug`` 关掉后夹具不再加载，
+没有人把它们改回默认值，残键从此不回收。这是夹具的既定代价（写键是
+QA 断言的载体， smoke 用临时用户配置不受影响）；真机上开 debug 折腾完
+记得手动清，或者别在意——它们只是几个演示键。
 """
 
 from __future__ import annotations
@@ -35,8 +44,10 @@ META = {"id": "_demo"}
 
 #: 形状演示：正式插件的 ``plugins.<id>.*`` 默认值经它进配置默认层；
 #: 调试夹具不走阶段一注入（见模块头注释），这份声明只给「DEFAULTS 常量
-#: 存在且形状合法」一个可断言的实体。
-DEFAULTS = {"flag": False, "note": "演示"}
+#: 存在且形状合法」一个可断言的实体。``tool`` 是 ``plugin:_demo:tool``
+#: 点击写键的默认值（2026-10-18 E1 行为断言用；register 时经内部引用
+#: 补进默认层，见该处注释）。
+DEFAULTS = {"flag": False, "note": "演示", "tool": ""}
 
 #: ``register`` 期捕获的宿主引用。PluginContext 刻意不提供公共 Backend
 #: 访问器（插件与宿主的通道收束到 8 个 API）；夹具要经 ``Backend.setSetting``
@@ -56,6 +67,13 @@ def _on_action(action: str) -> None:
         # 写标志位供 smoke / QA 断言动作通道端到端（dock 动作与磁贴动作同源）。
         if _backend is not None:
             _backend.setSetting("plugins__demo_note", "ping")
+    elif action == "plugin:_demo:tool":
+        # 控制条工具的行为断言载体（2026-10-18 plugin-audit E1）：此前
+        # 本工具是全夹具唯一「注册有断言、行为零断言」的链路——点击后
+        # 什么都不发生。写键与 ping 同款（setSetting + 已注册扁平键），
+        # smoke 经 Backend.selectTool（真实点击通道）触发后断言。
+        if _backend is not None:
+            _backend.setSetting("plugins__demo_tool", "clicked")
     elif action == "plugin:_demo:close":
         if _window_handle is not None:
             _window_handle.hide()
@@ -94,6 +112,18 @@ def register(ctx) -> None:
     # ⑥ 扁平设置键（QML 侧 Backend.settings.<key> 读写）
     ctx.register_setting("plugins__demo_flag", "plugins._demo.flag")
     ctx.register_setting("plugins__demo_note", "plugins._demo.note")
+    # 工具点击写键（E1）同款注册；默认值经内部引用补进默认层 —— 调试
+    # 夹具不走阶段一注入（loader 明令），但 setSetting 的类型对齐与
+    # 「与默认层相同不落盘」的 diff 语义都要求默认值在层里。这条内部
+    # 引用与 ``_backend`` 同级：夹具是装配层验收代码，正式插件不该学。
+    ctx.register_setting("plugins__demo_tool", "plugins._demo.tool")
+    try:
+        _backend._config._defaults.setdefault("plugins", {}).setdefault(
+            "_demo", {}
+        ).setdefault("tool", "")
+    except Exception:
+        log.warning("夹具 tool 默认值注入默认层失败（setSetting 类型对齐退化）",
+                    exc_info=True)
     # ⑦ 主界面编辑器分组（含一条检查器开关描述符）
     ctx.add_editor_group(
         "_demo_group",

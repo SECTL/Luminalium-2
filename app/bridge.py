@@ -396,6 +396,10 @@ class Backend(QObject):
     #: 之后发）。加载清单本身只在加载期产生一次，运行期唯一会变的就是
     #: 各项的 ``enabled``，所以只有这个槽会发它。
     pluginItemsChanged = Signal()
+    #: 插件运行时状态变了（pluginState 通道，2026-10-18 plugin-audit F4/
+    #: D-S4）：聚光灯一类「会话级调整不写配置」的插件把会话事实推给 QML
+    #: （设置页滑条读会话值），与 ``settingsChanged`` 的持久配置广播分开。
+    pluginStateChanged = Signal()
     #: 插件导入 / 删除的结果（``ok, 人话消息``）—— ``importPluginFolder`` /
     #: ``importPluginZip`` / ``removePlugin`` 统一经它回 QML 显示。
     pluginManageResult = Signal(bool, str)
@@ -547,6 +551,11 @@ class Backend(QObject):
         #: 与 ``SETTING_PATHS`` 合成视图见 :meth:`_setting_paths` —— 内建优先，
         #: 动态注册同名键会被拒绝，防插件顶掉内建行为。
         self._dynamic_paths: Dict[str, str] = {}
+        #: 插件运行时状态（pluginState 通道，plugin_id -> {key: value}）：
+        #: 会话级、纯内存、不落盘 —— 与 ``_dynamic_paths``（持久配置的
+        #: 合成视图）刻意分开。聚光灯的「试出来的」光斑大小这类会话事实
+        #: 走这里，见 :meth:`set_plugin_state`。
+        self._plugin_state: Dict[str, Dict[str, Any]] = {}
         #: 副作用第一级：键级回调表（精确命中优先于前缀规则）。内建特例原样
         #: 登记在这里，行为与重构前的硬编码 if/elif 完全一致：
         #: - ``presentation_pager_position`` / ``presentation_toolbar_count`` /
@@ -1364,6 +1373,29 @@ class Backend(QObject):
         log.info("动态注册设置项: %s -> %s", key, path)
         return True
 
+    # ---------------------------------------------------------- 插件运行时状态
+
+    def _get_plugin_state(self) -> Dict[str, Any]:
+        return {pid: dict(bucket) for pid, bucket in self._plugin_state.items()}
+
+    pluginState = Property("QVariantMap", _get_plugin_state, notify=pluginStateChanged)
+
+    def set_plugin_state(self, plugin_id: str, key: str, value: Any) -> None:
+        """插件运行时状态的单键写入（pluginState 通道，2026-10-18 F4/D-S4）。
+
+        **会话级、纯内存、不落盘** —— 与设置的落盘语义刻意分开：聚光灯
+        的「+ / − / 滑条试出来的」光斑大小是会话事实，写回配置会把试出
+        的值变成永久默认（插件的既有决定，plugin.py 头注释 2026-10-06 条）。
+        通道**无回环**：QML 读 ``pluginState`` 渲染，写仍走 ``setSetting``
+        （设置页 ``onMoved`` 仅用户拖动触发），程序推送不引起任何持久化。
+        值全等时静默（不发信号），插件高频推送不至于空转广播。
+        """
+        bucket = self._plugin_state.setdefault(str(plugin_id), {})
+        if bucket.get(str(key)) == value:
+            return
+        bucket[str(key)] = value
+        self.pluginStateChanged.emit()
+
     def _get_settings(self) -> Dict[str, Any]:
         values = {
             key: self._config.get(path)
@@ -1576,6 +1608,18 @@ class Backend(QObject):
 
     # ------------------------------------------------ 外部插件的导入 / 删除
 
+    def _dialog_parent(self) -> "QWidget | None":
+        """原生导入对话框的父窗：当前活动的前台窗口（2026-10-19，审计 U5）。
+
+        parent=None 时 Windows 原生模态框不挂在任何窗口上，可能掉到设置窗
+        层级后面，用户看着就像「点了没反应」。``activeWindow`` 是用户此刻
+        正在用的窗口（点导入磁贴时即设置窗），拿它当父窗正合适；拿不到
+        就返回 None，退回无父窗的旧行为（对话框本身照常能用）。
+        """
+        from PySide6.QtWidgets import QApplication
+
+        return QApplication.activeWindow()
+
     def _import_plugin_from_dialog(self, pick) -> None:
         """导入插件的公共尾段：弹对话框 → 校验安装 → 结果信号回 QML。
 
@@ -1597,12 +1641,17 @@ class Backend(QObject):
         """弹原生目录选择框导入插件文件夹（``plugin.py`` 直在其下）。"""
         from PySide6.QtWidgets import QFileDialog
 
+        parent = self._dialog_parent()
+        # 起始目录存在才传（U5）：首次导入前 plugins/ 目录还不存在，把
+        # 不存在的路径直接交给对话框会落在系统默认位置；空串走系统记忆位。
+        start = external.user_plugins_dir()
+        start_dir = str(start) if start.is_dir() else ""
         self._import_plugin_from_dialog(
             lambda: (
                 QFileDialog.getExistingDirectory(
-                    None,
+                    parent,
                     i18n.tr("Plugins", "选择插件文件夹"),
-                    str(external.user_plugins_dir()),
+                    start_dir,
                     QFileDialog.Option.ShowDirsOnly,
                 ),
                 "",
@@ -1614,9 +1663,10 @@ class Backend(QObject):
         """弹原生文件选择框导入 .zip 插件包。"""
         from PySide6.QtWidgets import QFileDialog
 
+        parent = self._dialog_parent()
         self._import_plugin_from_dialog(
             lambda: QFileDialog.getOpenFileName(
-                None,
+                parent,
                 i18n.tr("Plugins", "选择插件包"),
                 "",
                 i18n.tr("Plugins", "插件包 (*.zip);;所有文件 (*)"),

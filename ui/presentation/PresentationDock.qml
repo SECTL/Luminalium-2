@@ -165,8 +165,11 @@ Item {
 
         ⚠️ **只作用于工具栏那几块**（工具 / 动作 / 溢出 / 退出），翻页 pill **不参与**
         —— 它本来就是「小、聚拢」的形态（沿轴留白只有 4），加文字会把它拉成一条
-        长条，与「翻页栏更紧凑」的设计初衷正好相反。见配置里的 ``show_labels`` 注释。 */
-    readonly property bool showLabels: buttonsCfg.show_labels === true
+        长条，与「翻页栏更紧凑」的设计初衷正好相反。见配置里的 ``show_labels`` 注释。
+
+        ⚠️ **竖版一律不显示**：竖版条宽由 ``barWidth`` 固定（转置后 62），胶囊项在
+        Column 里居中，一旦加文字就会横向溢出胶囊（2026-10-28 审查发现，两版同修）。 */
+    readonly property bool showLabels: buttonsCfg.show_labels === true && !isVertical
 
     readonly property int iconSize: buttonsCfg.icon_size !== undefined
         ? buttonsCfg.icon_size : Lumi.dockIconSize
@@ -272,7 +275,7 @@ Item {
         另一组（放大 / 缩小 / 复位 / 四向移位），见``ZoomPanel`` 实例上的绑定。 */
     readonly property bool zoomEnabled: zoomCfg.enabled !== false
     readonly property string zoomIcon: zoomCfg.icon !== undefined
-        ? zoomCfg.icon : "ic_fluent_search_20_filled"
+        ? zoomCfg.icon : "ic_fluent_zoom_in_20_filled"
     readonly property string zoomLabel: zoomCfg.label !== undefined
         ? zoomCfg.label : qsTr("放大镜")
     readonly property string zoomTooltip: zoomCfg.tooltip !== undefined
@@ -725,6 +728,18 @@ Item {
             right = Math.max(right, zoomPanel.x + zoomPanel.width * s)
             top = Math.min(top, zoomPanel.y)
         }
+        // tooltip 是同一回事（2026-10-28，根因见 ``registerTooltipRect`` 处的
+        // 注释）：气泡浮在按钮上方约 40px，超出 region_padding 的 20px 余量，
+        // ``SetWindowRgn`` 会把上半截裁掉。矩形由按钮显示 / 隐藏时经
+        // ``_reportTooltip`` 登记进来，**已经是根 Item 坐标** —— 不像上面的
+        // 浮出层活在设计单位里，这里不需要再乘 ``scaleFactor``。
+        for (var h = 0; h < _hoverRects.length; h++) {
+            var hr = _hoverRects[h].rect
+            left = Math.min(left, hr.x)
+            right = Math.max(right, hr.x + hr.width)
+            top = Math.min(top, hr.y)
+            bottom = Math.max(bottom, hr.y + hr.height)
+        }
         return Qt.rect(left, top, Math.max(right - left, 0), Math.max(bottom - top, 0))
     }
 
@@ -732,6 +747,37 @@ Item {
     signal hitRectChanged()
 
     onInteractiveRectChanged: hitRectChanged()
+
+    // ------------------------------------------------- tooltip 矩形登记
+    // 2026-10-28 修复：tooltip 气泡被窗口区域裁剪。根因：控制条顶层窗口被
+    // ``SetWindowRgn`` 裁成「各浮出层的 interactiveRect + region_padding(20px)」
+    // （``windows.py`` / AppController 的区域塑形），而 tooltip 浮在按钮上方
+    // 约 40px、超出 20px 余量 —— 气泡上半截被裁（用户实测截图：dock 上
+    // 「打开 / 收起计时器」tooltip 显示不全）。修法与选单 / 面板同源：tooltip
+    // 显示时由按钮把自身矩形（已换算成**根 Item 坐标**，见 IconButton /
+    // ToolSegmentItem 的 ``_reportTooltip``）登记进来，``interactiveRect``
+    // 在上面并入；隐藏时登记空矩形 = 注销。选单 / 面板不裁、tooltip 裁，
+    // 正是因为前者的矩形早就 union 进去了而后者没有。
+    /*! 已登记的 tooltip 矩形（元素 ``{owner: Item, rect: rect}``）。 */
+    property var _hoverRects: []
+
+    /*! 登记一个 tooltip 气泡矩形（根 Item 坐标）。``owner`` 是上报方（用
+        Item 身份做 ``===`` 比较，同一 owner 重复上报覆盖旧条目）；``r`` 为
+        空矩形（宽 0）视为注销。
+        ⚠️ 必须整体重新赋值（``_hoverRects = newArr``）—— 原地 push / splice
+        不触发属性 notifier，``interactiveRect`` 的绑定追不到变化。 */
+    function registerTooltipRect(owner, r) {
+        var newArr = []
+        for (var i = 0; i < _hoverRects.length; i++) {
+            if (_hoverRects[i].owner !== owner) {
+                newArr.push(_hoverRects[i])
+            }
+        }
+        if (r && r.width > 0) {
+            newArr.push({ owner: owner, rect: r })
+        }
+        _hoverRects = newArr
+    }
 
     /*! 根 Item 的尺寸 = **缩放后**的屏幕像素（Python 摆位 / 区域塑形 / 编辑器预览
         都读它，见 ``scaleFactor`` 的说明）。
@@ -876,12 +922,17 @@ Item {
             height: dock.toolsCfg.length * dock.contentHeight
                     + Math.max(0, dock.toolsCfg.length - 1) * dock.segmentSpacing
 
-            // 底槽：与横版 ToolSegment 的 background 同参数（全圆胶囊，按短边/2 钳）
+            // 底槽：与横版 ToolSegment 的 background 同参数（固定深壳 + 全圆胶囊，
+            // 按短边/2 钳）。⚠️ 必须跟着横版一起改：分页图标已经是固定白 92%
+            // （ToolSegmentItem 的固定胶囊档），底槽若继续读主题令牌，浅色档就是
+            // 白图标压在 6% 黑浅底上 —— 竖版整组分页看不见。
             Rectangle {
                 anchors.fill: parent
                 radius: Math.min(Lumi.dockSegmentRadius,
                                  Math.round(Math.min(parent.width, parent.height) / 2))
-                color: Lumi.dockSegmentBg
+                color: Qt.rgba(0, 0, 0, 0.55)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.18)
             }
 
             Column {

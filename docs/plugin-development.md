@@ -156,6 +156,13 @@ debug），文件不存在也按「没图标」处理 —— 图标是装饰，�
 
 ctx 上还有一个只读属性 `ctx.plugin_id`，就是本插件的 id。
 
+读宿主配置走只读访问口 `ctx.config_get(path, default)`（2026-10-19
+plugin-audit D11/D-F11 收口）：点路径读、键不存在回落 `default`、宿主
+配置未就绪同样回落 `default`。此前插件经 `ctx._backend._config` 私有
+直读、耦合 Backend 内部实现，timer/spotlight 已迁公共口；**只读**——
+不提供写口，配置写入由宿主设置链负责，插件的配置默认值仍用 `DEFAULTS`
+常量声明（loader 注入默认层）。
+
 ### 1. add_shortcut：快捷面板磁贴
 
 ```python

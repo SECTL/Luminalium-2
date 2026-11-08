@@ -14,6 +14,13 @@ import Luminalium
       会话值并重设光斑（键盘 / 胶囊按钮的会话调整不回写这里 —— 写回
       配置会把「试出来的大小」变成永久默认，语义就乱了）。
 
+    2026-10-18 plugin-audit F4（pluginState 通道）：光斑大小滑条改读
+    ``Backend.pluginState.spotlight.radius``（键盘 / 全局按键「试出来的」
+    会话值；通道无该键——未动过 / 重启后——回落设置值，嵌套守卫先例
+    ``MainInterfaceEditor.qml`` 的 ``enabledCorners``）。拖动仍走
+    ``onMoved`` 写配置 → side_effect 回推 pluginState，通道无回环：
+    程序改值不发 onMoved，持久语义不变。
+
     滑条走 ``onMoved`` 写回而不是 ``onValueChanged``（后者程序改值也发，
     一挂上去就是「写配置 → 广播 → 重读 → 再写」死循环 —— 见
     ``Luminalium/SettingSlider.qml`` 头注释）。
@@ -65,7 +72,15 @@ Rin.FluentPage {
             primaryColor: Lumi.accent
             from: 6; to: 70; stepSize: 1
             suffix: " %"
-            value: Backend.settings.plugins_spotlight_radius
+            // 会话值优先（pluginState 通道：键盘 / 全局按键「试出来的」
+            // 会话半径）；无该键回落设置值 —— 嵌套守卫先例
+            // MainInterfaceEditor.qml 的 enabledCorners
+            value: {
+                var state = Backend.pluginState
+                var s = state && state.spotlight !== undefined ? state.spotlight : ({})
+                return s.radius !== undefined ? s.radius
+                                              : Backend.settings.plugins_spotlight_radius
+            }
             onMoved: Backend.setSetting("plugins_spotlight_radius", Math.round(value))
         }
     }

@@ -16,6 +16,19 @@
    放映窗口时（例如窗口类改名 / 异常形态），用 COM 的
    ``SlideShowWindows(1).HWND`` 兜底判定为放映中。
 
+2026-10-09 **WPS 兜底路径限行**（用户实机报告「开着 WPS 不管放不放映都
+一直挂叠加层」）：WPS 编辑器窗口同样能满足通道 1 之外的两条兜底 ——
+英文版编辑器标题带 "WPS Presentation"（标题词命中），WPS 用 Qt 自绘
+标题栏最大化时又可能既没有 ``WS_CAPTION`` 又铺满整屏（全屏路径命中）。
+所以 WPS 族进程（WPP/KWPP/WPS.EXE）经「标题 / 全屏」兜底命中时，必须
+COM 确认（``SlideShowWindows`` 有放映窗口）才认账；类名通道
+（``wppslideshowwindowclass`` 等）只有真放映窗口才有，不受限。COM
+确认位由探测线程每拍把快照的 ``presenting`` 写进模块全局
+``_wps_com_presenting`` —— 模块级判定函数拿不到 COM 线程，模块全局是
+最低耦合的喂法（bool 读写在 GIL 下原子）。副作用：改了名的 WPS 放映
+窗口在 COM 也连不上时不再被兜底认出（旧行为是连编辑器一起认），两害
+相权取「不误判」；类名白名单可经配置补（``presentation.window_classes``）。
+
 **软件族（kind）**：探测成功后会再判一次「这是哪家的放映」（``ppt`` / ``wps`` /
 ``yozo``）。这不是锦上添花 —— 控制腿要靠它选路线：
 
@@ -464,6 +477,12 @@ def _kind_from_window(class_name: str, process_name: str, title: str) -> str:
     return ""
 
 
+#: WPS 兜底路径的 COM 确认位（2026-10-09，理由见模块头注释同日条目）。
+#: 探测线程每拍把 COM 快照的 ``presenting`` 写进来；``_looks_like_slideshow``
+#: 对 WPS 族进程的标题/全屏兜底命中查它。
+_wps_com_presenting = False
+
+
 def _looks_like_slideshow(facts) -> bool:
     """单个窗口像不像放映窗口。
 
@@ -488,7 +507,14 @@ def _looks_like_slideshow(facts) -> bool:
     fullscreen = True if title_hint else _covers_monitor(hwnd)
     if not (title_hint or fullscreen):
         return False
-    if _process_name(pid) not in SLIDESHOW_PROCESS_NAMES:
+    process = _process_name(pid)
+    if process not in SLIDESHOW_PROCESS_NAMES:
+        return False
+    # WPS 兜底路径限行（2026-10-09，理由见模块头注释同日条目）：
+    # WPS 编辑器窗口也能走到这里（英文标题命中 / Qt 自绘栏最大化无 WS_CAPTION），
+    # 兜底路径命中 WPS 族进程时必须 COM 确认真在放映。类名通道在上面已经
+    # return True，到不了这里。
+    if _process_matches_kind(process, APP_KIND_WPS) and not _wps_com_presenting:
         return False
     if title_hint:
         return True
@@ -515,8 +541,14 @@ def _near_miss_reason(facts) -> Optional[str]:
     fullscreen = True if title_hint else _covers_monitor(hwnd)
     if not (title_hint or fullscreen):
         return None  # 离得远
-    if _process_name(pid) not in SLIDESHOW_PROCESS_NAMES:
+    process = _process_name(pid)
+    if process not in SLIDESHOW_PROCESS_NAMES:
         return None  # 不是演示软件，不关心
+    # WPS 兜底限行（2026-10-09）：编辑器被防护拒掉是**期望行为**，不是
+    # 「疑似放映被误拒」，别往日志里刷；真放映被这条误拒（改名窗口类 +
+    # COM 也连不上）时，诊断命令的候选表里有完整判定可查
+    if _process_matches_kind(process, APP_KIND_WPS) and not _wps_com_presenting:
+        return None
     if title_hint:
         return None  # 标题像放映的直接判成是，到这里说明已成功
     if class_name.startswith(CONSOLE_WINDOW_CLASS_PREFIXES):
@@ -2202,8 +2234,12 @@ class _ProbeThread(QThread):
 
     def _probe_once(self) -> PresentationState:
         """单次探测：**窗口通道说了算，COM 只补页码**。只在窗口线程调用。"""
-        hwnd, title, kind = find_slideshow_window()
+        global _wps_com_presenting
         snapshot = self._com.snapshot if self._com is not None else _ComSnapshot()
+        # WPS 兜底限行的确认位要在窗口通道判定**之前**喂（2026-10-09）：
+        # _looks_like_slideshow 对 WPS 族进程的兜底命中查这个全局
+        _wps_com_presenting = bool(snapshot.presenting)
+        hwnd, title, kind = find_slideshow_window()
         if hwnd:
             slide_index = slide_total = 0
             # 快照里还留着上一场放映的页码时不要串页

@@ -11,10 +11,12 @@
    临时目录），常量写法会在导入那一刻把路径钉死（``paths.cache_dir`` 的
    注释里有完整论证）。
 
-2. **导入即拷贝、重启生效**：导入做三件事——校验（含模块顶层代码执行，
-   见下）、拷贝进用户插件目录、返回结果；本进程内**不做**任何注册
-   （注册表在启动期末冻结，没有运行期插拔这条路，与启用 / 禁用同语义）。
-   下次启动 ``loader`` 扫描用户插件目录并按 ``plugins.<id>.enabled`` 加载。
+2. **导入即拷贝、重启生效**：导入做四件事——定位、拷入暂存、校验
+   （含模块顶层代码执行，见下）、原子改名落位；本进程内**不做**任何
+   注册（注册表在启动期末冻结，没有运行期插拔这条路，与启用 / 禁用
+   同语义）。下次启动 ``loader`` 扫描用户插件目录并按
+   ``plugins.<id>.enabled`` 加载。任一步失败清理暂存，零残留（2026-10-18
+   事务化，见 :meth:`install_from_path`）。
 
 3. **校验 = 执行**：META 校验没法静态做（Python 没有「只 import 不执行
    顶层代码」的办法），所以导入时会真正运行一遍 ``plugin.py`` 的顶层代码
@@ -185,12 +187,26 @@ def validate_module(module: ModuleType) -> str:
 
 
 def _copy_tree(src: Path, dst: Path) -> None:
-    """拷贝插件目录，跳过 ``__pycache__`` 与 ``*.pyc``（导入缓存不带走）。"""
+    """拷贝插件目录，跳过 ``__pycache__`` 与 ``*.pyc``（导入缓存不带走）。
+
+    ``dirs_exist_ok`` 是给暂存目录用的：落位前先 ``mkdtemp`` 出来挡名字，
+    拷进的是**空**目录，语义不变。
+    """
 
     def _ignore(_dir: str, names: list[str]) -> list[str]:
         return [n for n in names if n == "__pycache__" or n.endswith(".pyc")]
 
-    shutil.copytree(src, dst, ignore=_ignore)
+    shutil.copytree(src, dst, ignore=_ignore, dirs_exist_ok=True)
+
+
+def _new_staging_dir(base: Path) -> Path:
+    """在落位目录里开一个暂存目录（同盘才能原子改名落位）。
+
+    ``_`` 前缀名（``_lumi-import-*``）：外部 id 不允许 ``_`` 开头（保留
+    约定），``discover()`` 对 ``_`` 前缀目录静默跳过 —— 导入中途崩溃
+    留下的暂存目录不会被当成残缺插件反复告警。
+    """
+    return Path(tempfile.mkdtemp(prefix="_lumi-import-", dir=base))
 
 
 def _locate_plugin_root(base: Path) -> Path:
@@ -252,18 +268,28 @@ def _probe_meta_id(plugin_root: Path) -> str:
 
 
 def install_from_path(source: str) -> Tuple[bool, str]:
-    """把一个插件目录 / zip 安装进用户插件目录。
+    """把一个插件目录 / zip 安装进用户插件目录（事务式，失败零残留）。
 
-    流程：定位插件根 → 探针校验（执行顶层代码，拿 ``META.id``）→
-    查 id 冲突（内建正式 / 内部调试 / 已装外部）→ 拷贝进
-    ``user_plugins_dir()``。任何一步失败都不落一个字节的盘，返回
-    ``(False, 人话原因)``。
+    流程：定位插件根 → 拷入**落位同盘**的暂存目录（:meth:`_new_staging_dir`）
+    → 探针校验（执行顶层代码，拿 ``META.id``）→ 查 id 冲突 → 暂存目录
+    **原子改名**落位 ``plugins/<id>``。任一步失败清理暂存并报错，用户数据
+    根一个字节都不剩。
+
+    ⚠️ 2026-10-18 事务化（plugin-audit B5）：此前最后一跳是直拷目标目录，
+    而本 docstring 声称「任何一步失败都不落一个字节」—— 拷贝中途失败
+    （磁盘满 / 权限 / 崩溃）会留下半截插件目录，重启后被 ``discover``
+    当成缺 ``plugin.py`` 的残缺插件反复告警。现在校验的就是暂存里那份
+    内容，落位只是同盘 rename（Windows 上目标已存在会失败，正合「不
+    覆盖已装插件」的既有语义）。
     """
     src = Path(source)
     if not src.exists():
         return False, "路径不存在"
     temp_dir: Optional[Path] = None
+    staging: Optional[Path] = None
     try:
+        base = user_plugins_dir()
+        base.mkdir(parents=True, exist_ok=True)
         if src.is_file():
             if src.suffix.lower() != ".zip":
                 return False, "只支持导入文件夹或 .zip 插件包"
@@ -273,8 +299,16 @@ def install_from_path(source: str) -> Tuple[bool, str]:
             except zipfile.BadZipFile:
                 return False, "这不是有效的 zip 插件包"
             plugin_root = _locate_plugin_root(temp_dir)
+            # zip 内容已在系统临时目录：把插件根拷进落位同盘的暂存目录，
+            # 让「校验的内容」与「落位的内容」同源（跨盘 rename 不原子）
+            staging = _new_staging_dir(base)
+            _copy_tree(plugin_root, staging)
+            plugin_root = staging
         elif src.is_dir():
             plugin_root = _locate_plugin_root(src)
+            staging = _new_staging_dir(base)
+            _copy_tree(plugin_root, staging)
+            plugin_root = staging
         else:
             return False, "路径既不是文件夹也不是文件"
 
@@ -289,12 +323,12 @@ def install_from_path(source: str) -> Tuple[bool, str]:
         if plugin_id in reserved:
             return False, f"id「{plugin_id}」与现有插件冲突，请修改 META.id 后重试"
 
-        base = user_plugins_dir()
-        base.mkdir(parents=True, exist_ok=True)
         target = base / plugin_id
         if target.exists():
             return False, f"插件「{plugin_id}」已安装（如需覆盖请先在列表里删除）"
-        _copy_tree(plugin_root, target)
+        # 原子落位：同盘 rename；成功后所有权移交，finally 不再清理
+        staging.rename(target)
+        staging = None
         log.info("外部插件已安装: %s -> %s", plugin_id, target)
         return True, f"插件「{plugin_id}」已导入，重启应用后生效"
     except ValueError as exc:
@@ -311,6 +345,8 @@ def install_from_path(source: str) -> Tuple[bool, str]:
     finally:
         if temp_dir is not None:
             shutil.rmtree(temp_dir, ignore_errors=True)
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
 
 
 def _reserved_ids() -> set:

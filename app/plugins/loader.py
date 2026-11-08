@@ -111,10 +111,19 @@ def _formal_ids() -> List[str]:
 
 
 def _discover_debug_ids() -> List[str]:
-    """调试插件目录：``_`` 单下划线开头且含 ``plugin.py``（排除 ``__pycache__``）。"""
+    """调试插件目录：``_`` 单下划线开头且含 ``plugin.py``（排除 ``__pycache__``）。
+
+    目录不存在时返回空（2026-10-18 plugin-audit E8）：冻结版里
+    ``__file__`` 指向打包内的源码路径， ``app/plugins/`` 目录树不一定
+    存在，手开 ``app.debug`` 一启动就在这里 iterdir 抛 OSError 崩掉。
+    """
     base = Path(__file__).resolve().parent
     found: List[str] = []
-    for child in sorted(base.iterdir()):
+    try:
+        children = sorted(base.iterdir())
+    except OSError:  # 目录不存在（冻结版无源码树）/ 权限问题
+        return found
+    for child in children:
         if not child.is_dir():
             continue
         name = child.name
@@ -276,26 +285,35 @@ def collect_defaults() -> Dict[str, Any]:
     id 抛 ValueError）。调试插件（``_`` 前缀目录）不走这里 —— 它们不该
     污染正式配置默认层。**外部插件**（用户插件目录）也在这里聚合默认值，
     排在正式插件之后。
+
+    启用判定**前置于 import**（2026-10-18 plugin-audit B7）：禁用的插件
+    连模块都不许进 ``sys.modules`` —— import 即执行插件顶层代码，禁用
+    的意义就是「不跑你的代码」。阶段二 ``load_plugins`` 本就是这个顺序，
+    这里是阶段一对齐。
     """
     for pid in _formal_ids():
         if pid in registry.plugin_defaults()["plugins"]:
+            continue
+        if not _enabled_from_raw_config(pid):
+            log.info("插件 %s 已禁用（plugins.%s.enabled=false），跳过默认值注入", pid, pid)
             continue
         try:
             module = _import_plugin(pid)
         except Exception:
             log.exception("插件 %s 阶段一导入失败，跳过默认值注入", pid)
             continue
-        if not _enabled_from_raw_config(pid):
-            log.info("插件 %s 已禁用（plugins.%s.enabled=false），跳过默认值注入", pid, pid)
-            continue
         defaults = dict(getattr(module, "DEFAULTS", None) or {})
         defaults.setdefault("enabled", True)
         context.register_plugin_defaults(pid, defaults)
         log.info("插件 %s 默认值已聚合: %s", pid, sorted(defaults))
     # 外部插件：同样补 enabled 默认值并注入默认层；导入失败的模块在阶段二
-    # 的加载清单里报原因，这里静默跳过（阶段一没有清单可记）。
+    # 的加载清单里报原因，这里静默跳过（阶段一没有清单可记）。启用判定
+    # 同样前置（B7）。
     for pid in external.discover():
         if pid in registry.plugin_defaults()["plugins"]:
+            continue
+        if not _enabled_from_raw_config(pid):
+            log.info("外部插件 %s 已禁用，跳过默认值注入", pid)
             continue
         try:
             module = _import_plugin(
@@ -303,9 +321,6 @@ def collect_defaults() -> Dict[str, Any]:
             )
         except Exception:
             log.exception("外部插件 %s 阶段一导入失败，跳过默认值注入", pid)
-            continue
-        if not _enabled_from_raw_config(pid):
-            log.info("外部插件 %s 已禁用，跳过默认值注入", pid)
             continue
         defaults = dict(getattr(module, "DEFAULTS", None) or {})
         defaults.setdefault("enabled", True)
@@ -336,7 +351,8 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
     ]
 
     # Backend 持有正式 Config 的引用（bridge.Backend._config，同仓库内部
-    # 通道；loader 与 bridge 同属装配层，不另开 getter）。
+    # 通道；loader 与 bridge 同属装配层，不另开 getter）。插件侧不走这条
+    # 私有链——读配置走 ctx.config_get 公共口（2026-10-19 插件审计 D11/D-F11）。
     config = backend._config
 
     report: List[Dict[str, Any]] = []
@@ -431,4 +447,33 @@ def load_plugins(backend: Any, windows: Any, *, include_debug: bool = False) -> 
         loaded_count, len(report) - loaded_count, len(report),
     )
     _report = report
+
+    # 2026-10-13 修复「自带插件有时候不显示在胶囊上」：
+    # 快捷面板（rinui.load）以及任何在 load_plugins 之前已实例化的 QML 组件
+    # （如提前创建的 PresentationDock）在构造期首次求值 Backend.presentationConfig /
+    # shortcutItems / availableShortcutItems 时注册表还是空的；若冻结后不补发
+    # 通知信号，QML 侧绑定将一直停留在「无插件」快照（表现为冷启动直接进放映时
+    # 胶囊上只有「清屏」，计时器 / 小黑板 / 聚光灯全部缺席，直到用户去设置里改一次
+    # 放映配置触发 presentationConfigChanged 才突然出现）。
+    for sig_name in (
+        "presentationConfigChanged",
+        "presentationGroupsChanged",
+        "shortcutsChanged",
+        "settingsNavItemsChanged",
+        "pluginItemsChanged",
+        "settingsChanged",
+    ):
+        sig = getattr(backend, sig_name, None)
+        if sig is not None and hasattr(sig, "emit"):
+            sig.emit()
+
+    if windows is not None and getattr(windows, "overlay", None) is not None:
+        extra_groups = set(registry.editor_groups()) - {
+            "tools", "actions", "pager", "exit",
+        }
+        if extra_groups and hasattr(windows, "rebuild_docks"):
+            windows.rebuild_docks()
+        elif hasattr(windows, "reposition_all_docks"):
+            windows.reposition_all_docks()
+
     return report

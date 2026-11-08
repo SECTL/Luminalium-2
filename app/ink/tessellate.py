@@ -76,7 +76,7 @@ def _disc_steps(radius_dev: float) -> int:
 class WetMesh:
     """进行中这一笔的三角网格，只能追加。GUI 线程写，渲染线程通过 ``snapshot()`` 拿副本。"""
 
-    __slots__ = ("_col", "_dpr", "_feather", "_last", "_prev_dir", "_tail", "buffer")
+    __slots__ = ("_col", "_consumed", "_dpr", "_feather", "_last", "_prev_dir", "_tail", "buffer")
 
     def __init__(self, color: QColor, dpr: float) -> None:
         self.buffer = bytearray()
@@ -86,6 +86,7 @@ class WetMesh:
         self._last: tuple[float, float, float] | None = None
         self._prev_dir: tuple[float, float] | None = None
         self._tail = b""
+        self._consumed = 0  # 上次 snapshot() 交接到的 buffer 长度（不含笔尖）
 
     def add(self, x: float, y: float, r: float) -> None:
         last = self._last
@@ -110,8 +111,19 @@ class WetMesh:
         self._last = (x, y, r)
         self._tail = self._disc(x, y, r)
 
-    def snapshot(self) -> bytes:
-        return bytes(self.buffer) + self._tail
+    def snapshot(self) -> tuple[int, bytes]:
+        """增量交接（P2-1）：返回 (起始字节偏移, 新增几何段)，不再是整条网格的全量拷贝。
+
+        起始偏移 = 上次交接后 ``buffer`` 的长度（不含笔尖）：``buffer`` 只追加，
+        唯一会变的其余部分是笔尖圆盘（``_tail``，每个新点整个换掉）。所以消费方
+        拿 ``完整串[:start] + data`` 就得最新网格 —— data 末尾恒是当前笔尖的
+        完整圆盘，恰好替换掉上一帧的旧笔尖。首次调用 start=0、data=全量，
+        天然覆盖「从零重建」（如 _rebake 换底图重放）的场景，协议无需分两种。
+        逐字节结果与旧的全量 ``bytes(buffer) + tail`` 完全一致，渲染不变。
+        """
+        start = self._consumed
+        self._consumed = len(self.buffer)
+        return (start, bytes(self.buffer[start:]) + self._tail)
 
     def _commit_tail(self) -> None:
         self.buffer += self._tail
@@ -189,8 +201,38 @@ def bake(image: QImage, stroke: Stroke, size: tuple[float, float]) -> None:
             return
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(color)
+        # 变宽慢路径的圆盘抽稀（P0-4）：与湿网格同一思路 —— 中间点的圆盘被相邻梯形
+        # 的并集覆盖到亚像素级时才省掉（容差 JOIN_TOLERANCE_DEVICE_PX），干湿对齐
+        # 不变：梯形仍逐段画，只省圆盘的 drawEllipse。首/末点（圆头/笔尖）一律保留。
+        # 保留判据（都换算到设备像素）：
+        # * 转弯：楔形深度 r(1/cos(θ/2) - 1)（丢圆盘后外角缺口，同 WetMesh._needs_join
+        #   的弦高口径）；
+        # * 半径变化：圆盘凸出相邻梯形斜边的高度 r·Δr²/(2d²)（Δr 为半径差、d 为点距，
+        #   密集采样下斜边陡、凸出按平方放大，必须按精确式判而不是只看 Δr 大小）。
+        dpr = image.devicePixelRatio() or 1.0
+        tol = JOIN_TOLERANCE_DEVICE_PX / dpr
+        kept = [False] * len(pts)
+        kept[0] = kept[-1] = True
+        for i in range(1, len(pts) - 1):
+            x, y, r = pts[i]
+            ax, ay, ar = pts[i - 1]
+            bx, by, br = pts[i + 1]
+            d1x, d1y = x - ax, y - ay
+            d2x, d2y = bx - x, by - y
+            l1 = math.hypot(d1x, d1y)
+            l2 = math.hypot(d2x, d2y)
+            if l1 < 1e-9 or l2 < 1e-9:
+                kept[i] = True  # 零长段方向未定，保守保留
+                continue
+            if r * (r - ar) ** 2 / (2.0 * l1 * l1) > tol or r * (r - br) ** 2 / (2.0 * l2 * l2) > tol:
+                kept[i] = True
+                continue
+            cos_turn = max(-1.0, min(1.0, (d1x * d2x + d1y * d2y) / (l1 * l2)))
+            cos_half = math.sqrt((1.0 + cos_turn) * 0.5)
+            if r * (1.0 / max(cos_half, 1e-9) - 1.0) > tol:
+                kept[i] = True
         prev: tuple[float, float, float] | None = None
-        for x, y, r in pts:
+        for i, (x, y, r) in enumerate(pts):
             if prev is not None:
                 px, py, pr = prev
                 length = math.hypot(x - px, y - py)
@@ -200,7 +242,8 @@ def bake(image: QImage, stroke: Stroke, size: tuple[float, float]) -> None:
                         QPointF(px + nx * pr, py + ny * pr), QPointF(x + nx * r, y + ny * r),
                         QPointF(x - nx * r, y - ny * r), QPointF(px - nx * pr, py - ny * pr),
                     ]))
-            painter.drawEllipse(QPointF(x, y), r, r)
+            if kept[i]:
+                painter.drawEllipse(QPointF(x, y), r, r)
             prev = (x, y, r)
     finally:
         painter.end()

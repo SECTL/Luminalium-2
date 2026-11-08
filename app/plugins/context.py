@@ -104,6 +104,23 @@ class PluginContext:
     def plugin_id(self) -> str:
         return self._plugin_id
 
+    # ---------------------------------------------------------- 配置（只读）
+
+    def config_get(self, path: str, default: Any = None) -> Any:
+        """只读配置访问口（2026-10-19 插件审计 D11/D-F11 收口）。
+
+        插件此前一律穿透 Backend 的内部配置属性（``_config``）做私有
+        直读——属性一改名 / 变结构全体插件在其账上炸。这里是
+        唯一的读口：点路径读、键不存在回落 ``default``、backend 缺失或
+        配置树未就绪同样回落 ``default``（对齐 ``add_shortcut`` 读内建
+        磁贴目录的容错先例）。**只读**：不提供写口，配置写入与落盘纪律
+        （贡献不落盘用户 config.json）不经插件之手。
+        """
+        try:
+            return self._backend._config.get(path, default)
+        except Exception:
+            return default
+
     # ---------------------------------------------------------- 快捷面板
 
     def add_shortcut(
@@ -131,6 +148,20 @@ class PluginContext:
         }
         if icon_source is not None:
             entry["iconSource"] = icon_source
+        # 磁贴 id 与内建目录冲突 → 注册期就拒绝（2026-10-18 plugin-audit
+        # D3）：合并规则「内建胜出」是有意的，但那意味着冲突磁贴**永不
+        # 出现** —— 加载「成功」而磁贴无影无踪、唯一线索在日志，对作者
+        # 是纯坑。这里炸出来，loader 把原因记在插件自己的账上。运行期
+        # 用户改配置造成的新冲突仍由 bridge._catalog 的 warning 兜底。
+        catalog = self.config_get("quick_panel.shortcut_catalog", []) or []
+        builtin_ids = {
+            str(item.get("id")) for item in catalog if isinstance(item, dict)
+        }
+        if id in builtin_ids:
+            raise ValueError(
+                f"插件 {self._plugin_id!r} 的磁贴 id {id!r} 与内建目录冲突"
+                f"（内建胜出规则下永不出现），请改名"
+            )
         registry.add_shortcut(entry)
 
     # ---------------------------------------------------------- 动作动词
@@ -199,13 +230,29 @@ class PluginContext:
         （如 ``"DemoSettings.qml"``），这里转成 ``file:///`` 绝对 URL 存进
         ``page_url`` —— 与内建导航条目的 ``page`` 形状对齐，消费端纯拼接。
         ``title`` 应是已翻译文案（约定插件自己 tr，透传）。
+
+        路径纪律（2026-10-18 plugin-audit B8 收口）：拒绝反斜杠（Windows
+        分隔符混进 URL 拼接是隐形坑）与 ``..`` 段（越出插件目录），且
+        **注册期就检查文件存在** —— 坏路径在加载期炸出来（loader 隔离、
+        只Fail该插件），别等用户点进设置页才白屏。
         """
-        if page_qml.startswith(("/", "\\")) or ".." in page_qml.split("/"):
+        if (
+            page_qml.startswith(("/", "\\"))
+            or "\\" in page_qml
+            or ".." in page_qml.split("/")
+        ):
             raise ValueError(
                 f"插件 {self._plugin_id!r} 的 page_qml 必须是 "
-                f"ui/plugins/{self._plugin_id}/ 下的相对文件名，实际: {page_qml!r}"
+                f"ui/plugins/{self._plugin_id}/ 下的相对文件名（拒绝反斜杠与 "
+                f".. 段），实际: {page_qml!r}"
             )
-        page_url = "file:///" + (UI_DIR / "plugins" / self._plugin_id / page_qml).as_posix()
+        page_file = UI_DIR / "plugins" / self._plugin_id / page_qml
+        if not page_file.is_file():
+            raise ValueError(
+                f"插件 {self._plugin_id!r} 的 page_qml 文件不存在: {page_qml!r}"
+                f"（应在 ui/plugins/{self._plugin_id}/ 下）"
+            )
+        page_url = "file:///" + page_file.as_posix()
         entry: Dict[str, Any] = {
             "id": id,
             "title": title,
@@ -229,8 +276,11 @@ class PluginContext:
         """注册扁平设置键（QML 侧 ``Backend.settings.<key>`` 读写）。
 
         ``key`` 必须 ``plugins_<本插件id>_`` 前缀 —— 扁平键与内建键同住
-        一张表，不拦的话插件可以覆盖内建键的映射（越权）。双写两处：
-        registry（代码侧贡献事实来源，冻结后可审计）与
+        一张表，不拦的话插件可以覆盖内建键的映射（越权）。``path`` 必须
+        ``plugins.<本插件id>.`` 前缀（2026-10-18 plugin-audit B6 收口）——
+        设置键本质是「配置子树的一张合成视图」，path 不锁命名空间的话，
+        插件可以注册 ``app.language`` 这类视图把任意配置子树读走 / 写坏。
+        双写两处：registry（代码侧贡献事实来源，冻结后可审计）与
         ``Backend.register_setting_path``（运行期读写链路，任务 3 的 API）。
         """
         required = f"plugins_{self._plugin_id}_"
@@ -238,6 +288,12 @@ class PluginContext:
             raise ValueError(
                 f"插件 {self._plugin_id!r} 的设置键必须 {required!r} 前缀，"
                 f"实际: {key!r}（禁止占用内建 / 其它插件的键命名空间）"
+            )
+        required_path = f"plugins.{self._plugin_id}."
+        if not path.startswith(required_path):
+            raise ValueError(
+                f"插件 {self._plugin_id!r} 的设置 path 必须 {required_path!r} "
+                f"前缀（plugins.<id>.* 命名空间），实际: {path!r}"
             )
         registry.add_setting_path(
             key, {"path": path, "notify": notify, "side_effect": side_effect}
@@ -309,7 +365,23 @@ class PluginContext:
         定位 / 显隐三件套全封装）；插件**不得**直接碰 ``_attach_to_rinui``
         或自建 QQuickWindow。这里只注册不 show —— 显示时机由插件自己的
         动作处理器决定。
+
+        冲突纪律（2026-10-18 plugin-audit D1/D2 收口）：窗口贡献先进注册表
+        （``window_specs`` 从死代码接上 —— 注册表自称代码侧贡献唯一事实
+        来源，窗口链此前不在册，审计与冻结语义对窗口失效）；插件间的同名
+        冲突由 ``_put`` 的重复 id 硬拒绝（此前 ``register_window`` 的幂等
+        分支会静默复用先到者的窗口，后注册一家的 ``toggle()`` 开的是别人
+        的窗）；与内建窗口（settings/debug/editor，不经注册表）的冲突在
+        这里显式拒绝。
         """
+        manager_windows = getattr(self._windows, "_registered_windows", None) or {}
+        if name in manager_windows:
+            raise ValueError(
+                f"插件 {self._plugin_id!r} 的窗口名 {name!r} 与内建窗口冲突，请改名"
+            )
+        registry.add_window_spec(
+            name, {"qml_path": str(qml_path), "owner": self._plugin_id}
+        )
         return self._windows.register_window(name, qml_path, **options)
 
     def register_overlay(
@@ -346,6 +418,20 @@ class PluginContext:
         配音通常在触发那一刻才用得上，现读成本可忽略。
         """
         return self._backend.narration_language()
+
+    # ---------------------------------------------------------- 运行时状态
+
+    def publish_state(self, key: str, value: Any) -> None:
+        """发布一条插件运行时状态（pluginState 通道，QML 侧只读）。
+
+        与 :meth:`register_setting` 的差别：设置键是**持久配置**的合成视图
+        （有落盘语义），运行时状态是**会话级**事实——聚光灯「试出来的」
+        光斑大小这类调整不写回配置（写回会把试出的值变成永久默认），但
+        设置页 QML 又需要读到它。通道**无回环**：QML 读 ``pluginState``
+        渲染，写仍走 ``setSetting``（``onMoved`` 仅用户拖动触发），程序
+        推送不会引起任何持久化。值全等时宿主侧静默不发信号。
+        """
+        self._backend.set_plugin_state(self._plugin_id, key, value)
 
     # ---------------------------------------------------------- 通信总线
 

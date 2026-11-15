@@ -13,6 +13,7 @@
 <img src="docs/Hero.png" alt="Luminalium 2" width="100%">
 
 <br>
+_此仓库存在的项目使用了 AI 工具进行辅助。_
 
 [![最新版本](https://img.shields.io/github/v/release/SECTL/Luminalium-2?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&style=flat-square&color=6C65D5)](https://github.com/SECTL/Luminalium-2/releases)
 [![下载量](https://img.shields.io/github/downloads/SECTL/Luminalium-2/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&style=flat-square&color=4CC2FF)](https://github.com/SECTL/Luminalium-2/releases)

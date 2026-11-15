@@ -5,8 +5,11 @@
 
 * 源语言 = 简体中文（QML 里 ``qsTr("中文")`` 的原文就是中文），所以
   ``zh_CN`` 不装翻译器、界面即原文；其它语言从 ``translations/`` 里找
-  ``luminalium_<语言>.qm``（QML 与 Python 侧的 .ts 由 lrelease 合并成
-  同一个 .qm）。
+  ``luminalium_<语言>.qm``（QML 侧，ts 由 lupdate 生成）与
+  ``luminalium_py_<语言>.qm``（Python 侧，ts 手工维护）两个独立档案，
+  两边都要装——``i18n.tr`` 的译文只在 py 侧 qm 里，漏装文件的话
+  该侧文案恒回中文原文（2026-10-19 插件审计 t18：py 侧 qm 此前全仓
+  零装载点，Splash/Tray/ErrorHandler 等译文全是死的）。
 * 翻译**重启后生效**（与设置页「切换后需要重新加载应用」的文案一致）：
   翻译器必须在引擎加载任何 QML 之前装好，运行中途换语言对已创建的
   组件不生效。
@@ -80,23 +83,31 @@ def apply_locale(language: str) -> None:
 
 
 def install_translators(qt_app: QApplication, language: str) -> None:
-    """装载 ``translations/luminalium_<language>.qm``（源语言则跳过）。"""
+    """装载 ``translations/`` 下 QML 侧与 Python 侧两个 qm（源语言跳过）。"""
     if language in ("", SOURCE_LANGUAGE):
         return
-    qm = TRANSLATIONS_DIR / f"luminalium_{language}.qm"
-    if not qm.exists():
-        if language in UNTRANSLATED:
-            log.info("语言 %s 暂无翻译文件，界面保持中文原文", language)
-        else:
-            log.warning("翻译文件不存在: %s（界面保持中文原文）", qm)
-        return
-    translator = QTranslator(qt_app)
-    if not translator.load(str(qm)):
-        log.warning("翻译加载失败: %s（界面保持中文原文）", qm)
-        return
-    qt_app.installTranslator(translator)
-    _translators.append(translator)
-    log.info("已加载翻译: %s", qm.name)
+    for stem in (f"luminalium_{language}", f"luminalium_py_{language}"):
+        is_main = not stem.startswith("luminalium_py_")
+        qm = TRANSLATIONS_DIR / f"{stem}.qm"
+        if not qm.exists():
+            if is_main:
+                # 主 qm 事关整个界面：缺档要可见（未知语言刷 warning）。
+                if language in UNTRANSLATED:
+                    log.info("语言 %s 暂无翻译文件，界面保持中文原文", language)
+                else:
+                    log.warning("翻译文件不存在: %s（界面保持中文原文）", qm)
+            else:
+                # py 侧 ts 手工维护，个别语言暂无 py 档属已知状态：静默跳过，
+                # i18n.tr 自然回原文（与 UNTRANSLATED 的「安静跳过」纪律一致）。
+                log.debug("py 侧翻译文件不存在（跳过）: %s", qm)
+            continue
+        translator = QTranslator(qt_app)
+        if not translator.load(str(qm)):
+            log.warning("翻译加载失败: %s（界面保持中文原文）", qm)
+            continue
+        qt_app.installTranslator(translator)
+        _translators.append(translator)
+        log.info("已加载翻译: %s", qm.name)
 
 
 def tr(context: str, source: str) -> str:

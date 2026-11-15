@@ -1,14 +1,19 @@
 """小黑板插件 —— 放映 / 讲课时的随手板书板。
 
 2026-10-06 用户指令「做一个……小黑板」落地。窗口即一块可涂写的黑板
-（粉笔色、三档笔宽、橡皮、撤销、清空），画布逻辑全在 QML 侧
-（``Canvas`` + 笔画数组）：这是一只**普通自管窗口**，没有「重建销毁
-QML 状态」的问题（``context.py`` 铁规 1 只约束挂进 dock 的驻留组件，
-``rebuild_docks`` 不会碰插件窗口），所以笔画数据放 QML 侧是安全的；
-Python 侧只负责注册（磁贴 / 控制条动作 / 窗口）与开关联动。
+（粉笔色、三档笔宽、橡皮、撤销、清空），画布逻辑全在 QML 侧：这是一只
+**普通自管窗口**，没有「重建销毁 QML 状态」的问题（``context.py`` 铁规 1
+只约束挂进 dock 的驻留组件，``rebuild_docks`` 不会碰插件窗口），所以笔画
+数据放 QML 侧是安全的；Python 侧只负责注册（磁贴 / 控制条动作 / 窗口）与
+开关联动。
+
+2026-10-08 起板面换成自建墨迹层 ``InkLayer`` + ``PageStore``（与放映叠加层
+同一套，旧注里的「``Canvas`` + 笔画数组」已随那天退役）：像素橡皮真擦除、
+真操作栈、清空可撤销。Python 侧不感知这一层 —— 它仍然只管注册与开关。
 
 黑板色刻意**不跟随主题**（真黑板就该是深色板面，浅色主题下也一样），
-粉笔色是配套的五支高饱和浅色。窗口标题栏照常由 RinUI 接管。
+粉笔色是 18 色 Office 盘（2026-10-17 按 Lmn-copy 蓝本重做 UI 后取代旧版
+五支粉笔色）。窗口标题栏照常由 RinUI 接管。
 
 2026-10-08 板书导出 PNG（builtin-plugins-ux 计划 todo 5）：板书原本随
 应用退出全丢，没有任何导出通道。落地方式 = 注册期建好
@@ -131,8 +136,15 @@ def register(ctx) -> None:
         "plugin:blackboard:toggle", tr("小黑板"), "ic_fluent_board_20_regular",
         tooltip=tr("打开 / 收起小黑板"),
     )
+    # 位置记忆（C++ 版 ``BlackboardPlugin.cpp`` 的 ``rememberPosition=true``，
+    # 2026-10-19 插件审计 U1/D-B2）：板书窗口是「工作面」，用户拖到哪就该停在
+    # 哪 —— 收起（dock toggle 是主交互）再开不许跳回光标屏正中。
+    # ``ctx.register_window`` 是 ``**options`` 透传，``remember_position`` 由
+    # ``WindowManager.register_window`` 消费（语义见 ``RegisteredWindow`` 头注释：
+    # 首开按定位模式摆、收起时快照几何、重开原地还原，仅运行期记忆）。
     _window_handle = ctx.register_window(
         "blackboard", UI_DIR / "plugins" / "blackboard" / "BlackboardWindow.qml",
         label=tr("小黑板"),
+        remember_position=True,
     )
     log.info("小黑板插件已注册")

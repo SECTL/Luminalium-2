@@ -215,7 +215,7 @@
       "//enabled": "条上那枚放大镜入口要不要显示",
       "enabled": true,
       "//icon": "条上那枚入口的图标（下面的 ``icon_*`` 是**面板里**七枚按钮的）",
-      "icon": "ic_fluent_search_20_filled",
+      "icon": "ic_fluent_zoom_in_20_filled",
       "label": "放大镜",
       "tooltip": "放大镜",
       "//label_zoom": "「缩放」那一小段的小标题",
@@ -242,7 +242,7 @@
       {
         "id": "clear_screen",
         "label": "清屏",
-        "icon": "ic_fluent_broom_20_filled",
+        "icon": "ic_fluent_slide_eraser_20_filled",
         "tooltip": "清屏（擦除本页全部墨迹）"
       }
     ],

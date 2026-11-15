@@ -56,6 +56,63 @@ Qt.WindowDoesNotAcceptFocus`` 的透明 ``Window``（这里的 Frameless 是
 Python 按 ``SetWindowRgn`` 塑形（插件经句柄 ``set_hole`` 喂洞）。
 
 ----------------------------------------------------------------------
+放映置顶带的公共通道与重申次序（2026-10-18，plugin-audit GAP-1/GAP-2）：
+
+* **不走 register_window 的自管窗口**（AGENTS.md 明文豁免 register_window
+  的计时器 HTML 宿主这类）此前被上面整套置顶机制漏掉：放映中开出来被
+  放映画面整个盖死，翻页把置顶带重排后也没有恢复通路。这类窗口由插件经
+  :meth:`WindowManager.adopt_topmost_window` 纳入照管（幂等；插件名单
+  **不写死**在本文件 —— 谁自管窗口谁 adopt）：放映激活边沿顶进置顶带、
+  放映期随 :meth:`_assert_topmost` 周期重申、退出时对称回落（是否回落看
+  窗口**当前** flags 有无 ``Qt.WindowStaysOnTopHint``：迷你模式这类设计
+  上常驻置顶的窗不摘，摘掉反而破坏它自己的语义）。
+* :meth:`_assert_topmost` 的重申**顺序即语义**：先可见叠层
+  （``_registered_overlays`` 家族）、再 adopted 自管窗口、最后压
+  TopWindow —— 同在置顶带里，最后 ``SetWindowPos(HWND_TOPMOST)`` 的居
+  带顶。只压 TopWindow 的话，放映翻页把整条带重排后聚光灯遮罩被埋，
+  要到下次开聚光灯才救得回来；先重申叠层再压 TopWindow，最终次序恒为
+  「放映 < 墨迹 < 叠层 / 自管窗口 / adopted（三者相对序不动）< TopWindow」
+  （墨迹由 :meth:`_place_ink_below_top` 插回，锚自动取最低可见候选——
+  2026-10-29 触控审计 #7 起把可见自管窗口与 adopted 一并计入候选，笔态
+  墨迹玻璃不再压住小黑板/计时器）。
+
+----------------------------------------------------------------------
+聚光灯 × 墨迹的组合语义（2026-10-18，plugin-audit F3/A7——只成文不改行为）：
+
+z 序「**控制条 > 聚光灯遮罩 > 墨迹**」是**有意设计**：墨迹窗口经
+:meth:`_place_ink_below_top` 插回放映窗口之上、最低可见叠层之下——
+遮罩开着时墨迹就在遮罩下面。输入语义随之而定：
+
+* **光斑外点击归遮罩**：遮罩刻意不吃穿透（``WS_EX_TRANSPARENT`` 不加，
+  见 :class:`RegisteredOverlay` 头注释），光斑外是「聚焦」语义——点击
+  被遮罩吃掉（胶囊可点、方向键/滚轮仍归放映窗口），不落到墨迹或放映；
+  光斑（镂空）内的点击经区域塑形穿透给放映。触摸侧同构（竞拍「洞外才
+  认领」，见 :meth:`_evaluate_overlay_touch_hit_test`）。
+* **遮罩开着时墨迹不可画**：墨迹窗口在遮罩之下，输入先被遮罩吃掉——
+  这是既定取舍（聚光讲细节 vs 批注是两个互斥的使用意图），不是 bug；
+  别「顺手」把墨迹提到遮罩上面——那会让遮罩上的胶囊点击落进墨迹层，
+  改序牵连输入链与 z 序两套约定（审计 F3 已定：只补文档）。
+
+----------------------------------------------------------------------
+触控批注修正（2026-10-29 触控审计，完整报告在仓库根 TOUCH-AUDIT-2026-10-29.md）：
+
+* **竞拍让权**（审计 #1）：``_evaluate_touch_hit_test`` 在报 CLOSEST 前先查
+  :meth:`_touch_over_ui` —— 触点落在 dock 矩形（含展开卡）或可见自管 /
+  adopted 窗口矩形内时改报 FARTHEST。此前墨迹态对整窗报 CLOSEST 会把
+  控制条上的触摸也抢走（TopWindow 未登记竞拍，抢不过），笔/橡皮态下
+  触屏点不动控制条。胶囊守卫只防「误画」，不解决「这一按到不了按钮」。
+* **TopWindow 手势硬化**（审计 #6）：``_apply_overlay_base_styles`` 里对
+  TopWindow 挂与墨迹窗同款（2026-10-13 机制）的 ``_disable_window_touch_gestures``，
+  ``_InkTouchHitTestFilter`` 对其 hwnd 吞 ``WM_TABLET_FLICK`` / ``WM_GESTURE`` /
+  ``WM_TABLET_QUERYSYSTEMGESTURESTATUS`` —— 否则 dock 区域快速划动会被
+  回译成翻页键、长按变右键。
+* **会话态复位**（审计 #8）：``_hide_ink_window`` 与抑制边沿调层的
+  ``abort_input()``。层的 ``_touch_id/_palm_erasing`` 跨场残留会让下一场
+  首触无墨（触点 id 小整数循环复用时复活幽灵掌擦）。
+* **z 序**（审计 #7）：``_place_ink_below_top`` 锚扫描扩到可见自管窗口与
+  adopted 成员 —— 笔态墨迹玻璃不再压住小黑板/设置/计时器。
+
+----------------------------------------------------------------------
 角落组 → dock QML 解析规则（2026-10-05 插件系统 Wave 2 任务 8）：
 
 * 每个启用角落用哪个 QML 组件渲染，由 :meth:`WindowManager._resolve_dock_qml`
@@ -82,6 +139,8 @@ from typing import Any, Dict, List, Optional
 
 from PySide6.QtCore import (
     Q_ARG,
+    QAbstractNativeEventFilter,
+    QCoreApplication,
     QMetaObject,
     QObject,
     QPoint,
@@ -184,7 +243,7 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
     },
     "actions": {
         "display_name": "动作",
-        "icon": "ic_fluent_broom_20_filled",
+        "icon": "ic_fluent_slide_eraser_20_filled",
         "inspector_items": [],
         "traits": {
             "toolbar": True,
@@ -357,6 +416,132 @@ RGN_DIFF = 4
 HWND_NOTOPMOST = -2
 DWMWA_CLOAKED = 14
 
+# ---- 触摸命中竞拍（WM_TOUCHHITTESTING，2026-10-09 自建批注触屏修复）----
+# 用户实机报告：WPS 放映下自建批注「鼠标能画，触摸不行」。鼠标命中走窗口
+# 矩形，而触摸命中在 Win8+ 有一套**竞拍制**：放映软件（WPS / PowerPoint
+# 的墨迹功能）经 ``RegisterTouchHitTestingWindow`` 登记后，系统落下触摸时
+# 会问各登记窗口「这触点你最合适吗」，谁报的分近归谁 —— 未登记的窗口连
+# 参选资格都没有，触摸直接被放映窗口认领，我们的墨迹层一个事件都收不到。
+# 对策：墨迹窗口也登记，笔 / 橡皮激活且窗口可见时对墨迹窗口矩形报
+# 「最近」（它在触摸点正下方、z 序最高，理应赢）；指针 / 穿透态报
+# FARTHEST 主动认输，触摸照常落到放映窗口翻页。本机 PowerPoint 放映
+# 实测：登记前后触摸都能成笔（PowerPoint 不总是抢），登记是无退化
+# 的防御；WPS 侧的竞拍行为只能由用户实机验证。
+WM_TOUCHHITTESTING = 0x024D
+TOUCH_HIT_TESTING_CLIENT = 1
+TOUCH_HIT_TESTING_PROXIMITY_FARTHEST = 0xFFF
+
+# ---- 触控笔刷 / 轻拂（Flicks）与系统手势拦截（2026-10-13 自建批注防穿透翻页）----
+# 根因（实机 + 探针定案）：
+# Qt 6 ``QWindowsPointerHandler::translateTouchEvent``（L553）与 ``translatePenEvent``
+# （L692）在把 ``WM_POINTER*`` 翻译投递成 ``QTouchEvent`` / ``QTabletEvent`` 之后，
+# **无条件返回 ``false``**（注释 ``// Allow mouse messages to be generated``），导致
+# ``qWindowsWndProc`` 把每一帧 ``WM_POINTERDOWN/UPDATE/UP`` 继续交给 ``DefWindowProcW``。
+# ``DefWindowProcW`` 内部在 ``WM_POINTERDOWN`` 时同步发 ``WM_TABLET_QUERYSYSTEMGESTURESTATUS``
+# （``0x02CC``），在水平画线抬笔 ``WM_POINTERUP`` 时触发 Windows 轻拂/手势识别器同步发
+# ``WM_TABLET_FLICK``（``0x02C8``，如向右画横线 ``wParam=0x00010106``）及 ``WM_GESTURE``
+# （``0x0119``）。若墨迹窗口未声明禁用轻拂且未拦截 ``WM_TABLET_FLICK``，Windows 轻拂
+# 回退机制（Flick Fallback Keys / AppCommand）会把「翻页/滚屏」指令直接发给当前前台窗口
+# ``GetForegroundWindow()`` —— 而墨迹窗口带 ``WS_EX_NOACTIVATE``，前台窗口正是底下的
+# PowerPoint ``screenClass``，导致手画一条横线 PPT 就切换页面！
+# 对策：
+# 1) 建窗时挂 ``MicrosoftTabletPenServiceProperty`` 原子属性 + ``SetGestureConfig`` +
+#    ``SetWindowFeedbackSetting`` 关死窗口级轻拂、长按右键环与全套系统手势；
+# 2) 在 ``_InkTouchHitTestFilter`` 拦截 ``WM_TABLET_QUERYSYSTEMGESTURESTATUS`` 返回
+#    ``TABLET_DISABLE_MASK``，拦截 ``WM_TABLET_FLICK`` 返回 ``FLICK_WM_HANDLED_MASK (1)``
+#    并吞掉 ``WM_GESTURENOTIFY`` / ``WM_GESTURE``，彻底斩断 ``DefWindowProcW`` 手势回退链。
+WM_GESTURE = 0x0119
+WM_GESTURENOTIFY = 0x011A
+WM_TABLET_FLICK = 0x02C8
+WM_TABLET_QUERYSYSTEMGESTURESTATUS = 0x02CC
+FLICK_WM_HANDLED_MASK = 0x00000001
+MICROSOFT_TABLETPENSERVICE_PROPERTY = "MicrosoftTabletPenServiceProperty"
+# 0x00000001 (PRESSANDHOLD) | 0x00000008 (PENTAPFEEDBACK) | 0x00000010 (PENBARRELFEEDBACK)
+# | 0x00000100 (TOUCHUIFORCEON) | 0x00000200 (TOUCHUIFORCEOFF) | 0x00008000 (TOUCHSWITCH)
+# | 0x00010000 (FLICKS) | 0x00080000 (SMOOTHSCROLLING) | 0x00100000 (FLICKFALLBACKKEYS)
+TABLET_DISABLE_MASK = 0x00198319
+
+
+class _GESTURECONFIG(ctypes.Structure):
+    _fields_ = [
+        ("dwID", wintypes.DWORD),
+        ("dwWant", wintypes.DWORD),
+        ("dwBlock", wintypes.DWORD),
+    ]
+
+
+class _TOUCH_HIT_TESTING_INPUT(ctypes.Structure):
+    _fields_ = [
+        ("pointerId", wintypes.UINT),
+        ("point", wintypes.POINT),
+        ("boundingBox", wintypes.RECT),
+        ("nonOccludedBoundingBox", wintypes.RECT),
+        ("orientation", wintypes.UINT),
+    ]
+
+
+class _TOUCH_HIT_TESTING_PROXIMITY_EVALUATION(ctypes.Structure):
+    _fields_ = [
+        ("score", wintypes.USHORT),
+        ("adjustedPoint", wintypes.POINT),
+    ]
+
+
+class _WINMSG(ctypes.Structure):
+    """Win32 ``MSG``（64 位布局）：nativeEventFilter 的 message 是它的地址。"""
+    _fields_ = [
+        ("hwnd", wintypes.HWND),
+        ("message", wintypes.UINT),
+        ("wParam", ctypes.c_size_t),
+        ("lParam", ctypes.c_size_t),
+        ("time", wintypes.DWORD),
+        ("pt", wintypes.POINT),
+    ]
+
+
+if hasattr(ctypes, "windll"):
+    # ⚠️ ctypes 默认 restype 是 32 位 c_int —— LRESULT/BOOL_PTR 在 x64 是 64 位，
+    # 不声明就被截断（竞拍打包值的高 32 位正好是 score，一截全丢）。
+    ctypes.windll.user32.EvaluateProximityToRect.restype = wintypes.BOOL
+    ctypes.windll.user32.PackTouchHitTestingProximityEvaluation.restype \
+        = ctypes.c_ssize_t
+
+
+def _disable_window_touch_gestures(hwnd: int) -> None:
+    """关掉墨迹窗口上的 Windows 轻拂（Flicks）、长按环与旧版系统手势识别（2026-10-13）。"""
+    if not hwnd or not hasattr(ctypes, "windll"):
+        return
+    user32 = ctypes.windll.user32
+    try:
+        user32.SetPropW(
+            wintypes.HWND(hwnd),
+            ctypes.c_wchar_p(MICROSOFT_TABLETPENSERVICE_PROPERTY),
+            wintypes.HANDLE(TABLET_DISABLE_MASK),
+        )
+    except Exception:  # pragma: no cover
+        log.debug("设置 MicrosoftTabletPenServiceProperty 失败", exc_info=True)
+    try:
+        # dwID=0, dwWant=0, dwBlock=GC_ALLGESTURES(1)：屏蔽整套 WM_GESTURE 识别
+        gc = _GESTURECONFIG(0, 0, 1)
+        user32.SetGestureConfig(
+            wintypes.HWND(hwnd), 0, 1, ctypes.byref(gc), ctypes.sizeof(gc)
+        )
+    except Exception:  # pragma: no cover
+        log.debug("SetGestureConfig 失败", exc_info=True)
+    set_feedback = getattr(user32, "SetWindowFeedbackSetting", None)
+    if set_feedback is not None:
+        # FEEDBACK_TYPE 1..13（触点圆圈、笔轻敲、长按环、双指轻按等视觉/手势反馈）
+        val = wintypes.BOOL(False)
+        for fb_type in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
+            try:
+                set_feedback(
+                    wintypes.HWND(hwnd), fb_type, 0,
+                    ctypes.sizeof(val), ctypes.byref(val),
+                )
+            except Exception:  # pragma: no cover
+                pass
+
+
 # ---- DWM 系统背景材质（Win11 22H2 / build 22621 起可用）----
 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 DWMWA_BORDER_COLOR = 34
@@ -367,6 +552,18 @@ DWMSBT_TRANSIENTWINDOW = 3
 #: ``DWMWA_COLOR_NONE`` —— 让 DWM 不要给该处上色（既用于边框也用于标题栏）。
 DWMWA_COLOR_NONE = 0xFFFFFFFE
 _dwm_ready = True
+
+
+def _qt_window_flags(window) -> int:
+    """取一只窗口的 Qt flags（QWidget 族与 QWindow 族方法名不同）。
+
+    ``QWidget`` 族叫 ``windowFlags()``、``QWindow`` 族叫 ``flags()`` ——
+    adopted 自管窗口两头都可能来（QWebEngineView 是 QWidget 族），别写死。
+    """
+    getter = getattr(window, "windowFlags", None)
+    if getter is None:
+        getter = window.flags
+    return int(getter())
 
 
 def _window_ex_style(hwnd: int) -> int:
@@ -497,7 +694,7 @@ def _build_region_with_hole(
     width: float,
     height: float,
     hole: tuple[float, float, float],
-    keep_rects: Optional[list[tuple[float, float, float, float]]] = None,
+    keep_rects: Optional[list[tuple[float, ...]]] = None,
 ) -> Optional[int]:
     """「整窗矩形 − 圆形」的 HRGN（聚光灯一类遮罩的镂空），失败返回 ``None``。
 
@@ -505,10 +702,13 @@ def _build_region_with_hole(
     调用方负责换算（见 :meth:`RegisteredOverlay._sync_region`）。椭圆区域用
     ``CreateEllipticRgn``（外接矩形式 API），从整窗矩形里 ``RGN_DIFF`` 掉。
 
-    ``keep_rects``（同为已换算的物理像素 ``(x, y, w, h)``）在镂空之后用
-    ``RGN_OR`` **补回**窗口区域 —— 2026-10-08 聚光灯修复：光斑跟着光标走，
-    光标一靠近顶部控制胶囊，胶囊就掉进洞里被一起裁掉（区域外既不绘制也不
-    命中），主退出按钮失联。把胶囊矩形补回后，任何光斑位置下胶囊都可点。
+    ``keep_rects``（同为已换算的物理像素 ``(x, y, w, h)``，可带第 5 元素
+    圆角半径）在镂空之后用 ``RGN_OR`` **补回**窗口区域 —— 2026-10-08
+    聚光灯修复：光斑跟着光标走，光标一靠近顶部控制胶囊，胶囊就掉进洞里
+    被一起裁掉（区域外既不绘制也不命中），主退出按钮失联。把胶囊矩形
+    补回后，任何光斑位置下胶囊都可点。2026-10-09：圆角半径 > 0 时改用
+    ``CreateRoundRectRgn`` 补回 —— 胶囊是圆角的，直角矩形补回会让光斑
+    扫过胶囊时四个角留下直角遮罩残片（用户报告「被灯照到时四角有遮罩」）。
     """
     if not hasattr(ctypes, "windll"):
         return None
@@ -526,13 +726,22 @@ def _build_region_with_hole(
         return None
     gdi32.CombineRgn(base, base, hole_rgn, RGN_DIFF)
     gdi32.DeleteObject(hole_rgn)
-    for x, y, w, h in keep_rects or ():
+    for keep_rect in keep_rects or ():
+        x, y, w, h = keep_rect[:4]
+        corner = keep_rect[4] if len(keep_rect) > 4 else 0.0
         if w <= 0 or h <= 0:
             continue
-        keep = gdi32.CreateRectRgn(
-            int(round(x)), int(round(y)),
-            int(round(x + w)), int(round(y + h)),
-        )
+        if corner > 0:
+            keep = gdi32.CreateRoundRectRgn(
+                int(round(x)), int(round(y)),
+                int(round(x + w)), int(round(y + h)),
+                int(round(corner * 2)), int(round(corner * 2)),
+            )
+        else:
+            keep = gdi32.CreateRectRgn(
+                int(round(x)), int(round(y)),
+                int(round(x + w)), int(round(y + h)),
+            )
         if not keep:
             continue
         gdi32.CombineRgn(base, base, keep, RGN_OR)
@@ -694,6 +903,17 @@ def _covers_monitor(hwnd: int, ratio: float = 0.9) -> bool:
     return win_area / mon_area >= ratio
 
 
+#: 插件不可注册的窗口名（2026-10-18 plugin-audit B4）：这些是
+#: WindowManager 的**内部属性槽**但不走 register_window 管理——插件注册
+#: 同名窗口会在 ``RegisteredWindow._sync_attr`` 门控下 ``setattr`` 直接
+#: 遮蔽内部状态（快捷面板 / 放映顶层窗口 / 墨迹窗口全体失踪）。内建经
+#: register_window 登记的 settings/debug/editor 不在列——那三个名字与
+#: 属性槽的同步是设计（_sync_attr 的本意）。
+_RESERVED_WINDOW_NAMES = frozenset(
+    {"panel", "splash", "error_report", "overlay", "ink_window"}
+)
+
+
 class RegisteredWindow:
     """:meth:`WindowManager.register_window` 返回的窗口句柄。
 
@@ -709,6 +929,10 @@ class RegisteredWindow:
     * ``"beside_settings"`` —— 贴在设置窗口旁边（设置窗口没开就退化为上一项），
       调试窗口 / 主界面编辑器这类「从别的窗口里点出来」的窗口用这套；
     * 可调用对象 ``callable(window)`` —— 完全自定义摆位（留给插件）。
+
+    与定位模式正交的 ``remember_position`` 开关（2026-10-19 插件审计
+    U1/D-B2）：默认关（每次 show 按定位模式重摆）；开启后首开定位、
+    收起前记几何、重开原地还原，仅运行期记忆、不做跨会话持久化。
     """
 
     def __init__(
@@ -721,6 +945,7 @@ class RegisteredWindow:
         label: Optional[str] = None,
         post_reattach=None,
         post_show=None,
+        remember_position: bool = False,
     ) -> None:
         self._manager = manager
         self._name = name
@@ -730,6 +955,11 @@ class RegisteredWindow:
         self._label = label or name
         self._post_reattach = post_reattach
         self._post_show = post_show
+        #: 位置记忆（2026-10-19 插件审计 U1/D-B2）：开启后首开定位、之后
+        #: 「收起前在哪、重开还在哪」，不再每次 show 都重居中光标屏；
+        #: 黑板 opt-in，家族其余窗口默认关、行为不变。
+        self._remember_position = remember_position
+        self._remembered_geometry: Optional[QRect] = None
         self._window: Optional[QQuickWindow] = None
         # WindowManager 上若存在同名属性槽（settings / debug / editor 这三个
         # 内建窗口），创建后同步写入 —— 既有代码与 tools/ 下的自检脚本都直接
@@ -753,7 +983,11 @@ class RegisteredWindow:
         if window is None:
             log.info("%s 不可用", self._label)
             return
-        self._place(window)
+        # 位置记忆窗口：首开走定位模式，之后再 show 用收起前的几何
+        # （黑板收起再开原位，U1/D-B2）；首开（没收起过）或记忆几何
+        # 已不在现有屏上时按原路定位。
+        if not self._restore_remembered(window):
+            self._place(window)
         window.show()
         # 显示后的补充钩子（编辑器用它补打亚克力：show() 后系统会重置
         # backdrop，见 ``_attach_editor_acrylic`` 的注释）
@@ -780,6 +1014,11 @@ class RegisteredWindow:
 
     def hide(self) -> None:
         if self.is_visible():
+            if self._remember_position:
+                # 收起那一刻记下几何（重开时还原；躲在 hide 里做是因为
+                # 收起是用户摆位的最后时刻，show 侧无从分辨「刚定位完」
+                # 与「用户拖过」）。hide 前取值，别依赖 hide 后状态。
+                self._remembered_geometry = QRect(self._window.geometry())
             self._window.hide()
 
     def toggle(self) -> None:
@@ -799,7 +1038,14 @@ class RegisteredWindow:
         if not qml_path.exists():
             log.warning("%s不存在，跳过: %s", self._label, qml_path)
             return None
-        root = manager._create(qml_path, {"visible": False})
+        try:
+            root = manager._create(qml_path, {"visible": False})
+        except RuntimeError as exc:
+            # 镜像 RegisteredOverlay._ensure_created 的兜底先例（2026-10-18
+            # plugin-audit B3）：坏 QML 只该让这只窗口自身失败（返回 None、
+            # show() 落「不可用」），不能顺着插件动作一路炸穿调用链
+            log.error("%s创建失败: %s（%s）", self._label, qml_path, exc)
+            return None
         if root is None:
             log.error("%s创建失败: %s", self._label, qml_path)
             return None
@@ -840,6 +1086,26 @@ class RegisteredWindow:
         y = area.top() + (area.height() - window.height()) // 2
         window.setPosition(int(x), int(y))
 
+    def _restore_remembered(self, window: QQuickWindow) -> bool:
+        """位置记忆开启时把上次收起前的几何放回；返回是否已代位定位。"""
+        if not self._remember_position:
+            return False
+        rect = self._remembered_geometry
+        if rect is None or not self._geometry_on_current_screens(rect):
+            return False
+        window.setGeometry(rect)
+        return True
+
+    @staticmethod
+    def _geometry_on_current_screens(rect: QRect) -> bool:
+        """记忆几何是否还触得到现有屏幕——触摸即算有效，不强求完整在内
+        （用户可以故意把窗口停靠屏幕边缘）。拔副屏后记忆几何整段落在
+        不存在的屏上，这里返回 False，show 侧按原路定位，不丢窗。"""
+        virtual = QRect()
+        for screen in QGuiApplication.screens():
+            virtual = virtual.united(screen.geometry())
+        return virtual.intersects(rect)
+
     def _reset(self) -> None:
         """``shutdown()`` 时清掉句柄状态（窗口本身随进程退出回收）。"""
         if self._window is not None:
@@ -870,6 +1136,12 @@ class RegisteredOverlay:
     光斑位置下胶囊都可点。坐标与洞同单位（窗口局部逻辑坐标），同走一套
     倍率校准。
 
+    2026-10-09 保留矩形可带第 5 元素「圆角半径」（缺省 = 0 直角）：
+    聚光灯胶囊是圆角胶囊，光斑（圆洞）扫过它时，直角的补回矩形会把
+    胶囊四个角外的遮罩一并留下 —— 用户看到「胶囊被灯照到时四角有
+    遮罩」。半径 > 0 时塑形改用 ``CreateRoundRectRgn``，补回区域与
+    胶囊轮廓一致，四角不再漏出直角残片。
+
     与 TopWindow 的两点刻意差异：
 
     * **不加** ``WS_EX_TRANSPARENT`` —— 遮罩要吃点击（遮罩上的控件才可点、
@@ -894,9 +1166,10 @@ class RegisteredOverlay:
         #: 镂空圆 ``(cx, cy, r)``——窗口局部**逻辑**坐标（set_hole 的入参原样存，
         #: 换算成物理像素在 _sync_region 里做）
         self._hole: Optional[tuple[int, int, int]] = None
-        #: 镂空后要 ``RGN_OR`` 补回的矩形列表，与洞同为窗口局部逻辑坐标
-        self._keep_rects: list[tuple[int, int, int, int]] = []
-        self._screen: Optional[QScreen] = None
+        #: 镂空后要 ``RGN_OR`` 补回的矩形列表，与洞同为窗口局部逻辑坐标；
+        #: 元素为 ``(x, y, w, h)`` 或 ``(x, y, w, h, 圆角半径)``
+        #: （2026-10-09，理由见类头注释同日条目）
+        self._keep_rects: list[tuple[int, ...]] = []
         #: SetWindowRgn 的坐标单位倍率（与 WindowManager._region_scale 同义，
         #: 各窗口各有一份 —— 不同屏的 DPR 可以不同）
         self._region_scale: Optional[float] = None
@@ -926,7 +1199,6 @@ class RegisteredOverlay:
                 window.setGeometry(screen.geometry())
             except Exception:  # pragma: no cover - 平台差异
                 log.debug("%s 定屏失败", self._label, exc_info=True)
-            self._screen = screen
         window.show()
         window.raise_()
         self._apply_styles()
@@ -976,9 +1248,12 @@ class RegisteredOverlay:
         except Exception:  # pragma: no cover - 平台差异
             log.debug("%s 迁屏失败", self._label, exc_info=True)
             return
-        self._screen = screen
         self._region_scale = None
         if self.is_visible():
+            # 迁移后补样式（2026-10-18 plugin-audit F10）：WS_EX_NOACTIVATE
+            # 是 show() 时打的，换屏走 setScreen/setGeometry 后原生样式回到
+            # 默认——不补的话点遮罩会抢走放映窗口的前台焦点
+            self._apply_styles()
             self._sync_region()
 
     def set_hole(
@@ -986,18 +1261,27 @@ class RegisteredOverlay:
         cx: int,
         cy: int,
         radius: int,
-        keep_rects: Optional[list[tuple[int, int, int, int]]] = None,
+        keep_rects: Optional[list[tuple[int, ...]]] = None,
     ) -> None:
         """更新镂空圆（窗口局部逻辑坐标），遮罩可见时立刻重新塑形。
 
         ``keep_rects`` 是镂空后要补回的矩形列表（同为窗口局部逻辑坐标，
         与洞走同一套倍率校准）—— 聚光灯的控制胶囊靠它保证任何光斑位置
-        下都不被裁掉、永远可点。
+        下都不被裁掉、永远可点。元素为 ``(x, y, w, h)`` 或
+        ``(x, y, w, h, 圆角半径)``（2026-10-09，圆角的理由见类头注释）。
+
+        等值短路（2026-10-18 plugin-audit F5）：聚光灯插件以 ~25ms 一拍
+        驱动本方法，光斑静止时参数全等——重建 Win32 区域（算区域、
+        SetWindowRgn、回读校准）是纯白烧 CPU/电量，低配教室机可见卡顿。
+        (cx, cy, r, keeps) 全等即跳过重塑形；±1px 微变照常触发（不做
+        跨拍节流，短路只针对等值）。
         """
-        self._hole = (int(cx), int(cy), max(8, int(radius)))
-        self._keep_rects = [
-            (int(x), int(y), int(w), int(h)) for x, y, w, h in (keep_rects or ())
-        ]
+        hole = (int(cx), int(cy), max(8, int(radius)))
+        keeps = [tuple(int(v) for v in rect) for rect in (keep_rects or ())]
+        if hole == self._hole and keeps == self._keep_rects:
+            return
+        self._hole = hole
+        self._keep_rects = keeps
         if self.is_visible():
             self._sync_region()
 
@@ -1014,9 +1298,30 @@ class RegisteredOverlay:
             log.error("%s创建失败: %s（%s）", self._label, self._qml_path, exc)
             return None
         if root is None:
+            # 2026-10-29 修复：此处引用了不存在的局部名 qml_path（本方法只有
+            # self._qml_path），真触发时是 NameError 而不是预期文案，把降级
+            # 排查带偏
             log.error("%s创建失败: %s", self._label, self._qml_path)
             return None
         self._window = root
+        # 触摸命中竞拍登记（2026-10-18 plugin-audit F2/D-S2，机制与墨迹窗口
+        # 同款——常量区条目与 ``_ensure_ink_window`` 同位段）：不登记连参选
+        # 资格都没有，触摸被已登记的放映窗口全数拿走、直接穿透到幻灯片，
+        # 遮罩「光斑外点击被挡」是空话。手势硬化同拍做（源头关闭该 hwnd 的
+        # 轻拂/长按/系统手势，画在遮罩上的动作不会被系统回译成翻页键）。
+        # 窗口只藏不销毁，注册一次即可。
+        if hasattr(ctypes, "windll"):
+            try:
+                hwnd = int(root.winId())
+                if hwnd:
+                    _disable_window_touch_gestures(hwnd)
+                    if not ctypes.windll.user32.RegisterTouchHitTestingWindow(
+                        wintypes.HWND(hwnd), TOUCH_HIT_TESTING_CLIENT
+                    ):
+                        log.info("%s 触摸命中竞拍登记被拒（err=%d）",
+                                 self._label, ctypes.GetLastError())
+            except (OSError, RuntimeError):
+                log.debug("%s 触摸命中竞拍登记失败", self._label, exc_info=True)
         return root
 
     def _apply_styles(self) -> None:
@@ -1066,8 +1371,7 @@ class RegisteredOverlay:
                 continue
             seen.add(scale)
             keeps = [
-                (x * scale, y * scale, w * scale, h * scale)
-                for x, y, w, h in self._keep_rects
+                tuple(v * scale for v in rect) for rect in self._keep_rects
             ]
             hrgn = _build_region_with_hole(
                 width * scale, height * scale,
@@ -1093,9 +1397,137 @@ class RegisteredOverlay:
             except (AttributeError, RuntimeError):  # pragma: no cover
                 pass
             return
-        # 塑形全失败：遮罩没有洞（整屏变暗），但遮罩上的关闭按钮仍可点，
-        # 用户能自己退出去 —— 记 error 别静默。
-        log.error("%s 区域塑形失败（坐标单位未校准），遮罩暂时没有镂空", self._label)
+        # 塑形全失败（2026-10-18 plugin-audit F12 措辞修正）：所有倍率候选
+        # 的回读校验都不过 —— 此时窗口上**可能残留某个错误倍率已 SetWindowRgn
+        # 成功的洞**（位置/尺寸不对），不是干净的「没有洞」；排查「光斑
+        # 位置诡异」从 _region_scale 的校准过程看起。遮罩上的关闭按钮仍在
+        # 保留矩形里可点，用户能自己退出去 —— 记 error 别静默。
+        log.error(
+            "%s 区域塑形失败（坐标单位未校准，全候选回读校验不过）："
+            "遮罩镂空缺失或残留错位洞",
+            self._label,
+        )
+
+
+class _InkTouchHitTestFilter(QAbstractNativeEventFilter):
+    """墨迹窗口与叠加窗口的 WM_TOUCHHITTESTING 竞拍应答与轻拂/手势拦截
+    （2026-10-09 / 2026-10-13 / 2026-10-18）。
+
+    按消息 hwnd 解析竞拍目标，不属于任何已登记窗口的消息一律放行：
+
+    1. **墨迹窗口**：笔 / 橡皮激活且窗口可见 → 触点在矩形内直接报
+       ``CLOSEST (score=0)``，另一台显示器走 ``EvaluateProximityToRect``
+       报远分；其余态（指针 / 穿透 / 抑制 / 窗口未建）→ 放行让
+       DefWindowProc 报 FARTHEST。
+    2. **RegisteredOverlay（聚光灯遮罩，2026-10-18 plugin-audit F2/D-S2）**：
+       ``WM_TOUCHHITTESTING`` 走「洞外才认领」策略（见
+       :meth:`WindowManager._evaluate_overlay_touch_hit_test`）。轻拂/手势
+       不在此拦——遮罩登记时已经源头关闭（``_disable_window_touch_gestures``），
+       过滤器层再拦反而把墨迹的拦截语义搅进来。
+    3. ``WM_TABLET_QUERYSYSTEMGESTURESTATUS`` / ``WM_TABLET_FLICK`` /
+       ``WM_GESTURENOTIFY`` / ``WM_GESTURE``（2026-10-13 自建批注防穿透翻页，
+       仅墨迹窗口）：Qt ``translateTouchEvent`` 与 ``translatePenEvent``
+       投递完事件后恒返回 ``false``，导致 ``qWindowsWndProc`` 调用
+       ``DefWindowProcW`` 触发 Windows 轻拂（Flicks）识别；若不拦截，画横线
+       产生的 ``WM_TABLET_FLICK`` 会被系统回退转发给前台窗口（PowerPoint
+       ``screenClass``）触发翻页。
+    4. **TopWindow 本体**（2026-10-29 触控审计 #6）：未登记竞拍，
+       ``WM_TOUCHHITTESTING`` 放行；轻拂/手势与墨迹窗同款吞掉（dock 区域
+       快速划动/长按不再被回译成翻页键或右键）。
+    """
+
+    _INK_MESSAGES = (
+        WM_TOUCHHITTESTING,
+        WM_TABLET_QUERYSYSTEMGESTURESTATUS,
+        WM_TABLET_FLICK,
+        WM_GESTURENOTIFY,
+        WM_GESTURE,
+    )
+
+    def __init__(self, manager: "WindowManager") -> None:
+        super().__init__()
+        self._manager = manager
+
+    def _resolve_touch_target(self, hwnd: int):
+        """按消息 hwnd 解析竞拍目标：墨迹窗口、TopWindow 或**可见**的 RegisteredOverlay。
+
+        过滤器泛化（2026-10-18 plugin-audit F2）：此前硬编码只认墨迹窗口，
+        叠加窗口（遮罩）连参选资格都拿不到。2026-10-29 触控审计 #6 起再认
+        TopWindow 本体（只吞轻拂/手势，不答竞拍）。返回值四态：墨迹窗口对象 /
+        TopWindow 窗口对象 / overlay 句柄 / None（不归我们，放行）。
+        """
+        manager = self._manager
+        ink = manager.ink_window
+        if ink is not None:
+            try:
+                if int(ink.winId()) == hwnd:
+                    return ink
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                pass
+        overlay = manager.overlay
+        if overlay is not None:
+            try:
+                if int(overlay.winId()) == hwnd:
+                    return overlay
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                pass
+        overlays = getattr(manager, "_registered_overlays", {})
+        for handle in overlays.values():
+            window = handle.window
+            if window is None or not handle.is_visible():
+                continue
+            try:
+                if int(window.winId()) == hwnd:
+                    return handle
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                continue
+        return None
+
+    def nativeEventFilter(self, event_type, message):  # noqa: N802 - Qt 虚函数名
+        # ⚠️ PySide6 的返回元组是 **(handled, result)** —— 与 PyQt5 的
+        # (result, handled) 相反！顺序写反 = handled 取到打包值低位（0 = 未处理），
+        # 认领应答被当成「未处理」落回 DefWindowProc，竞拍永远让出
+        # （2026-10-09 真值表探针实测定案，别改回去）。
+        if event_type != b"windows_generic_MSG" or not hasattr(ctypes, "windll"):
+            return (False, 0)
+        msg = _WINMSG.from_address(int(message))
+        m = msg.message
+        if m not in self._INK_MESSAGES:
+            return (False, 0)
+        manager = self._manager
+        target = self._resolve_touch_target(int(msg.hwnd))
+        if target is None:
+            return (False, 0)
+        if target is manager.ink_window:
+            if m == WM_TOUCHHITTESTING:
+                return manager._evaluate_touch_hit_test(msg.lParam)
+            if not manager._is_claiming_ink_input():
+                return (False, 0)
+            if m == WM_TABLET_QUERYSYSTEMGESTURESTATUS:
+                return (True, TABLET_DISABLE_MASK)
+            if m == WM_TABLET_FLICK:
+                return (True, FLICK_WM_HANDLED_MASK)
+            return (True, 0)
+        if target is manager.overlay:
+            # TopWindow（2026-10-29 触控审计 #6）：未登记竞拍，
+            # ``WM_TOUCHHITTESTING`` 放行让系统按默认命中走；但轻拂 / 长按右键
+            # / 系统手势与墨迹窗（2026-10-13）同款源头拦死 —— 不拦的话 dock
+            # 区域的快速划动会被 DefWindowProc 回译成翻页键发给前台放映窗口
+            # （Qt Quick 的 Flickable 滚动走 QTouchEvent，不依赖 WM_GESTURE，
+            # 吞掉无副作用）。
+            if m == WM_TOUCHHITTESTING:
+                return (False, 0)
+            if m == WM_TABLET_QUERYSYSTEMGESTURESTATUS:
+                return (True, TABLET_DISABLE_MASK)
+            if m == WM_TABLET_FLICK:
+                return (True, FLICK_WM_HANDLED_MASK)
+            return (True, 0)
+        # RegisteredOverlay（聚光灯遮罩）：只答竞拍，洞外才认领；轻拂/手势
+        # 已在其 hwnd 上源头关闭（登记时 _disable_window_touch_gestures）。
+        if m == WM_TOUCHHITTESTING:
+            return manager._evaluate_overlay_touch_hit_test(target, msg.lParam)
+        return (False, 0)
+
 
 
 class WindowManager(QObject):
@@ -1148,9 +1580,20 @@ class WindowManager(QObject):
         #: （聚光灯一类；面板被遮罩盖住时要把面板顶进置顶带，见
         #: :meth:`_push_panel_above_overlays`）
         self._registered_overlays: Dict[str, RegisteredOverlay] = {}
+        #: 不走 register_window 的自管窗口（AGENTS.md 明文豁免的计时器
+        #: HTML 宿主这类）纳入放映置顶带照管后的成员表（2026-10-18，
+        #: 公共通道见 :meth:`adopt_topmost_window`）：放映激活边沿与周期
+        #: 重申照管可见成员，放映退出对称回落 —— 是否回落看窗口当前
+        #: flags 有无 ``Qt.WindowStaysOnTopHint``（迷你模式这类设计上
+        #: 常驻置顶的窗不摘）。插件名单不写死，谁自管窗口谁 adopt。
+        self._adopted_band_windows: List[Any] = []
         #: 窗口对象 -> post_reattach 回调（``_refresh_rinui_handle`` 按窗口查）
         self._reattach_callbacks: Dict[Any, Any] = {}
         self.overlay: Optional[QQuickWindow] = None
+        #: TopWindow 触控手势硬化是否已做过（2026-10-29 触控审计 #6）：
+        #: ``_apply_overlay_base_styles`` 会被 show / 抑制切换反复调用，
+        #: ``_disable_window_touch_gestures`` 幂等但没必要重复打十几个系统调用。
+        self._overlay_touch_hardened = False
         #: 自建墨迹叠加窗口（2026-10-07 计划 self-ink 第 3 项）：由
         #: :meth:`_ensure_ink_window` 懒创建、只藏不销毁，几何由
         #: :meth:`_apply_ink_geometry` 跟随 TopWindow 同一份 ``_overlay_rect``，
@@ -1170,6 +1613,12 @@ class WindowManager(QObject):
         self._ink_single_page_logged = False
         #: 当前墨迹工具：pen / eraser 整窗吃输入，其余（arrow）整窗穿透
         self._ink_tool = "arrow"
+        #: 触摸命中竞拍过滤器（2026-10-09，机制见常量区同日条目）：常驻
+        #: 安装一次，墨迹窗口建出来之前对一切消息放行，零开销。
+        self._ink_touch_filter = _InkTouchHitTestFilter(self)
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.installNativeEventFilter(self._ink_touch_filter)
         #: 墨迹窗口当前所在屏（逻辑↔物理换算要它自己的 DPR，同 _overlay_screen）
         self._ink_screen: Optional[QScreen] = None
         self._docks: Dict[str, QQuickItem] = {}
@@ -1602,6 +2051,7 @@ class WindowManager(QObject):
         label: Optional[str] = None,
         post_reattach=None,
         post_show=None,
+        remember_position: bool = False,
     ) -> RegisteredWindow:
         """注册一只自管窗口（设置 / 调试 / 编辑器 / 插件窗口），返回句柄。
 
@@ -1621,12 +2071,25 @@ class WindowManager(QObject):
           RinUI 接管完成 / 原生句柄刷新后调用（窗口专属 DWM 效果的补打
           入口，编辑器亚克力走的就是这里）；
         * ``post_show``：可选回调 ``callable(window)``，每次 ``show()``
-          之后、``raise_()`` 之前调用。
+          之后、``raise_()`` 之前调用；
+        * ``remember_position``：位置记忆开关（默认关，家族其余窗口
+          行为不变）；开启后首开定位、收起再开原地，仅运行期记忆
+          （2026-10-19 插件审计 U1/D-B2，黑板 opt-in）。
         """
         existing = self._registered_windows.get(name)
         if existing is not None:
             log.warning("窗口 %s 重复注册，返回既有句柄（幂等）", name)
             return existing
+        if name in _RESERVED_WINDOW_NAMES:
+            # 2026-10-18 plugin-audit B4：这些名字是 WindowManager 的内部
+            # 属性槽但不走 register_window 管理，插件注册同名窗口会在
+            # RegisteredWindow._sync_attr 门控下 setattr 直接遮蔽内部状态
+            # （快捷面板 / 放映顶层窗口 / 墨迹窗口全体失踪）。命中即拒绝，
+            # 让 loader 把「register 异常」记在插件自己账上。
+            raise ValueError(
+                f"窗口名 {name!r} 是 WindowManager 内部保留名"
+                f"（{sorted(_RESERVED_WINDOW_NAMES)}），注册会遮蔽内部状态，请改名"
+            )
         handle = RegisteredWindow(
             self,
             name,
@@ -1635,6 +2098,7 @@ class WindowManager(QObject):
             label=label,
             post_reattach=post_reattach,
             post_show=post_show,
+            remember_position=remember_position,
         )
         self._registered_windows[name] = handle
         return handle
@@ -1690,27 +2154,35 @@ class WindowManager(QObject):
 
         错误报告窗口**刻意不在**这里：它的定位带尺寸夹取、且在异常处理栈里
         被调用（要自己包 try），保持原来的手写路径。
+
+        与 :meth:`_register_builtin_groups` 同样保持**静默幂等**：装配段会在
+        ``load_plugins`` 之前先行调用一次以占住内建窗口名（防插件同名抢注），
+        随后 ``load_windows()`` 再进一次时直接跳过，不触发 ``register_window``
+        的重复注册 warning。
         """
-        self.register_window(
-            "settings", UI_DIR / "Settings.qml", label="设置窗口"
-        )
-        self.register_window(
-            "debug",
-            UI_DIR / "DebugWindow.qml",
-            position="beside_settings",
-            label="调试窗口",
-        )
+        if "settings" not in self._registered_windows:
+            self.register_window(
+                "settings", UI_DIR / "Settings.qml", label="设置窗口"
+            )
+        if "debug" not in self._registered_windows:
+            self.register_window(
+                "debug",
+                UI_DIR / "DebugWindow.qml",
+                position="beside_settings",
+                label="调试窗口",
+            )
         # 编辑器的亚克力：post_reattach 负责「接管 / 句柄刷新后补打」，
         # post_show 负责「show() 后再打 + 320ms 补拍」（原因见
         # ``_attach_editor_acrylic`` 的注释），两个钩子缺一不可。
-        self.register_window(
-            "editor",
-            UI_DIR / "MainInterfaceEditor.qml",
-            position="beside_settings",
-            label="主界面编辑器",
-            post_reattach=lambda w: self._attach_editor_acrylic(schedule=True),
-            post_show=lambda w: self._attach_editor_acrylic(schedule=True),
-        )
+        if "editor" not in self._registered_windows:
+            self.register_window(
+                "editor",
+                UI_DIR / "MainInterfaceEditor.qml",
+                position="beside_settings",
+                label="主界面编辑器",
+                post_reattach=lambda w: self._attach_editor_acrylic(schedule=True),
+                post_show=lambda w: self._attach_editor_acrylic(schedule=True),
+            )
 
     # ================================================================== 信号
 
@@ -1874,6 +2346,33 @@ class WindowManager(QObject):
         ):
             self._assert_topmost()
 
+    def adopt_topmost_window(self, window) -> None:
+        """把一只不走 register_window 的自管窗口纳入放映置顶带照管。
+
+        公共通道（2026-10-18，plugin-audit GAP-1）：计时器 HTML 宿主是
+        AGENTS.md 明文豁免 register_window 的自建窗口，登记表机制
+        （``RegisteredWindow.show()`` 尾部、
+        :meth:`_sync_self_managed_windows_topmost`）它一只都赶不上 ——
+        放映中开出来被放映画面整个盖死，翻页后无恢复通路。纳入后：
+        放映激活边沿与放映期周期重申（:meth:`_assert_topmost`）照管可见
+        成员；放映退出对称回落（带 ``Qt.WindowStaysOnTopHint`` 的成员
+        除外 —— 迷你模式的置顶是它自己的设计，见
+        :meth:`_sync_self_managed_windows_topmost`）。
+
+        幂等：重复 adopt 只记一次成员，推顶则每次都做（开窗后调它正是
+        要立刻顶上去）。推顶**只在放映激活期**发生 —— 普通期 adopt 只
+        登记成员，把窗口顶成桌面置顶反而错；窗口自己带 StaysOnTopHint
+        的（迷你模式）不经这道门，那是 Qt flags 语义。
+        """
+        if window not in self._adopted_band_windows:
+            self._adopted_band_windows.append(window)
+        try:
+            visible = window.isVisible()
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return
+        if self._presentation_active and visible:
+            self._top_self_managed_window(window)
+
     def _sync_self_managed_windows_topmost(self, active: bool) -> None:
         """放映状态边沿：批量调整自管窗口的 z 序。
 
@@ -1891,6 +2390,20 @@ class WindowManager(QObject):
             elif handle.window is None:
                 continue
             if self._set_self_managed_topmost(handle.window, active):
+                changed = True
+        # adopted 成员（计时器这类，公共通道见 adopt_topmost_window）同
+        # 规则跟进。放映退出时带 ``Qt.WindowStaysOnTopHint`` 的成员不摘
+        # —— 迷你模式的置顶是它自己的设计语义，摘掉反而破坏行为。
+        for window in self._adopted_band_windows:
+            try:
+                if active:
+                    if not window.isVisible():
+                        continue
+                elif _qt_window_flags(window) & Qt.WindowStaysOnTopHint:
+                    continue
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                continue
+            if self._set_self_managed_topmost(window, active):
                 changed = True
         # 批量顶进置顶带后，放映顶层窗口要重申一次（同
         # ``_top_self_managed_window`` 的次序理由）；inactive 回落时
@@ -2389,7 +2902,8 @@ class WindowManager(QObject):
     # ------------------------------------------------------- 墨迹叠加窗口
     # 2026-10-07 计划 self-ink 第 3 项。为什么墨迹要单独一只窗口：TopWindow 被
     # SetWindowRgn 裁成「只剩控制条几块」，区域外不绘制也不命中，墨迹画在它里面
-    # 等于画在看不见的地方。z 序：放映窗口 < 墨迹 < （聚光灯一类叠加窗口）< TopWindow。
+    # 等于画在看不见的地方。z 序：放映窗口 < 墨迹 < 自管窗口与叠加窗口 < TopWindow
+    # （2026-10-29 触控审计 #7 起自管窗口也在墨迹之上）。
 
     def _ensure_ink_window(self) -> Optional[QQuickWindow]:
         """懒创建墨迹窗口（进程内只建一次、只藏不销毁）；失败记日志返回 None。
@@ -2425,6 +2939,23 @@ class WindowManager(QObject):
             log.error("墨迹窗口创建失败: %s", qml_path)
             return None
         self.ink_window = root
+        # 触摸命中竞拍登记（2026-10-09，机制见常量区同日条目）：登记后系统
+        # 落下触摸时才会来问我们「这触点归你吗」，不登记连参选资格都没有。
+        # 登记随窗口存亡，窗口只藏不销毁，注册一次即可。
+        if hasattr(ctypes, "windll"):
+            try:
+                hwnd = int(root.winId())
+                if hwnd:
+                    _disable_window_touch_gestures(hwnd)
+                    if not ctypes.windll.user32.RegisterTouchHitTestingWindow(
+                        wintypes.HWND(hwnd), TOUCH_HIT_TESTING_CLIENT
+                    ):
+                        # warning 而非 info（2026-10-29 触控审计 #26）：登记被拒
+                        # = 触摸侧墨迹整体静默失效（不登记连参选资格都没有），
+                        # 用户只觉得「触屏批注坏了」，现场排查全靠这条日志。
+                        log.warning("墨迹窗口触摸命中竞拍登记被拒（err=%d）", ctypes.GetLastError())
+            except (OSError, RuntimeError):
+                log.debug("墨迹窗口触摸命中竞拍登记失败", exc_info=True)
         # 窗口建出来之前调用方可能已经切过工具：补一次，别让 QML 侧停在默认值
         layer = self.ink_layer()
         if layer is not None:
@@ -2433,6 +2964,22 @@ class WindowManager(QObject):
             # 工具卡「点空白收起」的起笔钩子（2026-10-08 自建批注）：
             # 层起笔前问一遍，有卡开着就把这一按消费成收卡（见 _dismiss_tool_cards）
             layer.card_dismiss_hook = self._dismiss_tool_cards
+            # 橡皮擦胶囊碰撞排除钩子（2026-10-10 用户指令：鼠标在放映控制条胶囊上不显橡皮）
+            def _is_in_presentation_capsule(local_x: float, local_y: float) -> bool:
+                if self.overlay is None or not self.overlay.isVisible() or self._suppressed:
+                    return False
+                if self.ink_window is None:
+                    return False
+                try:
+                    global_pos = self.ink_window.mapToGlobal(QPoint(int(local_x), int(local_y)))
+                except Exception:
+                    return False
+                for dock in self._docks.values():
+                    if dock.isVisible() and self._dock_global_rect(dock).contains(global_pos):
+                        return True
+                return False
+
+            layer.capsule_hit_hook = _is_in_presentation_capsule
         return root
 
     def _apply_ink_config(self, layer: QQuickItem) -> None:
@@ -2499,6 +3046,185 @@ class WindowManager(QObject):
         在笔态，两边状态对不上。折成 arrow 让层与穿透状态永远一致。
         """
         return self._ink_tool if self._ink_tool in INK_INPUT_TOOLS else "arrow"
+
+    def _is_claiming_ink_input(self) -> bool:
+        """墨迹窗口当前是否处于拦截笔/触控输入的有效状态。"""
+        window = self.ink_window
+        return (
+            self._ink_tool in INK_INPUT_TOOLS
+            and not self._suppressed
+            and window is not None
+            and window.isVisible()
+        )
+
+    def _evaluate_touch_hit_test(self, input_addr: int) -> tuple[bool, int]:
+        """WM_TOUCHHITTESTING 竞拍应答（2026-10-09 / 2026-10-13，机制见常量区条目）。
+
+        ``input_addr`` 是消息 lParam —— ``TOUCH_HIT_TESTING_INPUT`` 的地址
+        （wParam 无用）。返回 **(handled, result)**（PySide6 的元组顺序，
+        别按 PyQt5 写反）：笔 / 橡皮激活、未抑制、墨迹窗口可见时：
+        - 触点落在墨迹窗口矩形内**且不在 UI 矩形**（:meth:`_touch_over_ui`，
+          2026-10-29 触控审计 #1 起让权）直接报 ``score = 0``
+          （``CLOSEST``），避免
+          ``nonOccludedBoundingBox`` 异常时 ``EvaluateProximityToRect`` 算出非零分
+          输给底下的 PowerPoint ``screenClass``；
+        - 触点落在矩形外（多屏下另一台显示器）调 ``EvaluateProximityToRect``
+          评出远分认输，绝不错抢另一屏；
+        其余态回 ``(False, 0)``，让 Qt 走 DefWindowProc 默认 FARTHEST。
+        """
+        if not self._is_claiming_ink_input():
+            return (False, 0)
+        window = self.ink_window
+        if window is None:
+            return (False, 0)
+        user32 = ctypes.windll.user32
+        hit_input = _TOUCH_HIT_TESTING_INPUT.from_address(input_addr)
+        evaluation = _TOUCH_HIT_TESTING_PROXIMITY_EVALUATION()
+        evaluation.score = TOUCH_HIT_TESTING_PROXIMITY_FARTHEST
+        evaluation.adjustedPoint = hit_input.point
+        try:
+            hwnd = int(window.winId())
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return (False, 0)
+        rect = wintypes.RECT()
+        if not hwnd or not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+            return (False, 0)
+        pt = hit_input.point
+        if rect.left <= pt.x < rect.right and rect.top <= pt.y < rect.bottom:
+            if self._touch_over_ui(window, rect, pt):
+                # 让权（2026-10-29 触控审计 #1）：控制条 / 自管窗口上方的触摸
+                # 还给他们 —— TopWindow 未登记竞拍抢不过墨迹窗，这里不让，
+                # 笔/橡皮态下触屏点控制条就是「点不动」。与聚光灯「洞内让权」
+                # 同一先例：报 FARTHEST，触摸经窗口 z 序落给上层 UI。
+                return (True, int(user32.PackTouchHitTestingProximityEvaluation(
+                    ctypes.byref(hit_input), ctypes.byref(evaluation))))
+            evaluation.score = 0
+            evaluation.adjustedPoint = pt
+        else:
+            user32.EvaluateProximityToRect(
+                ctypes.byref(rect), ctypes.byref(hit_input),
+                ctypes.byref(evaluation),
+            )
+        return (True, int(user32.PackTouchHitTestingProximityEvaluation(
+            ctypes.byref(hit_input), ctypes.byref(evaluation))))
+
+    def _touch_over_ui(self, window, wrect, pt) -> bool:
+        """触点（物理屏幕坐标）是否落在「该让权」的 UI 矩形内。
+
+        让权范围（2026-10-29 触控审计 #1）：
+
+        * 各 dock 的 ``interactiveRect``（已含展开中的笔色板卡 / 橡皮卡 /
+          切页面板，``_dock_global_rect`` 现读）；
+        * 可见自管窗口（register_window 家族，小黑板 / 设置 / 编辑器）与
+          adopted 成员（计时器等）—— 它们在 z 序上都位于墨迹之上
+          （见 :meth:`_place_ink_below_top`），触摸理应归它们。
+
+        物理 → 逻辑换算借墨迹窗口自身矩形做基准：走到这里触点必在窗内，
+        ``(pt - rect.left) / dpr`` 即窗口局部逻辑坐标，加窗口全局位置即
+        全局逻辑坐标 —— 与 ``_dock_global_rect`` / ``frameGeometry`` 同一空间。
+        """
+        if window is None:
+            return False
+        dpr = window.devicePixelRatio() or 1.0
+        if dpr <= 0:
+            dpr = 1.0
+        try:
+            gpos = QPoint(
+                int(window.position().x() + (pt.x - wrect.left) / dpr),
+                int(window.position().y() + (pt.y - wrect.top) / dpr),
+            )
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return False
+        for dock in self._docks.values():
+            try:
+                if dock.isVisible() and self._dock_global_rect(dock).contains(gpos):
+                    return True
+            except RuntimeError:  # pragma: no cover - 组件已释放
+                continue
+        for handle in self._registered_windows.values():
+            w = handle.window
+            if w is None or not handle.is_visible():
+                continue
+            try:
+                if w.frameGeometry().contains(gpos):
+                    return True
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                continue
+        for w in self._adopted_band_windows:
+            try:
+                if w.isVisible() and w.frameGeometry().contains(gpos):
+                    return True
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                continue
+        return False
+
+    def _evaluate_overlay_touch_hit_test(self, handle, input_addr: int) -> tuple[bool, int]:
+        """RegisteredOverlay（聚光灯遮罩）的 WM_TOUCHHITTESTING 竞拍应答：
+        **洞外才认领**（2026-10-18 plugin-audit F2/D-S2）。
+
+        遮罩刻意不加 ``WS_EX_TRANSPARENT``（要吃点击、控制条之外的「聚焦」
+        语义才成立），但触摸此前未登记竞拍——触摸被已登记的放映窗口全数
+        拿走直接穿透到幻灯片，「光斑外点击被挡」是空话。策略：
+
+        - 触点在遮罩矩形内且在**光斑（镂空）之外** → 直报 ``CLOSEST(0)```
+          （照墨迹路径的直接报分先例，避免 EvaluateProximityToRect 的非零
+          分输给放映窗口），遮罩吃掉这一下；
+        - 触点在**光斑之内** → 让权 FARTHEST，触摸经镂空落给放映（翻页
+          照旧）——与区域塑形放行洞内鼠标是同一张力；
+        - 触点在遮罩矩形之外（另一台显示器）→ ``EvaluateProximityToRect``
+          报远分认输，绝不错抢；
+        - 遮罩不可见 → ``(False, 0)`` 走 DefWindowProc 默认 FARTHEST。
+
+        坐标空间：``point`` 是物理屏幕坐标（与墨迹路径 GetWindowRect 同一
+        空间），洞 ``_hole`` 是窗口局部逻辑坐标——经该遮罩自己校准的
+        ``_region_scale``（物理/逻辑倍率，``_sync_region`` 现算）换算；还没
+        塑形过时退回 devicePixelRatio，再退 1.0。无洞（尚未塑形）按整窗
+        认领——此刻遮罩本就是无镂空的整屏实心窗，与鼠标行为一致。
+        """
+        if not handle.is_visible():
+            return (False, 0)
+        window = handle.window
+        if window is None:
+            return (False, 0)
+        user32 = ctypes.windll.user32
+        hit_input = _TOUCH_HIT_TESTING_INPUT.from_address(input_addr)
+        evaluation = _TOUCH_HIT_TESTING_PROXIMITY_EVALUATION()
+        evaluation.score = TOUCH_HIT_TESTING_PROXIMITY_FARTHEST
+        evaluation.adjustedPoint = hit_input.point
+        try:
+            hwnd = int(window.winId())
+        except RuntimeError:  # pragma: no cover - 窗口已释放
+            return (False, 0)
+        rect = wintypes.RECT()
+        if not hwnd or not user32.GetWindowRect(wintypes.HWND(hwnd), ctypes.byref(rect)):
+            return (False, 0)
+        pt = hit_input.point
+        if not (rect.left <= pt.x < rect.right and rect.top <= pt.y < rect.bottom):
+            # 不在遮罩矩形（多半是另一台显示器）：远分认输，绝不错抢
+            user32.EvaluateProximityToRect(
+                ctypes.byref(rect), ctypes.byref(hit_input),
+                ctypes.byref(evaluation),
+            )
+            return (True, int(user32.PackTouchHitTestingProximityEvaluation(
+                ctypes.byref(hit_input), ctypes.byref(evaluation))))
+        hole = handle._hole
+        scale = handle._region_scale or (window.devicePixelRatio() or 1.0)
+        in_hole = False
+        if hole is not None:
+            cx, cy, r = hole
+            hx = rect.left + cx * scale
+            hy = rect.top + cy * scale
+            hr = max(1.0, r * scale)
+            in_hole = (pt.x - hx) ** 2 + (pt.y - hy) ** 2 <= hr * hr
+        if in_hole:
+            # 光斑内：让权（FARTHEST 保持），触摸经镂空落给放映
+            return (True, int(user32.PackTouchHitTestingProximityEvaluation(
+                ctypes.byref(hit_input), ctypes.byref(evaluation))))
+        # 光斑外（或尚未塑形）：遮罩吃掉 —— CLOSEST(score=0) 直报
+        evaluation.score = 0
+        evaluation.adjustedPoint = pt
+        return (True, int(user32.PackTouchHitTestingProximityEvaluation(
+            ctypes.byref(hit_input), ctypes.byref(evaluation))))
 
     def _sync_ink_page(self, state) -> None:
         """按页墨迹（2026-10-07 计划 self-ink 第 7 项）：放映状态流驱动 InkLayer 换页。
@@ -2568,6 +3294,16 @@ class WindowManager(QObject):
     def _hide_ink_window(self) -> None:
         if self.ink_window is not None and self.ink_window.isVisible():
             self.ink_window.hide()
+        # 在途触控会话一并作废（2026-10-29 触控审计 #8）：层的
+        # _touch_id/_palm_erasing/_smoother 跨场残留会让下一场放映首触无墨，
+        # 触点 id 小整数循环复用时甚至会复活幽灵掌擦。数据/幻影清理走层的
+        # abort_input，这里只管窗口显隐。
+        layer = self.ink_layer()
+        if layer is not None:
+            try:
+                layer.abort_input()
+            except RuntimeError:  # pragma: no cover - 组件已释放
+                pass
         # 与 hide_docks 复位 _overlay_screen 同理：下次显示重新定屏
         self._ink_screen = None
 
@@ -2618,7 +3354,10 @@ class WindowManager(QObject):
             _set_window_ex_style(hwnd, new_style)
 
     def _place_ink_below_top(self) -> None:
-        """把墨迹窗口插到「TopWindow 与可见叠加窗口里最低的那只」正下方。
+        """把墨迹窗口插到「TopWindow 与最低的可见候选窗口」正下方。
+
+        候选 = 可见叠加窗口（聚光灯一类）+ 可见自管窗口（小黑板/设置/编辑器）
+        + adopted 成员（计时器等），后两类是 2026-10-29 触控审计 #7 加进来的。
 
         用 ``SetWindowPos(ink, anchor)``（插在 anchor 之下）而不是 HWND_TOPMOST：
         后者会把墨迹顶到置顶带最上面，压住控制条和聚光灯。anchor 本身已在
@@ -2644,6 +3383,30 @@ class WindowManager(QObject):
             except RuntimeError:  # pragma: no cover
                 continue
             # 现 anchor 在它之上 → 它更低，换它当 anchor（不改聚光灯与 TopWindow 的相对序）
+            if other and other != anchor and _zorder_above(anchor, other):
+                anchor = other
+        # 自管窗口（register_window 家族：小黑板 / 设置 / 编辑器）与 adopted
+        # 成员（计时器等）同样算候选（2026-10-29 触控审计 #7）：此前锚扫描
+        # 只看叠层，笔态墨迹玻璃会压在它们上面 —— 全屏玻璃整窗吃鼠标 + 触摸
+        # 竞拍认领，小黑板写不进、按钮点不动，放映批注 × 插件窗口的组合直接
+        # 断腿。插到「最低候选」之下后次序恒为 放映 < 墨迹 < 自管窗口/叠层 <
+        # TopWindow（候选彼此的相对序不动）。
+        for handle in self._registered_windows.values():
+            if handle.window is None or not handle.is_visible():
+                continue
+            try:
+                other = int(handle.window.winId())
+            except RuntimeError:  # pragma: no cover
+                continue
+            if other and other != anchor and _zorder_above(anchor, other):
+                anchor = other
+        for window in self._adopted_band_windows:
+            try:
+                if not window.isVisible():
+                    continue
+                other = int(window.winId())
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                continue
             if other and other != anchor and _zorder_above(anchor, other):
                 anchor = other
         try:
@@ -2911,6 +3674,15 @@ class WindowManager(QObject):
         if suppressed:
             self._apply_overlay_base_styles(transparent=True)
             self._click_through = True
+            # 抑制 = 墨迹窗口强制穿透，在途触摸笔画必然收不到后续事件；
+            # 与 _hide_ink_window 同理作废会话态，别让笔画/幻影悬挂到恢复
+            # （2026-10-29 触控审计 #8）
+            layer = self.ink_layer()
+            if layer is not None:
+                try:
+                    layer.abort_input()
+                except RuntimeError:  # pragma: no cover - 组件已释放
+                    pass
         else:
             self._apply_overlay_base_styles(transparent=False)
             self._last_region_rects = None
@@ -3019,6 +3791,13 @@ class WindowManager(QObject):
         else:
             style &= ~WS_EX_TRANSPARENT
         _set_window_ex_style(hwnd, style)
+        # 触控手势硬化（2026-10-29 触控审计 #6）：TopWindow 与墨迹窗同款
+        # 源头关闭轻拂 / 长按右键环 / 系统手势，配合 _InkTouchHitTestFilter
+        # 对本窗口 hwnd 的拦截（过滤器只认 hwnd，这里补上窗口侧的旗标）。
+        # 幂等但不止一次被调（show/抑制切换都走这里），只做一次。
+        if not self._overlay_touch_hardened:
+            self._overlay_touch_hardened = True
+            _disable_window_touch_gestures(hwnd)
 
     def _assert_topmost(self) -> None:
         """把顶层窗口压回 TOPMOST。
@@ -3026,9 +3805,32 @@ class WindowManager(QObject):
         PowerPoint 的放映窗口本身也是 TOPMOST，且在启动 / 翻页时会
         重申自己的 z 序；我们的窗口必须周期性地压回去，否则会被放映
         窗口盖住（表现同样为「看不到控制条」）。
+
+        重申**顺序即语义**（2026-10-18，plugin-audit GAP-2）：先可见叠层、
+        再 adopted 自管窗口、最后压 TopWindow —— 同在置顶带里，最后
+        ``SetWindowPos(HWND_TOPMOST)`` 的居带顶。放映翻页把整条带重排，
+        只压 TopWindow 的话聚光灯遮罩被埋且永不恢复（``show()`` 里那次
+        重申是一次性的）；先重申叠层再压 TopWindow，最终次序恒为
+        「放映 < 墨迹 < 叠层 < adopted < TopWindow」。推不动时走
+        :meth:`_check_zorder` 的告警与 :meth:`_visible_topmost_above` 的
+        点名，不在这里猜。
         """
         if self.overlay is None or not self.overlay.isVisible():
             return
+        # 先重申可见叠层：遮罩被放映窗口的重申埋掉后，这个周期性入口是
+        # 唯一恢复通路（谁最后 SetWindowPos 谁在带顶，故必须在 TopWindow
+        # 之前做完）
+        for handle in self._registered_overlays.values():
+            if handle.is_visible() and handle.window is not None:
+                self._set_self_managed_topmost(handle.window, True)
+        # adopted 自管窗口（计时器这类）同拍重申，翻页后同样回得来
+        for window in self._adopted_band_windows:
+            try:
+                visible = window.isVisible()
+            except RuntimeError:  # pragma: no cover - 窗口已释放
+                continue
+            if visible:
+                self._set_self_managed_topmost(window, True)
         hwnd = int(self.overlay.winId()) if self.overlay is not None else 0
         if not hwnd:
             return

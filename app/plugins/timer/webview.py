@@ -18,6 +18,18 @@
 原项目里的 Linux 外挂进程模式、设置窗/引导窗专用分支、多主题包
 （material-you 等 8 个本项目到不了的 ThemeId）没有带过来。
 
+2026-10-19 插件审计 t25 修订：开窗与迷你落位跟屏走（F17，A4 裁定），迷你
+退出几何兜底回设计尺寸（F18），加载失败 / 渲染进程放弃重载从静默白窗改
+显式失败页（F19，showEvent 自愈闭环），最大化状态推送按值去重（F21）。
+同日 w2 追加：失败态改由「当前页 != 原页」URL 派生（证据脚本实证
+intent 布尔在「reload 在飞 + 开窗」时序下早清，会骗过 showEvent 自愈门
+造成假死）；loadFinished(False) 先查 isLoading() 吃掉被新加载顶掉的
+陈旧失败事件，再进失败页。同日 t26（F20，A6 裁定）：三项宽松开关收紧为
+False——本地固定页面不发远程请求（页面里 http 只出现在 data: SVG 内联
+掩码）、零剪贴板消费、无混合明文内容，三开关留 True 徒增网络与剪贴板
+权限面；到 file:// 的互访（图标注入走 img.src=file://）与 AutoLoadImages
+不在 A6 清单，保持不动。收紧后复跑 t24/t20/t21/t25 全套回归。
+
 ⚠️ 本模块的 QtWebEngine 导入发生在**模块级**，因此谁 import 它谁就拉起了
 WebEngine —— ``plugin.py`` 故意在第一次开窗时才 import 本模块（已验证：
 Qt 6.9 / Windows 上 QApplication 创建之后再初始化 WebEngine 可行，
@@ -36,7 +48,6 @@ from typing import Any, Callable, Dict, Optional
 
 from PySide6.QtCore import QFile, QIODevice, QObject, Qt, QTimer, QUrl, Slot
 from PySide6.QtGui import QColor, QCursor, QGuiApplication
-from PySide6.QtWidgets import QApplication
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import (
     QWebEnginePage,
@@ -48,35 +59,6 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 log = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------ 主题
-
-
-def _get_windows_dark_mode() -> bool:
-    """读注册表拿 Windows 应用深浅色（Auto 模式用）。"""
-    if sys.platform != "win32":
-        return False
-    try:
-        import winreg
-
-        key = winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER,
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-        )
-        value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-        winreg.CloseKey(key)
-        return int(value) == 0
-    except Exception:
-        return False
-
-
-def resolve_theme_dark(theme_mode: str) -> bool:
-    mode = str(theme_mode or "").strip().lower()
-    if mode == "dark":
-        return True
-    if mode == "light":
-        return False
-    if mode == "auto":
-        return _get_windows_dark_mode()
-    return False
 
 
 #: 统一主题变量表 —— 只留 ``default`` 一套（Luminalium 2 没有 ThemeId 概念，
@@ -372,6 +354,16 @@ class TimerApi(QObject):
         except Exception:
             return {}
 
+    @Slot()
+    def reload_page(self) -> None:
+        """失败页「重新加载」按钮：回原计时页（2026-10-19 审计 F19）。
+
+        垫片是 Proxy 泛代理（_get_qwebchannel_js），新 Slot 无需登记名单。
+        """
+        window = self._window
+        if window is not None:
+            window._load_original()
+
     # ---- 设置 / 版本 ----
 
     @Slot(result="QVariant")
@@ -399,6 +391,9 @@ class TimerApi(QObject):
             "remaining": int(m.remaining_seconds),
             "total": int(m.total_seconds),
             "is_running": bool(m.is_running),
+            # 「时间到」结束态（2026-10-18 plugin-audit F15）：到过点后重开
+            # 窗口要能恢复铃铛页，而不是落回秒表设置页
+            "finished": bool(m.is_finished),
         }
 
     @Slot(int)
@@ -647,25 +642,43 @@ body {
 """
 
 #: 注入的标题栏 DOM（图标 + 双击关闭提示 + 居中标题 + 三个控制钮）。
-_TITLE_BAR_HTML = (
-    '<div class="title-bar" id="title-bar">'
-    '<div class="title-bar-icon" id="title-bar-icon">'
-    '<div class="title-bar-icon-close-toast" id="title-bar-icon-close-toast">再次点击以关闭窗口</div>'
-    "</div>"
-    '<div class="title-bar-title" id="title-bar-text"></div>'
-    '<div class="title-bar-controls">'
-    '<button class="title-bar-btn" id="btn-minimize" title="最小化" onclick="window.pywebview.api.minimize_window()">'
-    '<span class="title-bar-icon-glyph"></span>'
-    "</button>"
-    '<button class="title-bar-btn" id="btn-maximize" title="最大化" onclick="window.pywebview.api.toggle_maximize()">'
-    '<span class="title-bar-icon-glyph"></span>'
-    "</button>"
-    '<button class="title-bar-btn title-bar-close" id="btn-close" title="关闭" onclick="window.pywebview.api.close_window()">'
-    '<span class="title-bar-icon-glyph"></span>'
-    "</button>"
-    "</div>"
-    "</div>"
-)
+#: 文案走 ``i18n.tr("timer", ...)``（2026-10-18 plugin-audit F5：此前
+#: 「最小化/最大化/关闭/再次点击以关闭窗口」硬编码中文）。**构造期函数**
+#: 而不是模块级常量——translator 在应用装配期才装上，模块导入时 tr 查
+#: 不到译文只会回原文。语言运行期切换不重注入标题栏（与页面 I18N 的
+#: 其它注入段同款限制，重启生效）。
+
+
+def _title_bar_html() -> str:
+    from ... import i18n
+
+    return (
+        '<div class="title-bar" id="title-bar">'
+        '<div class="title-bar-icon" id="title-bar-icon">'
+        '<div class="title-bar-icon-close-toast" id="title-bar-icon-close-toast">'
+        + i18n.tr("timer", "再次点击以关闭窗口")
+        + "</div>"
+        "</div>"
+        '<div class="title-bar-title" id="title-bar-text"></div>'
+        '<div class="title-bar-controls">'
+        '<button class="title-bar-btn" id="btn-minimize" title="'
+        + i18n.tr("timer", "最小化")
+        + '" onclick="window.pywebview.api.minimize_window()">'
+        '<span class="title-bar-icon-glyph"></span>'
+        "</button>"
+        '<button class="title-bar-btn" id="btn-maximize" title="'
+        + i18n.tr("timer", "最大化")
+        + '" onclick="window.pywebview.api.toggle_maximize()">'
+        '<span class="title-bar-icon-glyph"></span>'
+        "</button>"
+        '<button class="title-bar-btn title-bar-close" id="btn-close" title="'
+        + i18n.tr("timer", "关闭")
+        + '" onclick="window.pywebview.api.close_window()">'
+        '<span class="title-bar-icon-glyph"></span>'
+        "</button>"
+        "</div>"
+        "</div>"
+    )
 
 #: 标题栏行为脚本：填充标题与图标、图标单击提示再点关闭。与原项目一致。
 _TITLE_BAR_JS = (
@@ -737,6 +750,38 @@ def _is_win11() -> bool:
             return False
 
 
+_LOAD_FAILED_HTML = (
+    "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+    "<style>"
+    "html,body{height:100%;margin:0}"
+    "body{display:flex;align-items:center;justify-content:center;"
+    "font-family:'Segoe UI','Microsoft YaHei',sans-serif;"
+    "background:#ffffff;color:#1a1a1a}"
+    "body.dark{background:#202020;color:#f2f2f2}"
+    ".box{text-align:center;max-width:420px;padding:24px}"
+    ".box h2{font-size:15px;margin:0 0 8px}"
+    ".box p{font-size:12px;opacity:.65;margin:0 0 18px;line-height:1.7}"
+    ".box button{font:inherit;font-size:12px;padding:6px 18px;margin:0 4px;"
+    "border-radius:6px;border:1px solid rgba(128,128,128,.5);"
+    "background:transparent;color:inherit;cursor:pointer}"
+    ".box button:hover{opacity:.8}"
+    "</style></head><body>"
+    "<div class='box' id='lmn-load-failed'>"
+    "<h2>计时器页面没有加载出来</h2>"
+    "<p>页面文件缺失或读取失败。<br>可以重试一次，或先关闭窗口。</p>"
+    "<button id='lmn-load-failed-reload' onclick=\"window.pywebview"
+    ".api.reload_page()\">重新加载</button>"
+    "<button id='lmn-load-failed-close' onclick=\"window.pywebview"
+    ".api.close_window()\">关闭</button>"
+    "</div>"
+    "<script>"
+    "try{var s=(window.initialSettings||{}).Appearance||{};"
+    "document.body.classList.toggle('dark',!!s.ResolvedIsDark);}"
+    "catch(e){}"
+    "</script></body></html>"
+)
+
+
 class TimerWebWindow(QWebEngineView):
     """计时器的 WebView 窗口（无边框、只藏不销毁、页面后台保活）。
 
@@ -765,27 +810,36 @@ class TimerWebWindow(QWebEngineView):
         self._is_fullscreen = False
         self._render_crash_count = 0
         self._max_reload_attempts = 3
+        # 2026-10-19 插件审计 F18/F19/F21：设计尺寸给迷你退出兜底；推送
+        # 缓存给 F21 按值去重。失败态不落实例属性——由只读派生属性从
+        # page().url() 现算（定义见 _failed_state 的 property）。
+        self._last_maximized_pushed = None
+        self._html_path = str(html_path)
+        self._design_size = (width, height)
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
         remove_window_border_delayed(self)
         self.resize(width, height)
         self._center_on_screen()
 
-        # 页面设置：本地 HTML 要读 file:// 资源（系统铃声 wav）与跑脚本
+        # 页面设置：本地 HTML 要跑脚本；file:// 互访保留（图标注入走
+        # img.src=file://）。2026-10-19 插件审计 A6/F20：三项宽松开关收紧
+        # 为 False——本地固定页面不发远程请求（页面里 http 只出现在 data:
+        # SVG 内联掩码）、零剪贴板消费、无混合明文内容，留 True 徒增权限面。
         page = QWebEnginePage(self)
         self.setPage(page)
         page_settings = page.settings()
         page_settings.setAttribute(
-            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, False
         )
         page_settings.setAttribute(
             QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
         )
         page_settings.setAttribute(
-            QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, True
+            QWebEngineSettings.WebAttribute.AllowRunningInsecureContent, False
         )
         page_settings.setAttribute(
-            QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, True
+            QWebEngineSettings.WebAttribute.JavascriptCanAccessClipboard, False
         )
         page_settings.setAttribute(
             QWebEngineSettings.WebAttribute.AutoLoadImages, True
@@ -907,11 +961,35 @@ class TimerWebWindow(QWebEngineView):
 
     # ---- 加载 ----
 
+    @property
+    def _failed_state(self) -> bool:
+        """失败态唯一事实来源：当前在屏页是不是失败页。
+
+        原实现用实例布尔记意图：_load_original 先清标记再发加载，
+        「重载在飞 + 用户此刻开窗」的时序下早清的 False 会骗过 showEvent
+        自愈门，随后陈旧 loadFinished(False) 把真页拽回失败页就无人再救
+        （证据脚本 v2 法证 LF@3.618 实录）。改为派生：失败页在屏（True，
+        show 自愈）、健康原页与飞向原页（False，在飞加载就是自愈）三态
+        全部忠实。只读，无处写。
+        """
+        return self.page().url().scheme() == "data"
+
     def _on_load_finished(self, ok: bool) -> None:
         if not ok:
+            # 被更新的加载顶掉的在飞加载，Qt 仍会为它补发一份
+            # loadFinished(False)；此刻 isLoading() 已翻向新加载，这种
+            # 陈旧失败事件不能把正在自愈的窗口拽回失败页（w2 追加实证）。
+            if self.page().isLoading():
+                return
             log.warning("计时器页面加载失败（loadFinished ok=False）")
+            # 显式失败页兜底，不再是静默白窗（2026-10-19 审计 F19）
+            self._enter_failed_state()
+            return
+        if self._failed_state:
+            # 失败页自身加载完成：不要往提示页上叠正常页的标题栏注入
             return
         self._render_crash_count = 0
+        self._last_maximized_pushed = None  # 新文档要一次完整推送（F21 缓存作废）
         self._apply_page_background()
         apply_window_theme(int(self.winId()), self._effective_is_dark())
         self._inject_title_bar_html()
@@ -927,6 +1005,28 @@ class TimerWebWindow(QWebEngineView):
                 "计时器渲染进程终止（%s/%s），重载", status, code
             )
             QTimer.singleShot(300, self.reload)
+        else:
+            # 放弃重载后给失败页而不是白窗（2026-10-19 审计 F19）
+            self._enter_failed_state()
+
+    def _enter_failed_state(self) -> None:
+        """加载失败 / 渲染进程放弃重载后的显式兜底（2026-10-19 审计 F19）。
+
+        setHtml 的失败页会重跑 page.scripts() 里的 DocumentCreation 注入
+        （pywebview 垫片与 initialSettings 都会再来一遍），按钮可直接调桥。
+        幂等卫语句与 _failed_state 同源（失败页在屏即 return）；失败态
+        派生后不再写实例标记。
+        """
+        if self._failed_state:
+            return
+        self.setHtml(_LOAD_FAILED_HTML)
+
+    def _load_original(self) -> None:
+        """回原计时页：失败页「重新加载」按钮与 showEvent 自愈共用。"""
+        # 不再预清失败态标记（它派生自 page().url()）：load() 一发起页面
+        # URL 就翻向原页，标记即时归 False；若真再次失败，loadFinished
+        # 会把窗口送回 _enter_failed_state。
+        self.load(QUrl.fromLocalFile(self._html_path))
 
     def _inject_title_bar_html(self) -> None:
         js = (
@@ -935,7 +1035,7 @@ class TimerWebWindow(QWebEngineView):
             "if(!tb){"
             "var d=document.createElement('div');"
             "d.innerHTML="
-            + json.dumps(_TITLE_BAR_HTML, ensure_ascii=False)
+            + json.dumps(_title_bar_html(), ensure_ascii=False)
             + ";"
             "var el=d.firstChild;"
             "document.body.insertBefore(el,document.body.firstChild);"
@@ -962,6 +1062,12 @@ class TimerWebWindow(QWebEngineView):
             pass
 
     def _push_maximized_state(self) -> None:
+        # 值不变不推（2026-10-19 审计 F21）：changeEvent 对激活/失活等事
+        # 件一样会进来，每次都 runJavaScript 是纯噪声；新文档由 loadFinished
+        # (ok=True) 把缓存归 None，保证首推不丢。
+        if bool(self.isMaximized()) == self._last_maximized_pushed:
+            return
+        self._last_maximized_pushed = bool(self.isMaximized())
         try:
             maximized = "true" if self.isMaximized() else "false"
             icon_text = json.dumps("" if self.isMaximized() else "")
@@ -1003,7 +1109,16 @@ class TimerWebWindow(QWebEngineView):
             self.setAttribute(Qt.WA_TranslucentBackground)
             remove_window_border_delayed(self)
             self.resize(340, 400)
-            screen = QApplication.primaryScreen()
+            # 迷你窗允许拖边缩放（nativeEvent 热区）：下限按最小档位兜底——
+            # 150 宽是 mini-tiny（只剩数字）档阈值、120 高足够顶栏+数字，
+            # 再小内容必裁（2026-10-19 插件审计 F8）。退出迷你即解除。
+            self.setMinimumSize(150, 120)
+            # 跟所在屏走而不是恒钉主屏（2026-10-19 审计 F17，A4 裁定：
+            # 教室投影常在副屏）：迷你前几何所在屏为准，几何拿不到再退
+            # 光标屏，最后才主屏（_screen_at 内兜底）。
+            pre_geo = self._pre_mini_geometry
+            anchor_pt = pre_geo.center() if pre_geo is not None else QCursor.pos()
+            screen = self._screen_at(anchor_pt)
             if screen:
                 geo = screen.availableGeometry()
                 self.move(geo.x() + geo.width() - 340 - 20, geo.y() + 20)
@@ -1012,6 +1127,8 @@ class TimerWebWindow(QWebEngineView):
             self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
             self.setAttribute(Qt.WA_TranslucentBackground, False)
             remove_window_border_delayed(self)
+            # 先解除迷你档下限，恢复原几何不受它钳制
+            self.setMinimumSize(0, 0)
             restored = False
             geo = self._pre_mini_geometry
             if geo is not None:
@@ -1028,7 +1145,9 @@ class TimerWebWindow(QWebEngineView):
                 self.set_fullscreen(True)
                 restored = True
             elif not restored:
-                self.resize(800, 600)
+                # 兜底回设计尺寸而不是拍脑袋的 800x600（2026-10-19 审计
+                # F18：设计尺寸是 _ensure_window 按屏幕比例算的真档位）
+                self.resize(*self._design_size)
                 self._center_on_screen()
             self._pre_mini_geometry = None
             self._pre_mini_was_maximized = False
@@ -1067,8 +1186,13 @@ class TimerWebWindow(QWebEngineView):
             pass
         self._push_maximized_state()
 
+    def _screen_at(self, point):
+        """所在屏判定：家族同款 screenAt(点) 双保险主屏（windows.py 同款）。"""
+        return QGuiApplication.screenAt(point) or QGuiApplication.primaryScreen()
+
     def _center_on_screen(self) -> None:
-        screen = QGuiApplication.primaryScreen()
+        # 开在光标所在屏，不恒钉主屏（2026-10-19 审计 F17，A4 裁定）
+        screen = self._screen_at(QCursor.pos())
         if not screen:
             return
         geo = screen.availableGeometry()
@@ -1082,6 +1206,14 @@ class TimerWebWindow(QWebEngineView):
     def closeEvent(self, event) -> None:
         event.ignore()
         self.hide()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # 失败态窗口亮出即回原页（2026-10-19 审计 F19）：开窗路径
+        # （plugin._open_window）只 show 不 re-load，只藏不销毁的窗口
+        # 必须在这里自愈，否则一次文件抖动就是永久假死。
+        if self._failed_state:
+            QTimer.singleShot(0, self._load_original)
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)

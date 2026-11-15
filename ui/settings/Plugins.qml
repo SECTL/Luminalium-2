@@ -55,6 +55,16 @@ import "components"
     到「按插件类型给的字形」和「不显示」，老插件一行都不用改。接口与解析规则
     见 ``app/bridge.py::_plugin_icon`` 与 ``docs/plugin-development.md``。
 
+    2026-10-19（todo 22 呈现批次，审计 U1-U5/U7）：① 两枚导入磁贴的 tooltip
+    明示「导入时会运行插件代码进行校验」—— ``external.py`` 头注释第 3 条要求
+    UI 把「导入即运行」讲清（U1）；② ``describe()`` 禁用行改单句
+    「未加载：已禁用」：不再拼 loader 的跳过原因（内含 ``plugins.<id>`` 配置键
+    字样，不该在用户界面露出），也不再尾巴重复「已禁用」（U2）；③ 重启提示
+    横幅补说明：新导入的插件重启后才进列表、磁贴要在快捷面板编辑模式中添加
+    （U3/U7 —— 快照语义与「磁贴不自动加入」是有意为之，缺的是引导文案）；
+    ④ 结果横幅 8 秒自动复位（U4）；⑤ 导入对话框补 parent（原生模态框可能
+    落到设置窗后面）与起始目录存在性兜底，改在 ``app/bridge.py``（U5）。
+
     ⚠️ **导入 / 删除 / 启用 / 禁用都是重启后生效，本进程内不做任何动态
     增删** —— 这不是偷懒，是两个架构前提决定的：
       ① 注册表在加载期末 ``registry.freeze()`` 冻结，之后任何 ``add_*``
@@ -98,7 +108,9 @@ Rin.FluentPage {
 
     /*! 拨过任意开关 / 导入删除成功后置 true，「重启后生效」横幅据此显示。 */
     property bool restartHintShown: false
-    /*! 导入 / 删除结果横幅的文案；空串隐藏（结果只在操作后看一眼）。 */
+    /*! 导入 / 删除结果横幅的文案；空串隐藏。2026-10-19（todo 22/U4）前没有
+        复位机制，注释里这句「结果只在操作后看一眼」名不副实——现在由
+        ``resultHideTimer`` 在 8 秒后清空，这句注释立回字面。 */
     property string resultText: ""
     /*! 本次结果是成功（true）还是失败（false），横幅配色与图标跟着换。 */
     property bool resultOk: false
@@ -254,19 +266,15 @@ Rin.FluentPage {
         }
         if (item.loaded) {
             parts.push(qsTr("已加载"))
+        } else if (!item.enabled) {
+            // U2（todo 22）：禁用行说一遍「未加载：已禁用」就够——loader 的
+            // reason 是给人看日志的，内含 plugins.<id> 配置键字样，不该在
+            // 用户界面露出，也不再尾巴重复一遍「已禁用」。
+            parts.push(qsTr("未加载：已禁用"))
         } else if (item.reason) {
             parts.push(qsTr("未加载：%1").arg(item.reason))
         } else {
             parts.push(qsTr("未加载"))
-        }
-        /*! 「已禁用」只在**没有跳过原因**时补一句：``reason`` 里的
-            「已禁用（plugins.x.enabled=false）」是启动快照的说法，两者同时出现
-            会变成「未加载：已禁用（…） · 已禁用」。而 ``enabled`` 是**现读配置**的
-            （见 ``app/bridge.py::_get_plugin_items``）—— 刚拨完开关、还没重启时
-            快照里仍是 loaded / reason=null，这时这一句才是唯一看得出「你已经关了它」
-            的地方，不能删。 */
-        if (!item.enabled && !item.reason) {
-            parts.push(qsTr("已禁用"))
         }
         return parts.join(" · ")
     }
@@ -276,6 +284,8 @@ Rin.FluentPage {
         function onPluginManageResult(ok, message) {
             page.resultOk = ok
             page.resultText = message
+            // 每次结果一到就重起计时（U4：横幅 8 秒后自动消失）。
+            resultHideTimer.restart()
             if (ok) {
                 page.restartHintShown = true
             }
@@ -285,6 +295,14 @@ Rin.FluentPage {
         function onPluginItemsChanged() {
             page.pruneKindFilter()
         }
+    }
+
+    /*! 结果横幅自动复位（todo 22/U4）：操作结果只值得看一眼，8 秒后撤掉，
+        别让旧结果一直挂着，与页面新状态互相矛盾。 */
+    Timer {
+        id: resultHideTimer
+        interval: 8000
+        onTriggered: page.resultText = ""
     }
 
     // ==================================================== 导入 / 删除结果横幅
@@ -307,7 +325,7 @@ Rin.FluentPage {
         Layout.fillWidth: true
         visible: page.restartHintShown
         title: qsTr("更改将在重启应用后生效")
-        description: qsTr("插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载")
+        description: qsTr("插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载；新导入的插件要重启后才会出现在下方列表，磁贴需在快捷面板的编辑模式里点「+」添加")
         icon.name: "ic_fluent_arrow_sync_circle_20_regular"
     }
 
@@ -344,7 +362,7 @@ Rin.FluentPage {
 
             label: qsTr("导入文件夹")
             iconName: "ic_fluent_folder_20_regular"
-            tooltip: qsTr("选择包含 plugin.py 的插件文件夹；导入即拷贝安装")
+            tooltip: qsTr("选择包含 plugin.py 的插件文件夹；导入时会运行插件代码进行校验，请只用可信来源")
 
             iconSize: Lumi.pluginTileIconSize
             glyphSize: Lumi.pluginTileGlyphSize
@@ -366,7 +384,7 @@ Rin.FluentPage {
 
             label: qsTr("导入压缩包（.zip）")
             iconName: "ic_fluent_folder_zip_20_regular"
-            tooltip: qsTr("选择 .zip 插件包；导入即拷贝安装")
+            tooltip: qsTr("选择 .zip 插件包；导入时会运行插件代码进行校验，请只用可信来源")
 
             iconSize: Lumi.pluginTileIconSize
             glyphSize: Lumi.pluginTileGlyphSize

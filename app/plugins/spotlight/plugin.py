@@ -26,6 +26,13 @@
 窗口管理器塑形时镂空算完再把这个矩形 ``RGN_OR`` 补回，任何光斑位置下
 胶囊都可见可点。
 
+2026-10-09 修复「胶囊被灯照到时四角有遮罩」：保留矩形补回用的是直角
+``CreateRectRgn``，光斑（圆洞）扫过圆角胶囊时，胶囊四个角外的遮罩被
+一并补回，灯影里露出一块直角残片。QML 上报改为 5 参
+（``pill-rect:<x>,<y>,<w>,<h>,<圆角半径>``，半径 = 胶囊高度一半），
+窗口管理器对带半径的保留矩形改用 ``CreateRoundRectRgn``，补回区域与
+胶囊轮廓一致。旧版 4 参上报照收（直角行为，不炸）。
+
 2026-10-08 跨屏粘滞迁移：早期激活时按光标定屏后就把 ``_screen`` 锁死，
 光标跑到另一块屏，光斑只能贴边傻等（双屏教室是常态，「关了重开」不是
 答案）。现在每拍比对 ``screenAt(光标)`` 与 ``_screen``：不同就计数、
@@ -39,6 +46,16 @@
 ``plugins.spotlight.radius``（屏宽短边的百分比，6–70），都经设置页滑条
 实时生效（浓度是 QML 直接绑设置键，大小经 side_effect 改本模块并立即
 重设光斑）。
+
+聚光灯 × 墨迹的组合语义（2026-10-18，plugin-audit F3/A7——只成文不改
+行为）：z 序「控制条 > 聚光灯遮罩 > 墨迹」是**有意设计**（墨迹窗口经
+``_place_ink_below_top`` 插在最低可见叠层之下）。输入语义随之而定：
+光斑外点击被遮罩吃掉（胶囊可点、方向键/滚轮仍归放映），光斑内的点击
+经镂空穿透给放映；**遮罩开着时墨迹不可画**——墨迹窗口在遮罩之下、
+输入先被遮罩吃掉，这是既定取舍（聚光讲细节 vs 批注是两个互斥的使用
+意图），不是 bug。别把墨迹提到遮罩上面——那会让胶囊点击落进墨迹层，
+改序牵连输入链与 z 序两套约定（完整版见 ``app/windows.py`` 模块头注释
+同日条目）。
 """
 
 from __future__ import annotations
@@ -105,15 +122,33 @@ _center = QPoint(0, 0)
 _radius_percent = 24
 _radius_px = 0.0
 
-#: QML 控制胶囊上报的自身几何 ``(x, y, w, h)``（窗口局部逻辑坐标）。
-#: 塑形时作为保留矩形补回（理由见模块头注释 2026-10-08 条目）；
+#: QML 控制胶囊上报的自身几何 ``(x, y, w, h[, 圆角半径])``（窗口局部逻辑
+#: 坐标）。塑形时作为保留矩形补回（理由见模块头注释 2026-10-08 条目）；
 #: 未上报时为 None —— 塑形照常，只是退回「胶囊可能被裁」的旧行为，不炸。
-_pill_rect: Optional[tuple[int, int, int, int]] = None
+#: 圆角半径是 2026-10-09 加的第 5 元素（理由见模块头注释同日条目），
+#: 旧版 QML 只报 4 个数也照收。
+_pill_rect: Optional[tuple[int, ...]] = None
 
 #: ``+`` / ``-`` 键状态（边沿触发 + 按住连调）
 _plus_prev = False
 _minus_prev = False
 _last_adjust = 0.0
+#: register 期捕获的插件上下文（pluginState 通道推送用，2026-10-18 F4）
+_ctx: Optional[Any] = None
+
+
+def _publish_radius() -> None:
+    """把会话半径推给 pluginState 通道（设置页滑条读会话值，D-S4）。
+
+    推送是**单向事实上报**：滑条读 ``Backend.pluginState.spotlight.radius``
+    （无键回落设置值），用户拖动仍走 ``setSetting`` → side_effect 回这里
+    —— 通道无回环，值全等时宿主侧静默不发信号。
+    """
+    if _ctx is not None:
+        try:
+            _ctx.publish_state("radius", _radius_percent)
+        except Exception:
+            log.debug("pluginState 半径推送失败", exc_info=True)
 
 
 def _key_down(vk: int) -> bool:
@@ -145,6 +180,7 @@ def _adjust_radius(delta: int) -> None:
         min(_RADIUS_MAX_PERCENT, _radius_percent + delta),
     )
     _apply_radius()
+    _publish_radius()
 
 
 def _migrate_to_screen(screen) -> None:
@@ -217,7 +253,7 @@ def _poll() -> None:
 
 
 def _show_overlay() -> None:
-    global _active, _screen, _center, _screen_migrate_ticks
+    global _active, _screen, _center, _screen_migrate_ticks, _radius_px
     screen = QGuiApplication.screenAt(QCursor.pos()) \
         or QGuiApplication.primaryScreen()
     if screen is None:
@@ -226,9 +262,24 @@ def _show_overlay() -> None:
     _screen_migrate_ticks = 0
     geometry = screen.geometry()
     _center = QPoint(geometry.width() // 2, geometry.height() // 2)
+    # 首帧即有洞（2026-10-18 plugin-audit F7，先喂洞再显示）：像素半径按
+    # 本屏算好后先记账（窗口未可见时 set_hole 只记账不塑形），
+    # RegisteredOverlay.show() 末尾的 _sync_region 会用上它 —— 原顺序
+    # （先 show 后 _apply_radius）的第一帧是整屏压暗的实心遮罩，等下一拍
+    # （≤25ms）才有洞，肉眼可见地闪一下黑。
+    short_side = min(geometry.width(), geometry.height())
+    _radius_px = short_side * _radius_percent / 100.0
+    _overlay_handle.set_hole(
+        _center.x(), _center.y(), _radius_px,
+        [_pill_rect] if _pill_rect else None,
+    )
     _overlay_handle.show()
-    _apply_radius()
+    if _overlay_handle.window is None:
+        # 创建失败（坏 QML 等）：句柄侧已落日志，这里绝不把插件拨到半激活
+        # 态 —— _active 为真会让轮询泵空转、关灯动作也不对（2026-10-18 F7②）
+        return
     _active = True
+    _apply_radius()  # 幂等：像素半径与刚算的一致，set_hole 走等值短路
     if _poll_timer is not None:
         _poll_timer.start()
     log.info("聚光灯已开启（屏幕 %s，半径 %d%%）", screen.name(), _radius_percent)
@@ -262,15 +313,16 @@ def _on_action(action: str) -> None:
             _adjust_radius(-_RADIUS_STEP_PERCENT)
     elif action.startswith("plugin:spotlight:pill-rect:"):
         # 动作后缀带参（插件开发指南约定）：QML 胶囊上报自身几何，
-        # 逗号分隔 4 个整数；非法负载只记日志，不动旧值
+        # 逗号分隔 4 或 5 个整数（第 5 个是圆角半径，2026-10-09）；
+        # 非法负载只记日志，不动旧值
         global _pill_rect
         try:
             parts = [int(float(v))
                      for v in action.rsplit(":", 1)[1].split(",")]
         except ValueError:
             parts = []
-        if len(parts) == 4 and parts[2] > 0 and parts[3] > 0:
-            _pill_rect = (parts[0], parts[1], parts[2], parts[3])
+        if len(parts) in (4, 5) and parts[2] > 0 and parts[3] > 0:
+            _pill_rect = tuple(parts)
         else:
             log.info("聚光灯收到非法胶囊几何: %s", action)
     else:
@@ -285,11 +337,12 @@ def _on_radius_setting(config, key, value) -> None:
     )
     if _active:
         _apply_radius()
+    _publish_radius()
 
 
 def register(ctx) -> None:
     """磁贴 / 控制条动作 / 设置页 / 两个设置键 / 叠加窗口 / 轮询器。"""
-    global _overlay_handle, _poll_timer, _radius_percent
+    global _overlay_handle, _poll_timer, _radius_percent, _ctx
 
     def tr(source: str) -> str:
         return i18n.tr("spotlight", source)
@@ -305,7 +358,7 @@ def register(ctx) -> None:
     ctx.add_action_handler("plugin:spotlight:", _on_action)
     ctx.add_dock_action(
         "plugin:spotlight:toggle", tr("聚光灯"),
-        "ic_fluent_flashlight_20_regular",
+        "ic_fluent_flashlight_20_filled",
         tooltip=tr("开启 / 关闭聚光灯遮罩"),
     )
     ctx.add_settings_page(
@@ -313,11 +366,15 @@ def register(ctx) -> None:
         "ic_fluent_flashlight_20_regular",
     )
 
-    config = ctx._backend._config
     _radius_percent = max(
         _RADIUS_MIN_PERCENT,
-        min(_RADIUS_MAX_PERCENT, int(config.get("plugins.spotlight.radius", 24))),
+        min(_RADIUS_MAX_PERCENT, int(ctx.config_get("plugins.spotlight.radius", 24))),
     )
+    # pluginState 通道接线（2026-10-18 plugin-audit F4/D-S4）：注册时读初值
+    # 同步（会话半径 = 配置初值），此后 _adjust_radius / side_effect 各推
+    # 一次 —— 设置页滑条读会话值，「+ / − 试出来的大小」不再与滑条分叉
+    _ctx = ctx
+    _publish_radius()
     # 浓度 QML 直读设置键即可（settingsChanged 会推重读），不用 side_effect；
     # 大小 Python 侧要做像素换算，side_effect 跟一手。
     ctx.register_setting(

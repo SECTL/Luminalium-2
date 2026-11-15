@@ -73,8 +73,12 @@
 
 from __future__ import annotations
 
+import logging
+
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     "add_shortcut",
@@ -206,8 +210,34 @@ def register_plugin_defaults(plugin_id: str, defaults: dict[str, Any]) -> None:
     只收集、不立即注入 —— 真正的注入由 Config 的默认值钩子做（Wave 1 并行
     任务），这样默认值聚合顺序与 Config 实例化时机解耦。同一插件重复注册
     同样按重复 id 报错（一个插件的默认值只能声明一次）。
+
+    list 型默认值在这里**前置警告**（2026-10-19 todo 23 D5）：注入钩子
+    ``Config._strip_list_values`` 聚合时会递归剔除列表值，等 QML 读到
+    undefined 才能发现就太晚了；本处在载入期点名插件与键，提示改走读取层
+    拼接（本文件头注释第 3 条）。刻意不 raise —— 既有注册行为不动，剔除
+    的兜底仍在注入层，双保险记日志留给作者自查。
     """
+    offenders = _list_value_paths(defaults)
+    if offenders:
+        log.warning(
+            "插件 %s 的默认值含 list 型键 %s —— 注入层会剔除（用户层对列表是"
+            "整体替换，铁律见本文件头注释第 3 条），列表型贡献必须走读取层拼接",
+            plugin_id, offenders,
+        )
     _put(_plugin_defaults, "plugin_defaults", plugin_id, defaults)
+
+
+def _list_value_paths(values: dict[str, Any], prefix: str = "") -> list[str]:
+    """点出默认值里全部 list 型键路径（含嵌套 dict），剔除范围与
+    ``Config._strip_list_values`` 镜像对应，D5 前置警告专用。"""
+    paths: list[str] = []
+    for key, value in values.items():
+        path = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, list):
+            paths.append(path)
+        elif isinstance(value, dict):
+            paths.extend(_list_value_paths(value, path))
+    return paths
 
 
 def freeze() -> None:

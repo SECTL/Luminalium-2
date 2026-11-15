@@ -49,10 +49,11 @@ import logging
 import logging.handlers
 import subprocess
 import sys
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QCoreApplication, QTimer, Qt
 from PySide6.QtGui import QColor, QCursor
 from PySide6.QtWidgets import QApplication, QMenu
 from RinUI import BackdropEffect, RinUIWindow, Theme
@@ -161,17 +162,48 @@ def _match_verb_handler(action: str) -> Optional[Callable[[str], Any]]:
     return best_handler
 
 
+def _report_action_exception(action: str, exc_tb) -> None:
+    """插件动作处理器抛异常的留痕出口：日志 + 错误报告（非致命）。
+
+    对齐插件总线的隔离纪律（``PluginContext.publish`` 同款）：单个插件
+    的动作炸了只记报告，不炸面板、不炸后续动作。 ErrorHandler 挂在
+    ``QApplication`` 下（``LuminaliumApplication`` 构造时 ``parent=qt_app``），
+    模块级函数经 ``findChild`` 找它 —— 找不到（测试装配等）只留日志。
+    """
+    log.exception("插件动作 %r 处理器抛异常", action)
+    try:
+        from .error_handler import ErrorHandler
+
+        app = QCoreApplication.instance()
+        reporter = app.findChild(ErrorHandler) if app is not None else None
+        if reporter is not None:
+            reporter.reportError(
+                f"插件动作 {action} 处理器抛异常",
+                "".join(traceback.format_exception(*exc_tb)) or repr(exc_tb[1]),
+            )
+    except Exception:
+        log.debug("错误报告通道不可用", exc_info=True)
+
+
 def _dispatch_shortcut_action(action: str) -> bool:
     """把快捷方式动作串交给动词注册表分发；返回是否有处理器受理。
 
     未命中只记日志、不抛异常 —— 插件被卸载后其磁贴 id 可能还留在用户的
     启用列表里，点击时必须安全落空而不是把面板点崩。
+
+    处理器调用包在 try/except 里（2026-10-18 plugin-audit B2，对齐总线
+    隔离纪律）：单个插件动作抛异常落日志 + 错误报告（见
+    :meth:`_report_action_exception`），面板与后续动作照常 —— 但绝不
+    静默吞掉，留痕是硬要求。
     """
     handler = _match_verb_handler(action)
     if handler is None:
         log.info("未实现的快捷方式动作: %s", action)
         return False
-    handler(action)
+    try:
+        handler(action)
+    except Exception:
+        _report_action_exception(action, sys.exc_info())
     return True
 
 #: 启动画面的推进节奏 —— 每一步至少停留这么久才进下一步。
@@ -410,18 +442,25 @@ class LuminaliumApplication:
             rinui=self.rinui,
         )
         self.windows.attach_panel(self.rinui.root_window)
-        self.windows.load_windows()
-
-        # 内建动作动词注册：必须在 Wave 3 的 load_plugins（末尾 freeze 注册表）
-        # 之前完成，且处理器闭包要用 windows，所以卡在这个位置。
-        # 详见 _register_builtin_verbs 与文件头注释。
+        # 2026-10-13 修复「软件内自带插件有时候不显示在胶囊上」：
+        # 先登记内建编辑器组、内建窗口句柄与内建动作动词（三者均幂等，且必须在
+        # load_plugins 末尾 registry.freeze() 之前入表），随后立即跑 load_plugins，
+        # 最后才调 load_windows() 创建 TopWindow 与各角落 PresentationDock。
+        #
+        # 此前 load_windows() 排在 load_plugins() 之前，导致控制条实例化时
+        # registry.dock_actions() 还是空表，PresentationDock.actionsCfg 只绑到了
+        # ['clear_screen']（宽 366px）；除非用户进设置改一次放映配置间接触发
+        # presentationConfigChanged，否则计时器 / 小黑板 / 聚光灯在整个会话里都
+        # 不会出现在胶囊上。
+        self.windows._register_builtin_groups()
+        self.windows._register_builtin_windows()
         self._register_builtin_verbs()
 
         # 插件加载阶段二（Wave 3 任务 11）。顺序约束：
-        # * 必须在 _register_builtin_verbs **之后** —— loader 末尾会
-        #   registry.freeze()，内建动词得赶在冻结前进注册表；
-        # * 必须在 _wire() **之前** —— 信号接线后消费端（导航 / 磁贴 /
-        #   控制条 / 动词分发）假设注册表已完备冻结，不能再有写入。
+        # * 必须在内建组 / 内建窗口 / _register_builtin_verbs **之后** —— loader
+        #   末尾会 registry.freeze()，内建项得赶在冻结前进注册表；
+        # * 必须在 load_windows() 与 _wire() **之前** —— 控制条创建与信号接线后
+        #   消费端（导航 / 磁贴 / 控制条 / 动词分发）直接读取已完备冻结的注册表。
         # include_debug 门控用 app.debug 配置键：不注入默认值（缺失即
         # False），开调试插件得手改 config.json 写 "app": {"debug": true}
         # 或由 smoke 临时写入。
@@ -437,6 +476,8 @@ class LuminaliumApplication:
             # 设置窗口虽是懒创建（正常路径赶得上），快捷面板不是；
             # 顺带也让 `setPluginEnabled` 之后的未来刷新有处可挂。
             self.backend.settingsNavItemsChanged.emit()
+
+        self.windows.load_windows()
 
         self._wire()
 

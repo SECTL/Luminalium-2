@@ -12,6 +12,21 @@ import Luminalium
       高/2 时正好是**圆**（旧版式是「圆角矩形容器 + 圆角矩形选中板 + 下划线」）；
     * **没有下划线**（基类 contentItem 里那条 ``Indicator`` 随 contentItem 一起被换掉）。
 
+    ## 固定胶囊档（2026-10-09 用户指令「把小黑板的胶囊照搬 PPT 叠加层内的胶囊」）
+
+    取色从主题令牌整套换成当时小黑板 ``CapsuleButton`` 的**固定胶囊档**
+    （那个组件已于 2026-10-17 退役；2026-11-01 起小黑板胶囊直接复用本组件）：
+    图标 / 名称文本白 92%，圆钮选中白 15%、悬停白 8%、常态透明 ——
+    与容器（``ToolSegment``）的固定深壳配套，理由同源：控制条浮在任意
+    幻灯片内容上，浅色档的 ``Lumi.textPrimary`` 派生令牌（黑系）压在
+    深壳上等于没有。禁用 = 基类 ``enabled`` 契约原样（分段项恒启用，
+    小黑板那套 35% 降透明度在本组件没有对应物，不引入）。
+
+    「选单开着」提示环（``segmentExpandedRing``）保留，**仍用
+    ``Lumi.accent``**：强调色来自用户配置、深浅主题同值，且必须与
+    「选中 = 白圆」在色相上拉开 —— 换成白色会和选中态糊成一层，
+    用户反而读不出「再点一下能关选单」。
+
     ## 名称文本（``label`` / ``showLabel``）
 
     「显示按钮文本」打开后（``presentation.buttons.show_labels``），项从正方形
@@ -43,7 +58,8 @@ Rin.SegmentedItem {
     id: root
 
     property int glyphSize: Lumi.dockIconSize
-    property color glyphColor: Lumi.textPrimary
+    // 固定白 92%（固定胶囊档，2026-10-09，见文件头）
+    property color glyphColor: Qt.rgba(1, 1, 1, 0.92)
     property string tooltip: ""
     property int itemHeight: Lumi.dockHitSize
     /*! 按钮的名称文本（工具分页的 ``label``：「鼠标指针」「笔」「橡皮」）。 */
@@ -99,9 +115,11 @@ Rin.SegmentedItem {
             anchors.fill: parent
             // 短边的一半 —— 正方形时是正圆，带名称文本时是胶囊
             radius: Math.min(width, height) / 2
+            // 固定胶囊档（2026-10-09，见文件头）：选中白 15% / 悬停白 8%，
+            // 与 IconButton 深色档的 dockButtonActiveFill / HoverFill 同值
             color: root.checked
-                ? Lumi.dockSegmentCheckedBg
-                : (root.hovered ? Lumi.dockButtonHoverFill : "transparent")
+                ? Qt.rgba(1, 1, 1, 0.15)
+                : (root.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
             // 基类的按下反馈落在被压平的那块板上，这里自己补一份
             scale: root.pressed ? 0.95 : 1
 
@@ -117,7 +135,9 @@ Rin.SegmentedItem {
         }
 
         /*! 「选单开着」的提示环（见 ``expanded``）。画在圆钮**之后**（= 上面），
-            贴着项的外沿，1px 主题色。 */
+            贴着项的外沿，1px 强调色。固定深壳上仍用 ``Lumi.accent`` 而不是白：
+            强调色深浅主题同值且在深底上可读，换成白会与「选中 = 白 15% 圆」
+            糊成一层（2026-10-09，见文件头）。 */
         Rectangle {
             objectName: "segmentExpandedRing"
             visible: root.expanded
@@ -158,9 +178,45 @@ Rin.SegmentedItem {
     }
 
     // 分段项用 ``tools[].label`` 补一个悬停提示（关掉名称文本时它就是唯一的名字来源）
+    // ⚠️ 2026-10-28 修复：气泡浮在按钮上方约 40px，而控制条顶层窗口被
+    // ``SetWindowRgn`` 裁成「interactiveRect + region_padding(20px)」，超出
+    // 余量的上半截会被裁掉 —— 所以显示与隐藏都要经 ``_reportTooltip`` 把气泡
+    // 矩形（隐藏时报空矩形 = 注销）报给最近的登记方
+    // （PresentationDock.registerTooltipRect），由它的 ``interactiveRect``
+    // 并入。找不到登记方的宿主静默返回（与 IconButton 同一条约定）。
     Rin.ToolTip {
+        id: tip
         visible: root.tooltip !== "" && root.hovered
         text: root.tooltip
         delay: 600
+        onVisibleChanged: root._reportTooltip()
+    }
+
+    /*! 把 tooltip 气泡的真实矩形上报给沿 ``parent`` 链向上找到的第一个
+        ``registerTooltipRect`` 登记方（duck-typing：``p.registerTooltipRect
+        !== undefined``）。
+
+        ⚠️ 矩形取 ``tip.background`` 而不是 popup 自身：本组件的 background
+        宽 = 文本宽 + 20、才是气泡本体（popup 的 width 不可靠）。换算用
+        ``mapToItem(p, …)`` 落到登记方的坐标系（根 Item 坐标）；这里不建
+        绑定依赖 —— 上报时机是 ``onVisibleChanged``（命令式），不追几何变化，
+        气泡显示期间分段项不会自己挪位置。找不到登记方（不做区域塑形的宿主）
+        静默返回。 */
+    function _reportTooltip() {
+        var p = parent
+        while (p && p.registerTooltipRect === undefined) {
+            p = p.parent
+        }
+        if (!p) {
+            return
+        }
+        if (tip.visible) {
+            var pos = tip.background.mapToItem(p, 0, 0)
+            p.registerTooltipRect(root, Qt.rect(pos.x, pos.y,
+                                                tip.background.width,
+                                                tip.background.height))
+        } else {
+            p.registerTooltipRect(root, Qt.rect(0, 0, 0, 0))
+        }
     }
 }

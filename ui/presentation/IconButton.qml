@@ -188,9 +188,46 @@ Rin.Button {
         }
     }
 
+    // 悬停提示。⚠️ 2026-10-28 修复：气泡浮在按钮上方约 40px，而控制条顶层
+    // 窗口被 ``SetWindowRgn`` 裁成「interactiveRect + region_padding(20px)」，
+    // 超出余量的上半截会被裁掉 —— 所以显示与隐藏都要经 ``_reportTooltip``
+    // 把气泡矩形（隐藏时报空矩形 = 注销）报给最近的登记方
+    // （PresentationDock.registerTooltipRect），由它的 ``interactiveRect``
+    // 并入。本组件也被快速面板等**不做区域塑形**的宿主复用 —— 那里沿
+    // ``parent`` 链找不到登记方，``_reportTooltip`` 静默返回即可。
     Rin.ToolTip {
+        id: tip
         visible: root.tooltip !== "" && root.hovered
         text: root.tooltip
         delay: 600
+        onVisibleChanged: root._reportTooltip()
+    }
+
+    /*! 把 tooltip 气泡的真实矩形上报给沿 ``parent`` 链向上找到的第一个
+        ``registerTooltipRect`` 登记方（duck-typing：``p.registerTooltipRect
+        !== undefined``）。
+
+        ⚠️ 矩形取 ``tip.background`` 而不是 popup 自身：本组件的 background
+        宽 = 文本宽 + 20、才是气泡本体（popup 的 width 不可靠）。换算用
+        ``mapToItem(p, …)`` 落到登记方的坐标系（根 Item 坐标）；这里不建
+        绑定依赖 —— 上报时机是 ``onVisibleChanged``（命令式），不追几何变化，
+        气泡显示期间按钮不会自己挪位置。找不到登记方（黑板 / 快捷面板等
+        宿主）静默返回。 */
+    function _reportTooltip() {
+        var p = parent
+        while (p && p.registerTooltipRect === undefined) {
+            p = p.parent
+        }
+        if (!p) {
+            return
+        }
+        if (tip.visible) {
+            var pos = tip.background.mapToItem(p, 0, 0)
+            p.registerTooltipRect(root, Qt.rect(pos.x, pos.y,
+                                                tip.background.width,
+                                                tip.background.height))
+        } else {
+            p.registerTooltipRect(root, Qt.rect(0, 0, 0, 0))
+        }
     }
 }

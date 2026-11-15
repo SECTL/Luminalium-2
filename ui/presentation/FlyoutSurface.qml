@@ -54,6 +54,11 @@ Item {
     property int paddingY: Lumi.dockPaddingY
     property real surfaceRadius: Lumi.dockSurfaceRadius
     property real surfaceOpacity: Lumi.dockSurfaceOpacity
+    /*! 底板底色 / 描边色。缺省跟主题（放映控制条随主题翻）；小黑板胶囊传
+        RinUI 深色档的同名令牌钉死深色（2026-11-01，理由见 BlackboardWindow.qml
+        头注释）。透明度仍由 ``surfaceOpacity`` 揉进底色。 */
+    property color surfaceColor: Lumi.surfaceBg
+    property color borderColor: Lumi.surfaceBorder
     property bool shadowEnabled: true
     property int shadowMargin: Lumi.dockShadowMargin
     property real shadowBlur: 18
@@ -103,9 +108,9 @@ Item {
         // 横条短边是高、竖条短边是宽 —— 用 min(w,h) 两种方向都对。
         radius: Math.min(root.surfaceRadius, Math.round(Math.min(surface.width, surface.height) / 2))
         // 透明度揉进颜色而不是 opacity，避免把投影也一起淡掉
-        color: Lumi.fade(Lumi.surfaceBg, root.surfaceOpacity)
+        color: Lumi.fade(root.surfaceColor, root.surfaceOpacity)
         border.width: 1
-        border.color: Lumi.surfaceBorder
+        border.color: root.borderColor
     }
 
     // ==================================== CW2 同款渐变边框高光

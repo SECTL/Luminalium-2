@@ -12,7 +12,7 @@
     "codename": "AwaSubaru",
     "//channel": "发布渠道，只显示在设置页「关于」的徽章上：Dev=开发版 / Release=正式版。发给用户的正式包改成 \"Release\"",
     "channel": "Dev",
-    "//dev_watermark": "**开发者开关，只在调试窗口里出现**（调试窗口没有可见入口：在设置窗口左上角标题文本上连点 10 次打开）：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / 设备ID」水印。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
+    "//dev_watermark": "**开发者开关，只在调试窗口里出现**（调试窗口没有可见入口：在设置窗口左上角标题文本上连点 10 次打开）：每个窗口左下角的「开发中版本，不代表最终品质 / 版本号 / 开发代号 / commit短号 / 设备ID」水印。commit 短号来自 app/build_info.py（源码读 .git/HEAD，打包读构建时注入的 build_info.json），读不到就省掉这一段。true=显示。发给用户的正式包把这个键改成 false（或删掉）即可",
     "dev_watermark": true,
     "//autostart": "开机自启（设置页「通用 → 启动 → 开机自启」）。⚠️ 这个键**只是影子**：真正的开关是 HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run 里的 Luminalium2 值（见 app/autostart.py）。界面每次打开都回读注册表，所以手改这里不会改变实际行为 —— 它只用于日志与排查。",
     "autostart": false

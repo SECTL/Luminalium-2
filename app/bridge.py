@@ -75,6 +75,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 
 from . import autostart
+from . import build_info
 from . import i18n
 from . import markdown_html
 from . import monitors
@@ -658,6 +659,16 @@ class Backend(QObject):
 
         raw = f"{platform.node()}|{uuid.getnode():x}"
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8].upper()
+
+    @Property(str, constant=True)
+    def commitHash(self) -> str:
+        """构建时的 commit 短号（水印第二行第三段，2026-11-15 用户指令）。
+
+        源码跑读 ``.git/HEAD``（实时），打包跑读 spec 构建时注入的
+        ``build_info.json``，取法与回退全在 ``app/build_info.py``。
+        **读不到就是空串** —— QML 侧据此把整段省掉，不显示假号。
+        """
+        return build_info.commit_hash()
 
     @Slot(str, result=str)
     def resourceFile(self, name: str) -> str:

@@ -281,7 +281,7 @@
 <context>
     <name>DevWatermark</name>
     <message>
-        <location filename="../ui/DevWatermark.qml" line="40"/>
+        <location filename="../ui/DevWatermark.qml" line="48"/>
         <source>开发中版本，不代表最终品质</source>
         <translation>開發中版本，不代表最終品質</translation>
     </message>

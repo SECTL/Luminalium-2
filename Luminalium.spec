@@ -28,15 +28,34 @@ CI 里两种都要出，但 PyInstaller 一次只能产一种，所以用 ``LUMI
 
 exe 的版本资源（属性 → 详细信息）由 ``LUMINALIUM_VERSION_FILE`` 传入，文件由
 ``.github/scripts/nightly_release.py`` 生成；本地构建不传也能出包，只是没有版本资源。
+
+2026-11-15（用户指令「开发中水印加上 commit 号」）：exe 内没有 ``.git``，水印
+第二行的 commit 短号必须在**构建时**冻结下来随包分发（落在包根
+``build_info.json``，由 ``app/build_info.py`` 读）。CI 直接调 PyInstaller、
+本地走 ``build.py``，两条路都经过这份 spec，所以注入只写这一处。
 """
 
+import json
 import os
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
 
 #: ``SPECPATH`` 是 PyInstaller 注入的全局变量 = 本 spec 所在目录 = 仓库根。
 ROOT = Path(SPECPATH)
+
+# 构建标识：解析逻辑复用 app/build_info.py（不调 git 可执行文件；CI 里
+# GITHUB_SHA 自动兜底），产物写进 build/ 下的 gitignore 文件，下面作为 datas 收进包。
+sys.path.insert(0, str(ROOT))
+from app.build_info import build_commit as _build_commit  # noqa: E402
+
+_commit_info = ROOT / "build" / "build_info.json"
+_commit_info.parent.mkdir(parents=True, exist_ok=True)
+_commit_info.write_text(
+    json.dumps({"commit": _build_commit(ROOT)}, ensure_ascii=False, indent=2) + "\n",
+    encoding="utf-8",
+)
 
 #: ``1/true/yes/on`` → 单文件；其余 → 目录版。
 ONEFILE = os.environ.get("LUMINALIUM_ONEFILE", "").strip().lower() in {
@@ -63,6 +82,9 @@ datas = [
     # 默认配置。⚠️ 只带 default_config.json —— config/config.json 是用户数据，
     # 属于 exe 同级目录，打进包里会被 _MEIPASS 的只读语义坑到。
     (str(ROOT / "config" / "default_config.json"), "config"),
+    # 开发水印的 commit 短号：目标必须是**包根**（app/paths.py 的 RESOURCE_ROOT），
+    # 别塞进 resources/ 之类子目录，运行时按 RESOURCE_ROOT / "build_info.json" 读。
+    (str(_commit_info), "."),
 ]
 
 # RinUI 的 QML 组件 / 主题 / 图标 / 语言文件。RinUI.core.config 的 RINUI_PATH

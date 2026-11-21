@@ -551,6 +551,141 @@
         <source>接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上</source>
         <translation>接触直径がこの値以上で手のひらと判定します。指先は約8〜12mm、手のひらは通常25mm以上です</translation>
     </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="328"/>
+        <source>色板</source>
+        <translation>パレット</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="329"/>
+        <source>放映时笔的选单与小黑板的粉笔共用这份颜色表，共 %1 个颜色</source>
+        <translation>スライドショー中のペンのメニューと黒板のチョークはこの色リストを共有します（全 %1 色）</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="336"/>
+        <source>编辑颜色</source>
+        <translation>色を編集</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="480"/>
+        <source>添加颜色</source>
+        <translation>色を追加</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="554"/>
+        <source>删除这个颜色</source>
+        <translation>この色を削除</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="565"/>
+        <source>点「完成」后，所有使用此色板的界面都会立即应用新的颜色。</source>
+        <translation>「完了」を押すと、このパレットを使う画面に新しい色がすぐ反映されます。</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="578"/>
+        <source>取消</source>
+        <translation>キャンセル</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="588"/>
+        <source>完成</source>
+        <translation>完了</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="181"/>
+        <source>白色</source>
+        <translation>白</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="177"/>
+        <source>黑色</source>
+        <translation>黒</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="184"/>
+        <source>浅灰</source>
+        <translation>明るいグレー</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="187"/>
+        <source>灰</source>
+        <translation>グレー</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="189"/>
+        <source>深灰</source>
+        <translation>濃いグレー</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="193"/>
+        <source>红</source>
+        <translation>赤</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="195"/>
+        <source>橙</source>
+        <translation>オレンジ</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="197"/>
+        <source>金</source>
+        <translation>ゴールド</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="199"/>
+        <source>黄</source>
+        <translation>黄</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="201"/>
+        <source>黄绿</source>
+        <translation>黄緑</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="203"/>
+        <source>绿</source>
+        <translation>緑</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="205"/>
+        <source>青</source>
+        <translation>シアン</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="207"/>
+        <source>蓝</source>
+        <translation>青</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="209"/>
+        <source>靛</source>
+        <translation>インジゴ</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="211"/>
+        <source>紫</source>
+        <translation>紫</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="213"/>
+        <source>品红</source>
+        <translation>マゼンタ</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="216"/>
+        <source>灰%1</source>
+        <translation>くすんだ%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="220"/>
+        <source>深%1</source>
+        <translation>濃い%1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="223"/>
+        <source>浅%1</source>
+        <translation>淡い%1</translation>
+    </message>
 </context>
 <context>
     <name>InkOverlay</name>

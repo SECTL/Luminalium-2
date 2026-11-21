@@ -497,6 +497,9 @@ class LuminaliumApplication:
         self.backend.quitRequested.connect(self.quit)
         self.backend.themeChangeRequested.connect(self._apply_theme)
         self.backend.accentChangeRequested.connect(self._apply_accent)
+        # 设置标题栏「更多」→ 创建快捷方式的结果：菜单点完就收，没有能挂横幅
+        # 的地方，用托盘气泡回一句「成了 / 没成」。
+        self.backend.shortcutCreateResult.connect(self._on_shortcut_created)
         # 放映开始 / 结束的边沿 → 工具三态归位（2026-10-17，见 _reset_tool_state）。
         # 接在这里而不是 QML：墨迹工具那一半只存在于 Python 侧，QML 看不见它。
         self.ppt.stateChanged.connect(self._on_presentation_state)
@@ -633,6 +636,16 @@ class LuminaliumApplication:
             if verb in registered:
                 continue
             registry.add_action_handler(verb, handler)
+
+    def _on_shortcut_created(self, ok: bool, message: str) -> None:
+        """「更多」菜单创建快捷方式的结果 → 托盘气泡（2026-11-21）。
+
+        设置窗口此时可能还开着，但菜单已经收起来了，往页面上插横幅反而突兀；
+        托盘气泡是这类「一次性系统动作」最省事、也最不打断的反馈方式。
+        """
+        if not ok:
+            log.warning("创建快捷方式失败: %s", message)
+        self.tray.notify(i18n.tr("MoreMenu", "快捷方式"), message)
 
     def _dump_diagnostics(self) -> None:
         """把「顶层窗口为什么看不见」需要的所有证据写进日志。"""

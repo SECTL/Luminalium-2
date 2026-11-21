@@ -907,7 +907,7 @@ def _covers_monitor(hwnd: int, ratio: float = 0.9) -> bool:
 #: WindowManager 的**内部属性槽**但不走 register_window 管理——插件注册
 #: 同名窗口会在 ``RegisteredWindow._sync_attr`` 门控下 ``setattr`` 直接
 #: 遮蔽内部状态（快捷面板 / 放映顶层窗口 / 墨迹窗口全体失踪）。内建经
-#: register_window 登记的 settings/debug/editor 不在列——那三个名字与
+#: register_window 登记的 settings/debug/log/editor 不在列——那几个名字与
 #: 属性槽的同步是设计（_sync_attr 的本意）。
 _RESERVED_WINDOW_NAMES = frozenset(
     {"panel", "splash", "error_report", "overlay", "ink_window"}
@@ -961,7 +961,7 @@ class RegisteredWindow:
         self._remember_position = remember_position
         self._remembered_geometry: Optional[QRect] = None
         self._window: Optional[QQuickWindow] = None
-        # WindowManager 上若存在同名属性槽（settings / debug / editor 这三个
+        # WindowManager 上若存在同名属性槽（settings / debug / log / editor 这几个
         # 内建窗口），创建后同步写入 —— 既有代码与 tools/ 下的自检脚本都直接
         # 读 ``app.windows.settings`` 这种属性，迁移不能改变这个对外形状。
         self._sync_attr = hasattr(manager, name)
@@ -1563,12 +1563,14 @@ class WindowManager(QObject):
         self.panel: Optional[QQuickWindow] = None
         #: 启动画面（只在启动阶段存在，淡出后销毁）
         self.splash: Optional[QQuickWindow] = None
-        # 以下三个属性槽由 :meth:`register_window` 的句柄在懒创建时同步写入
+        # 以下四个属性槽由 :meth:`register_window` 的句柄在懒创建时同步写入
         # （句柄名与属性名一致）；不要直接赋值，一律走 ``_registered_windows``
         # 里对应句柄的 ``show()/hide()/toggle()``。
         self.settings: Optional[QQuickWindow] = None
         #: 调试窗口（隐藏入口：设置窗口标题连点 10 次）
         self.debug: Optional[QQuickWindow] = None
+        #: 日志窗口（入口：设置标题栏「更多」→「日志」，2026-11-21）
+        self.log: Optional[QQuickWindow] = None
         #: 主界面编辑器（入口：快捷面板的「主界面编辑器」快捷方式）
         self.editor: Optional[QQuickWindow] = None
         #: 错误 / 崩溃报告（入口：``ErrorHandler`` 捕获到未捕获异常）。
@@ -2150,7 +2152,7 @@ class WindowManager(QObject):
             registry.add_editor_group(name, copy.deepcopy(entry))
 
     def _register_builtin_windows(self) -> None:
-        """注册三只内建自管窗口（只登记，不创建 —— 懒创建语义不变）。
+        """注册内建自管窗口（只登记，不创建 —— 懒创建语义不变）。
 
         错误报告窗口**刻意不在**这里：它的定位带尺寸夹取、且在异常处理栈里
         被调用（要自己包 try），保持原来的手写路径。
@@ -2170,6 +2172,16 @@ class WindowManager(QObject):
                 UI_DIR / "DebugWindow.qml",
                 position="beside_settings",
                 label="调试窗口",
+            )
+        # 日志窗口（2026-11-21）：从设置标题栏「更多」菜单点出来，与调试窗口
+        # 同属「贴在设置旁边」那一挂。内容只是一段只读文本，没有亚克力 / 拖拽
+        # 之类的附加要求，普通 register_window 就够。
+        if "log" not in self._registered_windows:
+            self.register_window(
+                "log",
+                UI_DIR / "LogWindow.qml",
+                position="beside_settings",
+                label="日志窗口",
             )
         # 编辑器的亚克力：post_reattach 负责「接管 / 句柄刷新后补打」，
         # post_show 负责「show() 后再打 + 320ms 补拍」（原因见
@@ -2191,6 +2203,8 @@ class WindowManager(QObject):
         self._backend.settingsCloseRequested.connect(self.hide_settings)
         self._backend.debugWindowRequested.connect(self.show_debug)
         self._backend.debugWindowCloseRequested.connect(self.hide_debug)
+        self._backend.logWindowRequested.connect(self.show_log)
+        self._backend.logWindowCloseRequested.connect(self.hide_log)
         self._backend.editorRequested.connect(self.show_editor)
         self._backend.editorCloseRequested.connect(self.hide_editor)
         # 翻页组件位置切换 → 换了一组角落（不只是挪位置），要重建
@@ -2619,6 +2633,17 @@ class WindowManager(QObject):
             x = max(area.left(), min(x, area.right() + 1 - width))
             y = max(area.top(), min(y, area.bottom() + 1 - height))
         window.setPosition(int(x), int(y))
+
+    # ================================================================ 日志窗口
+
+    def show_log(self) -> None:
+        self._registered_windows["log"].show()
+
+    def hide_log(self) -> None:
+        self._registered_windows["log"].hide()
+
+    def toggle_log(self) -> None:
+        self._registered_windows["log"].toggle()
 
     # ========================================================== 主界面编辑器
 

@@ -218,4 +218,54 @@
         <translation>업데이트</translation>
     </message>
 </context>
-<context><name>timer</name><message><source>计时器</source><translation>타이머</translation></message><message><source>打开 / 收起计时器</source><translation>타이머 열기 / 접기</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation>미니 칠판</translation></message><message><source>打开 / 收起小黑板</source><translation>미니 칠판 열기 / 접기</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation>스포트라이트</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation>스포트라이트 가림막 켜기 / 끄기</translation></message><message><source>聚光灯遮罩</source><translation>스포트라이트 가림막</translation></message></context></TS>
+<context><name>timer</name><message><source>计时器</source><translation>타이머</translation></message><message><source>打开 / 收起计时器</source><translation>타이머 열기 / 접기</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation>미니 칠판</translation></message><message><source>打开 / 收起小黑板</source><translation>미니 칠판 열기 / 접기</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation>스포트라이트</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation>스포트라이트 가림막 켜기 / 끄기</translation></message><message><source>聚光灯遮罩</source><translation>스포트라이트 가림막</translation></message></context><context>
+    <name>LogWindow</name>
+    <message>
+        <source>日志</source>
+        <translation>로그</translation>
+    </message>
+    <message>
+        <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
+        <translation>logs/luminalium.log · 읽기 전용, 최근 256 KB</translation>
+    </message>
+    <message>
+        <source>刷新</source>
+        <translation>새로 고침</translation>
+    </message>
+    <message>
+        <source>打开日志目录</source>
+        <translation>로그 폴더 열기</translation>
+    </message>
+    <message>
+        <source>暂无日志内容</source>
+        <translation>로그 내용이 없습니다</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>快捷方式</source>
+        <translation>바로 가기</translation>
+    </message>
+    <message>
+        <source>已在桌面创建快捷方式</source>
+        <translation>바탕 화면에 바로 가기를 만들었습니다</translation>
+    </message>
+    <message>
+        <source>已在开始菜单创建快捷方式</source>
+        <translation>시작 메뉴에 바로 가기를 만들었습니다</translation>
+    </message>
+    <message>
+        <source>创建快捷方式失败，详情见日志</source>
+        <translation>바로 가기를 만들지 못했습니다. 자세한 내용은 로그를 확인하세요</translation>
+    </message>
+    <message>
+        <source>找不到目标文件夹</source>
+        <translation>대상 폴더를 찾을 수 없습니다</translation>
+    </message>
+    <message>
+        <source>未知的快捷方式类型</source>
+        <translation>알 수 없는 바로 가기 종류입니다</translation>
+    </message>
+</context>
+</TS>

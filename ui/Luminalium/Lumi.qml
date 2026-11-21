@@ -759,6 +759,38 @@ QtObject {
         ⚠️ 换素材这个数要跟着改 —— 写错的症状是字标被拉扁/拉长，预览图上不显眼。 */
     readonly property real aboutCreditsAspect: 4687 / 734
 
+    /*! 落款上方那枚 **SECTL 标志**（2026-11-21 用户指令「将 logo-sectl.svg 的
+        SECTL Logo 放在关于界面 hero 的 YUNOFACTORY LOGO 上方」，同样要玻璃质感）。
+
+        尺寸从字标反推：32 宽 ≈ 字标 150 宽的 21%，标志高 34.3 ≈ 字标高 23.5 的
+        1.5 倍 —— 标志跳出来但不压过字标，也小到不会在英雄区右下角抢戏。
+
+        ``aboutSectlGap`` 是标志与字标之间的空隙。**别压到 10 以下**：浅色档
+        标志与字标都是白的（``::before`` 的 alpha 到 0.84 / 0.95），贴太近两块白
+        会连成一坨，读起来像一个畸形的大字标（2026-11-21 首版给的 6px 就是这个
+        症状 —— 深色档还不明显，浅色档一眼就糊）。10 正好比字标里 DESIGN BY 那行
+        小字（≈3px）宽一档，两块看着才是同一份落款的两截。 */
+    readonly property int aboutSectlWidth: 32
+    readonly property int aboutSectlGap: 10
+
+    /*! SECTL 标志整体的不透明度（2026-11-21 用户指令「这个 SECTL LOGO 的透明度
+        搞小一点」）。
+
+        它与字标用的是同一组白渐变 alpha（``GlassLogo`` 里 ``::before`` 顶部
+        0.28 / ``::after`` * 0.88），在字标那种笔画上正合适，压到这枚**块面**标志
+        上就偏实 —— 一整块面积都在吃白，看着比旁边的字还亮。这里只在实例上整体
+        压一档，**不去改 ``GlassLogo`` 的色阶**：那组数是 L1 原档的，动了会把正中
+        那个 Logo 和字标一起带偏。
+
+        0.6 是照着「比字标轻一档、但暗部仍分得出上下两个块面」调出来的。 */
+    readonly property real aboutSectlOpacity: 0.55
+    /*! 素材 ``resources/logo_sectl_mark.svg``（``logo-sectl.svg`` 收紧视图框
+        后的派生件，理由见该文件里的注释）的宽高比。
+
+        ⚠️ 换素材这个数要跟着改 —— 与 ``aboutCreditsAspect`` 同一个坑：写错的
+        症状是标志被压扁/拉长，缩到这个尺寸在预览图上很不显眼。 */
+    readonly property real aboutSectlAspect: 760.3 / 815.1
+
     // ================================================================ 设置 · 插件页
     //
     // 2026-10-17 用户指令「将插件界面的排版改成如图排版」：页面从「两张导入

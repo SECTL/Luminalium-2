@@ -218,4 +218,54 @@
         <translation>更新</translation>
     </message>
 </context>
-<context><name>timer</name><message><source>计时器</source><translation>計時器</translation></message><message><source>打开 / 收起计时器</source><translation>開啟 / 收起計時器</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation>小黑板</translation></message><message><source>打开 / 收起小黑板</source><translation>開啟 / 收起小黑板</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation>聚光燈</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation>開啟 / 關閉聚光燈遮罩</translation></message><message><source>聚光灯遮罩</source><translation>聚光燈遮罩</translation></message></context></TS>
+<context><name>timer</name><message><source>计时器</source><translation>計時器</translation></message><message><source>打开 / 收起计时器</source><translation>開啟 / 收起計時器</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation>小黑板</translation></message><message><source>打开 / 收起小黑板</source><translation>開啟 / 收起小黑板</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation>聚光燈</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation>開啟 / 關閉聚光燈遮罩</translation></message><message><source>聚光灯遮罩</source><translation>聚光燈遮罩</translation></message></context><context>
+    <name>LogWindow</name>
+    <message>
+        <source>日志</source>
+        <translation>日誌</translation>
+    </message>
+    <message>
+        <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
+        <translation>logs/luminalium.log · 唯讀，顯示最新的 256 KB</translation>
+    </message>
+    <message>
+        <source>刷新</source>
+        <translation>重新整理</translation>
+    </message>
+    <message>
+        <source>打开日志目录</source>
+        <translation>開啟日誌資料夾</translation>
+    </message>
+    <message>
+        <source>暂无日志内容</source>
+        <translation>尚無日誌內容</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>快捷方式</source>
+        <translation>捷徑</translation>
+    </message>
+    <message>
+        <source>已在桌面创建快捷方式</source>
+        <translation>已在桌面建立捷徑</translation>
+    </message>
+    <message>
+        <source>已在开始菜单创建快捷方式</source>
+        <translation>已在開始功能表建立捷徑</translation>
+    </message>
+    <message>
+        <source>创建快捷方式失败，详情见日志</source>
+        <translation>建立捷徑失敗，詳情請見日誌</translation>
+    </message>
+    <message>
+        <source>找不到目标文件夹</source>
+        <translation>找不到目標資料夾</translation>
+    </message>
+    <message>
+        <source>未知的快捷方式类型</source>
+        <translation>未知的捷徑類型</translation>
+    </message>
+</context>
+</TS>

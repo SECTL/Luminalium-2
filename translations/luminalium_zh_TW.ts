@@ -4,133 +4,133 @@
 <context>
     <name>About</name>
     <message>
-        <location filename="../ui/settings/About.qml" line="230"/>
+        <location filename="../ui/settings/About.qml" line="277"/>
         <source>关于</source>
         <translation>關於</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="250"/>
+        <location filename="../ui/settings/About.qml" line="297"/>
         <source>© 2025-2026 Seirai Haraguchi, YUNOFACTORY &amp; SECTL Studio</source>
         <translation>© 2025-2026 Seirai Haraguchi, YUNOFACTORY &amp; SECTL Studio</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="251"/>
+        <location filename="../ui/settings/About.qml" line="298"/>
         <source>本程序基于 MIT License 获得许可</source>
         <translation>本程式以 MIT License 授權</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="268"/>
+        <location filename="../ui/settings/About.qml" line="315"/>
         <source>（Codename %1）</source>
         <translation>（代號 %1）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="277"/>
+        <location filename="../ui/settings/About.qml" line="324"/>
         <source>查看本仓库</source>
         <translation>查看本儲存庫</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="295"/>
+        <location filename="../ui/settings/About.qml" line="342"/>
         <source>反馈问题或功能建议</source>
         <translation>回報問題或功能建議</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="296"/>
+        <location filename="../ui/settings/About.qml" line="343"/>
         <source>在 GitHub 上提交 Issue</source>
         <translation>在 GitHub 上提交 Issue</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="321"/>
+        <location filename="../ui/settings/About.qml" line="368"/>
         <source>依赖与参考</source>
         <translation>相依套件與參考</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="330"/>
+        <location filename="../ui/settings/About.qml" line="377"/>
         <source>Qt &amp; Qt Quick</source>
         <translation>Qt &amp; Qt Quick</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="335"/>
+        <location filename="../ui/settings/About.qml" line="382"/>
         <source>Qt for Python（PySide6）</source>
         <translation>Qt for Python（PySide6）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="340"/>
+        <location filename="../ui/settings/About.qml" line="387"/>
         <source>Fluent Design System</source>
         <translation>Fluent Design System</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="345"/>
+        <location filename="../ui/settings/About.qml" line="392"/>
         <source>RinUI</source>
         <translation>RinUI</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="350"/>
+        <location filename="../ui/settings/About.qml" line="397"/>
         <source>pywin32</source>
         <translation>pywin32</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="380"/>
+        <location filename="../ui/settings/About.qml" line="427"/>
         <source>查看诊断信息</source>
         <translation>查看診斷資訊</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="381"/>
+        <location filename="../ui/settings/About.qml" line="428"/>
         <source>用于排查问题；分享前请检查其中包含的路径等信息</source>
         <translation>用於排查問題；分享前請先檢查其中是否含有路徑等資訊</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="440"/>
+        <location filename="../ui/settings/About.qml" line="487"/>
         <source>点击卡片获取回声洞句子</source>
         <translation>點擊卡片取得回音洞句子</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="442"/>
+        <location filename="../ui/settings/About.qml" line="489"/>
         <source>获取中...</source>
         <translation>取得中...</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="444"/>
+        <location filename="../ui/settings/About.qml" line="491"/>
         <source>暂无回声洞</source>
         <translation>暫無回音洞</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="446"/>
+        <location filename="../ui/settings/About.qml" line="493"/>
         <source>获取失败，请稍后重试</source>
         <translation>取得失敗，請稍後再試</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="495"/>
+        <location filename="../ui/settings/About.qml" line="542"/>
         <source>回声洞</source>
         <translation>回音洞</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="524"/>
-        <location filename="../ui/settings/About.qml" line="756"/>
+        <location filename="../ui/settings/About.qml" line="571"/>
+        <location filename="../ui/settings/About.qml" line="803"/>
         <source>已复制</source>
         <translation>已複製</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="524"/>
+        <location filename="../ui/settings/About.qml" line="571"/>
         <source>复制</source>
         <translation>複製</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="590"/>
+        <location filename="../ui/settings/About.qml" line="637"/>
         <source>诊断信息</source>
         <translation>診斷資訊</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="703"/>
+        <location filename="../ui/settings/About.qml" line="750"/>
         <source>加载中...</source>
         <translation>載入中...</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="747"/>
+        <location filename="../ui/settings/About.qml" line="794"/>
         <source>关闭</source>
         <translation>關閉</translation>
     </message>
     <message>
-        <location filename="../ui/settings/About.qml" line="756"/>
+        <location filename="../ui/settings/About.qml" line="803"/>
         <source>复制全部</source>
         <translation>複製全部</translation>
     </message>
@@ -138,34 +138,88 @@
 <context>
     <name>BlackboardWindow</name>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="29"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="187"/>
         <source>小黑板</source>
         <translation>小黑板</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="203"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="325"/>
+        <source>颜色</source>
+        <translation type="unfinished">色彩</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="327"/>
+        <source>预览</source>
+        <translation type="unfinished">預覽</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="330"/>
+        <source>粗细</source>
+        <translation type="unfinished">粗細</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="402"/>
+        <source>已导出至 %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="403"/>
+        <source>导出失败</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="551"/>
+        <source>粉笔</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="571"/>
         <source>橡皮</source>
         <translation>橡皮擦</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="211"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="612"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="718"/>
+        <source>板已空</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="618"/>
         <source>撤销</source>
         <translation>復原</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="217"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="632"/>
+        <source>重做</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="644"/>
+        <source>导出</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="764"/>
+        <source>退出全屏</source>
+        <translation type="unfinished">離開全螢幕</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="764"/>
+        <source>全屏</source>
+        <translation type="unfinished">全螢幕</translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="596"/>
         <source>清空</source>
         <translation>全部清除</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="224"/>
         <source>橡皮模式</source>
-        <translation>橡皮擦模式</translation>
+        <translation type="vanished">橡皮擦模式</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="224"/>
         <source>粉笔模式</source>
-        <translation>粉筆模式</translation>
+        <translation type="vanished">粉筆模式</translation>
     </message>
 </context>
 <context>
@@ -268,12 +322,12 @@
 <context>
     <name>DemoWindow</name>
     <message>
-        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="26"/>
+        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="30"/>
         <source>演示插件</source>
         <translation>示範外掛</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="41"/>
+        <location filename="../ui/plugins/_demo/DemoWindow.qml" line="54"/>
         <source>插件系统验收夹具：本窗口无任何实际功能</source>
         <translation>外掛系統驗收取用的視窗：本視窗沒有任何實際功能</translation>
     </message>
@@ -411,270 +465,296 @@
 <context>
     <name>Index</name>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="44"/>
+        <location filename="../ui/settings/General/Index.qml" line="45"/>
         <source>通用</source>
         <translation>一般</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="54"/>
+        <location filename="../ui/settings/General/Index.qml" line="55"/>
         <source>启动</source>
         <translation>啟動</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="61"/>
+        <location filename="../ui/settings/General/Index.qml" line="62"/>
         <source>开机自启</source>
         <translation>開機自動啟動</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="62"/>
+        <location filename="../ui/settings/General/Index.qml" line="63"/>
         <source>登录系统后自动启动 Luminalium</source>
         <translation>登入系統後自動啟動 Luminalium</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="97"/>
+        <location filename="../ui/settings/General/Index.qml" line="98"/>
         <source>外观</source>
         <translation>外觀</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="104"/>
+        <location filename="../ui/settings/General/Index.qml" line="105"/>
         <source>应用主题</source>
         <translation>應用程式主題</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="105"/>
+        <location filename="../ui/settings/General/Index.qml" line="106"/>
         <source>影响所有窗口与控件的取色</source>
         <translation>影響所有視窗與控制項的配色</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="110"/>
+        <location filename="../ui/settings/General/Index.qml" line="111"/>
         <source>跟随系统</source>
         <translation>跟隨系統</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="110"/>
+        <location filename="../ui/settings/General/Index.qml" line="111"/>
         <source>浅色</source>
         <translation>淺色</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="110"/>
+        <location filename="../ui/settings/General/Index.qml" line="111"/>
         <source>深色</source>
         <translation>深色</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="125"/>
+        <location filename="../ui/settings/General/Index.qml" line="126"/>
         <source>快捷面板</source>
         <translation>快速面板</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="130"/>
+        <location filename="../ui/settings/General/Index.qml" line="133"/>
         <source>快捷方式锁定</source>
         <translation>捷徑鎖定</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="131"/>
+        <location filename="../ui/settings/General/Index.qml" line="134"/>
         <source>锁定后面板上的「编辑」按钮消失，防止误改</source>
         <translation>鎖定後面板上的「編輯」按鈕會消失，避免誤改</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="153"/>
+        <location filename="../ui/settings/General/Index.qml" line="156"/>
         <source>语言</source>
         <translation>語言</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="159"/>
+        <location filename="../ui/settings/General/Index.qml" line="164"/>
         <source>界面语言</source>
         <translation>介面語言</translation>
     </message>
     <message>
-        <location filename="../ui/settings/General/Index.qml" line="160"/>
+        <location filename="../ui/settings/General/Index.qml" line="165"/>
         <source>切换后需要重新加载应用</source>
         <translation>切換後需要重新載入應用程式</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="247"/>
+        <source>旁白与配音语言</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="248"/>
+        <source>旁白与配音类语音统一使用的语种，可试听该语种的示例</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="306"/>
+        <source>该语种的示例音频缺失</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="308"/>
+        <source>停止试听</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/General/Index.qml" line="309"/>
+        <source>试听该语种的配音示例</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
     <name>Ink</name>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="24"/>
+        <location filename="../ui/settings/Ink.qml" line="37"/>
         <source>墨迹和批注</source>
         <translation>墨跡與標註</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="38"/>
+        <location filename="../ui/settings/Ink.qml" line="51"/>
         <source>墨迹</source>
         <translation>墨跡</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="45"/>
+        <location filename="../ui/settings/Ink.qml" line="58"/>
         <source>墨迹引擎</source>
         <translation>墨跡引擎</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="46"/>
+        <location filename="../ui/settings/Ink.qml" line="59"/>
         <source>自建批注在放映画面上自己画，两家一致；COM 交给演示软件（兜底）</source>
         <translation>自行繪製標註是在放映畫面上自己畫，兩種方式一致；COM 則交給簡報軟體（備案）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="52"/>
+        <location filename="../ui/settings/Ink.qml" line="65"/>
         <source>自建批注</source>
         <translation>自行繪製標註</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="52"/>
+        <location filename="../ui/settings/Ink.qml" line="65"/>
         <source>COM画笔</source>
         <translation>COM 畫筆</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="67"/>
+        <location filename="../ui/settings/Ink.qml" line="80"/>
         <source>手掌擦除</source>
         <translation>手掌擦除</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="68"/>
+        <location filename="../ui/settings/Ink.qml" line="81"/>
         <source>触摸屏上手掌或手背压上去时临时切成像素擦除，抬起即还原；仅在使用自建批注时生效</source>
         <translation>觸控螢幕上手掌或手背壓上去時會暫時切成像素擦除，抬起即還原；只在使用自行繪製標註時生效</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="87"/>
+        <location filename="../ui/settings/Ink.qml" line="100"/>
         <source>手掌判定阈值</source>
         <translation>手掌判定閾值</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="88"/>
+        <location filename="../ui/settings/Ink.qml" line="101"/>
         <source>接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上</source>
         <translation>接觸直徑達到這個值才算手掌；指尖約 8~12 毫米，掌心 25 毫米以上</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="328"/>
+        <location filename="../ui/settings/Ink.qml" line="333"/>
+        <location filename="../ui/settings/Ink.qml" line="365"/>
         <source>色板</source>
         <translation>色板</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="329"/>
+        <location filename="../ui/settings/Ink.qml" line="334"/>
         <source>放映时笔的选单与小黑板的粉笔共用这份颜色表，共 %1 个颜色</source>
         <translation>放映時筆的選單與小黑板的粉筆共用這份色彩表，共 %1 個色彩</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="336"/>
+        <location filename="../ui/settings/Ink.qml" line="341"/>
         <source>编辑颜色</source>
         <translation>編輯色彩</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="480"/>
+        <location filename="../ui/settings/Ink.qml" line="472"/>
         <source>添加颜色</source>
         <translation>新增色彩</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="554"/>
+        <location filename="../ui/settings/Ink.qml" line="562"/>
         <source>删除这个颜色</source>
         <translation>刪除這個色彩</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="565"/>
+        <location filename="../ui/settings/Ink.qml" line="491"/>
         <source>点「完成」后，所有使用此色板的界面都会立即应用新的颜色。</source>
         <translation>按下「完成」後，所有使用此色板的介面都會立即套用新的色彩。</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="578"/>
+        <location filename="../ui/settings/Ink.qml" line="582"/>
         <source>取消</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="588"/>
+        <location filename="../ui/settings/Ink.qml" line="592"/>
         <source>完成</source>
         <translation>完成</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="181"/>
+        <location filename="../ui/settings/Ink.qml" line="186"/>
         <source>白色</source>
         <translation>白色</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="177"/>
+        <location filename="../ui/settings/Ink.qml" line="182"/>
         <source>黑色</source>
         <translation>黑色</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="184"/>
+        <location filename="../ui/settings/Ink.qml" line="189"/>
         <source>浅灰</source>
         <translation>淺灰</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="187"/>
+        <location filename="../ui/settings/Ink.qml" line="192"/>
         <source>灰</source>
         <translation>灰</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="189"/>
+        <location filename="../ui/settings/Ink.qml" line="194"/>
         <source>深灰</source>
         <translation>深灰</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="193"/>
+        <location filename="../ui/settings/Ink.qml" line="198"/>
         <source>红</source>
         <translation>紅</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="195"/>
+        <location filename="../ui/settings/Ink.qml" line="200"/>
         <source>橙</source>
         <translation>橙</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="197"/>
+        <location filename="../ui/settings/Ink.qml" line="202"/>
         <source>金</source>
         <translation>金</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="199"/>
+        <location filename="../ui/settings/Ink.qml" line="204"/>
         <source>黄</source>
         <translation>黃</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="201"/>
+        <location filename="../ui/settings/Ink.qml" line="206"/>
         <source>黄绿</source>
         <translation>黃綠</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="203"/>
+        <location filename="../ui/settings/Ink.qml" line="208"/>
         <source>绿</source>
         <translation>綠</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="205"/>
+        <location filename="../ui/settings/Ink.qml" line="210"/>
         <source>青</source>
         <translation>青</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="207"/>
+        <location filename="../ui/settings/Ink.qml" line="212"/>
         <source>蓝</source>
         <translation>藍</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="209"/>
+        <location filename="../ui/settings/Ink.qml" line="214"/>
         <source>靛</source>
         <translation>靛</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="211"/>
+        <location filename="../ui/settings/Ink.qml" line="216"/>
         <source>紫</source>
         <translation>紫</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="213"/>
+        <location filename="../ui/settings/Ink.qml" line="218"/>
         <source>品红</source>
         <translation>洋紅</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="216"/>
+        <location filename="../ui/settings/Ink.qml" line="221"/>
         <source>灰%1</source>
         <translation>灰%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="220"/>
+        <location filename="../ui/settings/Ink.qml" line="225"/>
         <source>深%1</source>
         <translation>深%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Ink.qml" line="223"/>
+        <location filename="../ui/settings/Ink.qml" line="228"/>
         <source>浅%1</source>
         <translation>淺%1</translation>
     </message>
@@ -682,9 +762,37 @@
 <context>
     <name>InkOverlay</name>
     <message>
-        <location filename="../ui/ink/InkOverlay.qml" line="30"/>
+        <location filename="../ui/ink/InkOverlay.qml" line="42"/>
         <source>墨迹</source>
         <translation>墨跡</translation>
+    </message>
+</context>
+<context>
+    <name>LogWindow</name>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="32"/>
+        <source>日志</source>
+        <translation>日誌</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="88"/>
+        <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
+        <translation>logs/luminalium.log · 唯讀，顯示最新的 256 KB</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="93"/>
+        <source>刷新</source>
+        <translation>重新整理</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="104"/>
+        <source>打开日志目录</source>
+        <translation>開啟日誌資料夾</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="175"/>
+        <source>暂无日志内容</source>
+        <translation>尚無日誌內容</translation>
     </message>
 </context>
 <context>
@@ -810,72 +918,72 @@
         <translation>主介面編輯器</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="277"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="364"/>
         <source>屏幕左下角</source>
         <translation>螢幕左下角</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="278"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="365"/>
         <source>屏幕底边居中</source>
         <translation>螢幕下緣置中</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="279"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="366"/>
         <source>屏幕右下角</source>
         <translation>螢幕右下角</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="280"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="367"/>
         <source>屏幕左上角</source>
         <translation>螢幕左上角</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="281"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="368"/>
         <source>屏幕顶边居中</source>
         <translation>螢幕上緣置中</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="282"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="369"/>
         <source>屏幕右上角</source>
         <translation>螢幕右上角</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="283"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="370"/>
         <source>屏幕左侧垂直居中</source>
         <translation>螢幕左側垂直置中</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="284"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="371"/>
         <source>屏幕右侧垂直居中</source>
         <translation>螢幕右側垂直置中</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="405"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="496"/>
         <source>控制条</source>
         <translation>控制列</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="413"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="504"/>
         <source>组 | 工具栏和翻页器</source>
         <translation>群組 | 工具列與翻頁器</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="415"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="506"/>
         <source>工具栏</source>
         <translation>工具列</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="417"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="508"/>
         <source>翻页组件</source>
         <translation>翻頁元件</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1562"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1658"/>
         <source>开</source>
         <translation>開</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1563"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1659"/>
         <source>关</source>
         <translation>關</translation>
     </message>
@@ -924,183 +1032,199 @@
 <context>
     <name>Plugins</name>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="96"/>
-        <location filename="../ui/settings/Plugins.qml" line="391"/>
+        <location filename="../ui/settings/Plugins.qml" line="106"/>
+        <location filename="../ui/settings/Plugins.qml" line="409"/>
         <source>插件</source>
         <translation>外掛</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="115"/>
+        <location filename="../ui/settings/Plugins.qml" line="127"/>
         <source>实用工具</source>
         <translation>實用工具</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="116"/>
+        <location filename="../ui/settings/Plugins.qml" line="128"/>
         <source>学科工具</source>
         <translation>學科工具</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="117"/>
+        <location filename="../ui/settings/Plugins.qml" line="129"/>
         <source>办公工具</source>
         <translation>辦公工具</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="118"/>
+        <location filename="../ui/settings/Plugins.qml" line="130"/>
         <source>娱乐工具</source>
         <translation>娛樂工具</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="119"/>
+        <location filename="../ui/settings/Plugins.qml" line="131"/>
         <source>改进</source>
         <translation>改良</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="120"/>
+        <location filename="../ui/settings/Plugins.qml" line="132"/>
         <source>优化</source>
         <translation>最佳化</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="121"/>
+        <location filename="../ui/settings/Plugins.qml" line="133"/>
         <source>注入式修改类</source>
         <translation>注入修改類</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="122"/>
+        <location filename="../ui/settings/Plugins.qml" line="134"/>
         <source>联动类</source>
         <translation>連動類</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="123"/>
+        <location filename="../ui/settings/Plugins.qml" line="135"/>
         <source>快捷方式类</source>
         <translation>捷徑類</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="124"/>
+        <location filename="../ui/settings/Plugins.qml" line="136"/>
         <source>其他</source>
         <translation>其他</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="125"/>
+        <location filename="../ui/settings/Plugins.qml" line="137"/>
         <source>快捷工具</source>
         <translation>快速工具</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="141"/>
+        <location filename="../ui/settings/Plugins.qml" line="153"/>
         <source>全部</source>
         <translation>全部</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="142"/>
+        <location filename="../ui/settings/Plugins.qml" line="154"/>
         <source>已启用</source>
         <translation>已啟用</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="143"/>
+        <location filename="../ui/settings/Plugins.qml" line="155"/>
         <source>内置</source>
         <translation>內建</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="144"/>
+        <location filename="../ui/settings/Plugins.qml" line="156"/>
         <source>非内置</source>
         <translation>非內建</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="250"/>
+        <location filename="../ui/settings/Plugins.qml" line="262"/>
         <source>调试插件</source>
         <translation>偵錯外掛</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="253"/>
+        <location filename="../ui/settings/Plugins.qml" line="265"/>
         <source>外部导入</source>
         <translation>外部匯入</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="256"/>
+        <location filename="../ui/settings/Plugins.qml" line="268"/>
         <source>已加载</source>
         <translation>已載入</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="258"/>
+        <location filename="../ui/settings/Plugins.qml" line="273"/>
+        <source>未加载：已禁用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="275"/>
         <source>未加载：%1</source>
         <translation>未載入：%1</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="260"/>
+        <location filename="../ui/settings/Plugins.qml" line="277"/>
         <source>未加载</source>
         <translation>未載入</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="269"/>
-        <source>已禁用</source>
-        <translation>已停用</translation>
+        <location filename="../ui/settings/Plugins.qml" line="328"/>
+        <source>插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载；新导入的插件要重启后才会出现在下方列表，磁贴需在快捷面板的编辑模式里点「+」添加</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="296"/>
+        <location filename="../ui/settings/Plugins.qml" line="365"/>
+        <source>选择包含 plugin.py 的插件文件夹；导入时会运行插件代码进行校验，请只用可信来源</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="387"/>
+        <source>选择 .zip 插件包；导入时会运行插件代码进行校验，请只用可信来源</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>已禁用</source>
+        <translation type="vanished">已停用</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Plugins.qml" line="314"/>
         <source>操作成功</source>
         <translation>操作成功</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="296"/>
+        <location filename="../ui/settings/Plugins.qml" line="314"/>
         <source>操作失败</source>
         <translation>操作失敗</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="309"/>
+        <location filename="../ui/settings/Plugins.qml" line="327"/>
         <source>更改将在重启应用后生效</source>
         <translation>變更會在重新啟動應用程式後生效</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="310"/>
         <source>插件的启用状态与导入 / 删除只在启动时读取，本进程内不会动态加载或卸载</source>
-        <translation>外掛的啟用狀態與匯入 / 刪除只在啟動時讀取，本行程內不會動態載入或卸載</translation>
+        <translation type="vanished">外掛的啟用狀態與匯入 / 刪除只在啟動時讀取，本行程內不會動態載入或卸載</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="323"/>
+        <location filename="../ui/settings/Plugins.qml" line="341"/>
         <source>导入</source>
         <translation>匯入</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="345"/>
+        <location filename="../ui/settings/Plugins.qml" line="363"/>
         <source>导入文件夹</source>
         <translation>匯入資料夾</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="347"/>
         <source>选择包含 plugin.py 的插件文件夹；导入即拷贝安装</source>
-        <translation>選擇含有 plugin.py 的外掛資料夾；匯入即複製安裝</translation>
+        <translation type="vanished">選擇含有 plugin.py 的外掛資料夾；匯入即複製安裝</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="367"/>
+        <location filename="../ui/settings/Plugins.qml" line="385"/>
         <source>导入压缩包（.zip）</source>
         <translation>匯入壓縮檔（.zip）</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="369"/>
         <source>选择 .zip 插件包；导入即拷贝安装</source>
-        <translation>選擇 .zip 外掛套件；匯入即複製安裝</translation>
+        <translation type="vanished">選擇 .zip 外掛套件；匯入即複製安裝</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="479"/>
+        <location filename="../ui/settings/Plugins.qml" line="497"/>
         <source>没有已安装的插件</source>
         <translation>沒有已安裝的外掛</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="480"/>
+        <location filename="../ui/settings/Plugins.qml" line="498"/>
         <source>没有符合当前筛选条件的插件</source>
         <translation>沒有符合目前篩選條件的外掛</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="552"/>
+        <location filename="../ui/settings/Plugins.qml" line="570"/>
         <source>确认删除</source>
         <translation>確認刪除</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="552"/>
+        <location filename="../ui/settings/Plugins.qml" line="570"/>
         <source>删除</source>
         <translation>刪除</translation>
     </message>
     <message>
-        <location filename="../ui/settings/Plugins.qml" line="581"/>
+        <location filename="../ui/settings/Plugins.qml" line="599"/>
         <source>启用</source>
         <translation>啟用</translation>
     </message>
@@ -1108,73 +1232,73 @@
 <context>
     <name>PresentationDock</name>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="252"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="255"/>
         <source>更多操作</source>
         <translation>更多操作</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="269"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="272"/>
         <source>退出放映</source>
         <translation>結束放映</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="277"/>
-        <location filename="../ui/presentation/PresentationDock.qml" line="279"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="280"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="282"/>
         <source>放大镜</source>
         <translation>放大鏡</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="999"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1050"/>
         <source>上一页</source>
         <translation>上一頁</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1069"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1120"/>
         <source>下一页</source>
         <translation>下一頁</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1219"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1270"/>
         <source>缩放</source>
         <translation>縮放</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1221"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1272"/>
         <source>移位</source>
         <translation>移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1237"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1288"/>
         <source>放大</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1239"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1290"/>
         <source>缩小</source>
         <translation>縮小</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1241"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1292"/>
         <source>恢复原始大小</source>
         <translation>恢復原始大小</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1243"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1294"/>
         <source>向上移位</source>
         <translation>向上移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1245"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1296"/>
         <source>向下移位</source>
         <translation>向下移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1247"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1298"/>
         <source>向左移位</source>
         <translation>向左移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1249"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1300"/>
         <source>向右移位</source>
         <translation>向右移位</translation>
     </message>
@@ -1228,33 +1352,68 @@
 <context>
     <name>Settings</name>
     <message>
-        <location filename="../ui/Settings.qml" line="70"/>
+        <location filename="../ui/Settings.qml" line="72"/>
         <source>设置</source>
         <translation>設定</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="265"/>
-        <location filename="../ui/Settings.qml" line="317"/>
+        <location filename="../ui/Settings.qml" line="227"/>
+        <source>更多</source>
+        <translation>更多</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="276"/>
+        <source>创建桌面快捷方式</source>
+        <translation>建立桌面捷徑</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="282"/>
+        <source>创建开始菜单快捷方式</source>
+        <translation>建立開始功能表捷徑</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="291"/>
+        <source>日志</source>
+        <translation>日誌</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="298"/>
+        <source>重新启动并进入维护模式</source>
+        <translation>重新啟動並進入維護模式</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="308"/>
+        <source>打开日志目录</source>
+        <translation>開啟日誌資料夾</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="314"/>
+        <source>打开应用目录</source>
+        <translation>開啟應用程式資料夾</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="398"/>
+        <location filename="../ui/Settings.qml" line="450"/>
         <source>需要重启</source>
         <translation>需要重新啟動</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="270"/>
+        <location filename="../ui/Settings.qml" line="403"/>
         <source>部分设置需要重启才能生效，点击以重启应用。</source>
         <translation>部分設定需要重新啟動才會生效，點這裡重新啟動應用程式。</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="325"/>
+        <location filename="../ui/Settings.qml" line="458"/>
         <source>部分设置需要重启以应用</source>
         <translation>部分設定需要重新啟動才會套用</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="335"/>
+        <location filename="../ui/Settings.qml" line="468"/>
         <source>取消</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="344"/>
+        <location filename="../ui/Settings.qml" line="477"/>
         <source>重启</source>
         <translation>重新啟動</translation>
     </message>
@@ -1270,6 +1429,14 @@
         <location filename="../ui/presentation/SidePager.qml" line="328"/>
         <source>下一页</source>
         <translation>下一頁</translation>
+    </message>
+</context>
+<context>
+    <name>SlideClearPopup</name>
+    <message>
+        <location filename="../ui/plugins/blackboard/SlideClearPopup.qml" line="99"/>
+        <source>滑动清屏</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
@@ -1306,190 +1473,191 @@
 <context>
     <name>SpotlightOverlay</name>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="30"/>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="54"/>
         <source>聚光灯</source>
         <translation>聚光燈</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="74"/>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="151"/>
         <source>缩小光斑</source>
         <translation>縮小光斑</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="75"/>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="153"/>
         <source>退出聚光灯</source>
         <translation>離開聚光燈</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="76"/>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="224"/>
+        <source>光斑跟随鼠标 · 光斑外点击被遮住 · 键盘 + / − 或胶囊按钮调大小 · 点 ✕ 退出</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="152"/>
         <source>放大光斑</source>
         <translation>放大光斑</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightOverlay.qml" line="120"/>
         <source>光斑跟随鼠标 · 键盘 + / − 或胶囊按钮调大小 · 点 ✕ 退出</source>
-        <translation>光斑跟著滑鼠 · 用鍵盤 + / − 或膠囊按鈕調整大小 · 點 ✕ 離開</translation>
+        <translation type="vanished">光斑跟著滑鼠 · 用鍵盤 + / − 或膠囊按鈕調整大小 · 點 ✕ 離開</translation>
     </message>
 </context>
 <context>
     <name>SpotlightSettings</name>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="24"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="41"/>
         <source>聚光灯</source>
         <translation>聚光燈</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="31"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="48"/>
         <source>遮罩浓度</source>
         <translation>遮罩濃度</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="32"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="49"/>
         <source>光斑之外压暗的程度；开着的遮罩上拖动即刻生效</source>
         <translation>光斑以外壓暗的程度；在開啟的遮罩上拖曳會立即生效</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="50"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="67"/>
         <source>光斑大小</source>
         <translation>光斑大小</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="51"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="68"/>
         <source>光斑半径占屏幕短边的百分比；遮罩开着时拖动即刻生效</source>
         <translation>光斑半徑佔螢幕短邊的百分比；遮罩開啟時拖曳會立即生效</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="65"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="121"/>
         <source>怎么退出</source>
         <translation>如何離開</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="66"/>
+        <location filename="../ui/plugins/spotlight/SpotlightSettings.qml" line="128"/>
+        <source>遮罩顶部的 ✕ 胶囊按钮、快捷面板磁贴或放映控制条动作都可关闭；光斑以外的区域点击会被遮住（方向键与滚轮始终归放映窗口）；键盘 + / − 在任何界面都会调光斑大小</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>遮罩顶部的 ✕ 胶囊按钮、快捷面板磁贴或放映控制条动作都可关闭；方向键与滚轮始终归放映窗口</source>
-        <translation>遮罩頂部的 ✕ 膠囊按鈕、快速面板的磚塊或放映控制列上的動作都可以關閉；方向鍵與滾輪永遠歸放映視窗</translation>
+        <translation type="vanished">遮罩頂部的 ✕ 膠囊按鈕、快速面板的磚塊或放映控制列上的動作都可以關閉；方向鍵與滾輪永遠歸放映視窗</translation>
     </message>
 </context>
 <context>
     <name>TimerSettings</name>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="33"/>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="22"/>
         <source>计时器</source>
         <translation>計時器</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="122"/>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="29"/>
+        <source>提示音</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="30"/>
+        <source>倒计时结束与重置时播放提示音（Windows 系统音）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="49"/>
+        <source>试听铃声</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="50"/>
+        <source>播放一遍结束提示音（单次）</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/plugins/timer/TimerSettings.qml" line="54"/>
+        <source>播放</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>计时器音效</source>
-        <translation>計時器音效</translation>
+        <translation type="vanished">計時器音效</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="123"/>
         <source>控制计时结束和重置时是否播放提示音</source>
-        <translation>控制計時結束與重設時是否播放提示音</translation>
+        <translation type="vanished">控制計時結束與重設時是否播放提示音</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="144"/>
         <source>计时器全屏行为</source>
-        <translation>計時器全螢幕行為</translation>
+        <translation type="vanished">計時器全螢幕行為</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="145"/>
         <source>选择计时器进入全屏时是真正全屏，还是仅最大化窗口</source>
-        <translation>選擇計時器進入全螢幕時是真正全螢幕，還是只將視窗最大化</translation>
+        <translation type="vanished">選擇計時器進入全螢幕時是真正全螢幕，還是只將視窗最大化</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="153"/>
         <source>全屏切换</source>
-        <translation>全螢幕切換</translation>
+        <translation type="vanished">全螢幕切換</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="165"/>
         <source>最大化</source>
-        <translation>最大化</translation>
+        <translation type="vanished">最大化</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="183"/>
         <source>快捷加时</source>
-        <translation>快速加時</translation>
+        <translation type="vanished">快速加時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="184"/>
         <source>编辑计时器里的快捷加时按钮，最多四个，可选秒或分</source>
-        <translation>編輯計時器裡的快速加時按鈕，最多四個，可選秒或分</translation>
+        <translation type="vanished">編輯計時器裡的快速加時按鈕，最多四個，可選秒或分</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="216"/>
         <source>秒</source>
-        <translation>秒</translation>
+        <translation type="vanished">秒</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="216"/>
         <source>分</source>
-        <translation>分</translation>
+        <translation type="vanished">分</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="222"/>
         <source>移除</source>
-        <translation>移除</translation>
+        <translation type="vanished">移除</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="236"/>
         <source>最多四个按钮</source>
-        <translation>最多四個按鈕</translation>
+        <translation type="vanished">最多四個按鈕</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerSettings.qml" line="245"/>
         <source>添加快捷加时</source>
-        <translation>新增快速加時</translation>
+        <translation type="vanished">新增快速加時</translation>
     </message>
 </context>
 <context>
     <name>TimerWindow</name>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="68"/>
         <source>计时器（Luminalium 1）</source>
-        <translation>計時器（Luminalium 1）</translation>
+        <translation type="vanished">計時器（Luminalium 1）</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="197"/>
         <source>小时</source>
-        <translation>小時</translation>
+        <translation type="vanished">小時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="197"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="198"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="565"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="717"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="842"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1285"/>
         <source>分</source>
-        <translation>分</translation>
+        <translation type="vanished">分</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="197"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="198"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="199"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="580"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="842"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1285"/>
         <source>秒</source>
-        <translation>秒</translation>
+        <translation type="vanished">秒</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="125"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="208"/>
         <source>秒表</source>
-        <translation>碼表</translation>
+        <translation type="vanished">碼表</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="123"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="205"/>
         <source>计时</source>
-        <translation>計時</translation>
+        <translation type="vanished">計時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="126"/>
         <source>时钟</source>
-        <translation>時鐘</translation>
+        <translation type="vanished">時鐘</translation>
     </message>
     <message>
         <source>计时中</source>
@@ -1512,39 +1680,32 @@
         <translation type="vanished">重設</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="469"/>
         <source>倒计时</source>
-        <translation>倒數計時</translation>
+        <translation type="vanished">倒數計時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="470"/>
         <source>到点</source>
-        <translation>指定時刻</translation>
+        <translation type="vanished">指定時刻</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="550"/>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="702"/>
         <source>时</source>
-        <translation>時</translation>
+        <translation type="vanished">時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="754"/>
         <source>目标时间已过，将设为明天</source>
-        <translation>目標時間已過，將設為明天</translation>
+        <translation type="vanished">目標時間已過，將設為明天</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="755"/>
         <source>将在 %1 后响铃</source>
-        <translation>將在 %1 之後響鈴</translation>
+        <translation type="vanished">將在 %1 之後響鈴</translation>
     </message>
     <message>
         <source>已暂停</source>
         <translation type="vanished">已暫停</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="810"/>
         <source>共 %1 秒</source>
-        <translation>共 %1 秒</translation>
+        <translation type="vanished">共 %1 秒</translation>
     </message>
     <message>
         <source>继续</source>
@@ -1555,68 +1716,56 @@
         <translation type="vanished">全螢幕</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="876"/>
         <source>时间到</source>
-        <translation>時間到</translation>
+        <translation type="vanished">時間到</translation>
     </message>
     <message>
         <source>重新计时</source>
         <translation type="vanished">重新計時</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="207"/>
         <source>当前时间</source>
-        <translation>當前時間</translation>
+        <translation type="vanished">當前時間</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="623"/>
         <source>常用时间</source>
-        <translation>常用時間</translation>
+        <translation type="vanished">常用時間</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
         <source>周日</source>
-        <translation>週日</translation>
+        <translation type="vanished">週日</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
         <source>周一</source>
-        <translation>週一</translation>
+        <translation type="vanished">週一</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
         <source>周二</source>
-        <translation>週二</translation>
+        <translation type="vanished">週二</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="902"/>
         <source>周三</source>
-        <translation>週三</translation>
+        <translation type="vanished">週三</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="903"/>
         <source>周四</source>
-        <translation>週四</translation>
+        <translation type="vanished">週四</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="903"/>
         <source>周五</source>
-        <translation>週五</translation>
+        <translation type="vanished">週五</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="903"/>
         <source>周六</source>
-        <translation>週六</translation>
+        <translation type="vanished">週六</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1250"/>
         <source>总计 %1 分钟</source>
-        <translation>總計 %1 分鐘</translation>
+        <translation type="vanished">總計 %1 分鐘</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/timer_l1/TimerWindow.qml" line="1391"/>
         <source>退出全屏</source>
-        <translation>離開全螢幕</translation>
+        <translation type="vanished">離開全螢幕</translation>
     </message>
 </context>
 <context>

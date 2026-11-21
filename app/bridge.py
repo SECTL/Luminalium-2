@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import re
 import threading
 from datetime import datetime
@@ -72,7 +73,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtQml import QJSValue
 
 from . import autostart
@@ -81,9 +82,10 @@ from . import i18n
 from . import markdown_html
 from . import monitors
 from . import narration
+from . import system_actions
 from . import update_checker
 from .config import Config
-from .paths import RESOURCES_DIR, UI_DIR
+from .paths import LOG_DIR, RESOURCES_DIR, UI_DIR, data_dir
 from .plugins import external, loader, registry
 from .ppt_controller import PresentationState
 
@@ -442,6 +444,14 @@ class Backend(QObject):
     #: 调试窗口（隐藏入口：设置窗口标题连点 10 次）
     debugWindowRequested = Signal()
     debugWindowCloseRequested = Signal()
+    #: 日志窗口（入口：设置标题栏「更多」→「日志」，2026-11-21 用户指令）。
+    #: 与调试窗口分属两码事：那个是开发者面板，这个只是把 logs 里的文本摊开给
+    #: 用户自己看，**不提供任何写入能力**。
+    logWindowRequested = Signal()
+    logWindowCloseRequested = Signal()
+    #: 创建快捷方式的结果（``ok, 人话消息``）。菜单挂在标题栏，那里没有可放
+    #: 横幅的地方，所以由应用层接住转成托盘气泡。
+    shortcutCreateResult = Signal(bool, str)
     #: 主界面编辑器（入口：快捷面板的「主界面编辑器」快捷方式）
     editorRequested = Signal()
     editorCloseRequested = Signal()
@@ -1950,6 +1960,73 @@ class Backend(QObject):
     @Slot()
     def closeDebugWindow(self) -> None:
         self.debugWindowCloseRequested.emit()
+
+    # ------------------------------------------------------ 「更多」菜单（2026-11-21）
+    # 设置标题栏版本号右侧那枚「更多」按钮驱动的几个动作。菜单本体在
+    # ``ui/Settings.qml``，这里只提供它够得着的四件事：日志窗口、两个「打开
+    # 目录」、创建快捷方式。维护模式**刻意还没有槽**：用户说到时再给方案，
+    # QML 侧那一项现在是禁用态，别提前造一个假的实现。
+
+    @Slot()
+    def openLogWindow(self) -> None:
+        self.logWindowRequested.emit()
+
+    @Slot()
+    def closeLogWindow(self) -> None:
+        self.logWindowCloseRequested.emit()
+
+    #: 日志窗口一次最多读这么多字节。日志轮转后单文件上限 1 MB，全量塞给
+    #: QML 的 TextEdit 在低配上会卡一拍；尾部 256 KB 对「刚出的问题」足够。
+    _LOG_TAIL_BYTES = 256 * 1024
+
+    @Slot(result=str)
+    def readLogText(self) -> str:
+        """日志窗口正文：当前日志文件的尾部。
+
+        ⚠️ 目录用 ``LOG_DIR`` 常量而不是 ``data_dir()/logs`` —— 日志写入
+        （``application.setup_logging``）用的就是 ``LOG_DIR``，两边必须同一个
+        源；``data_dir()`` 的 ``LUMINALIUM_DATA_DIR`` 覆盖只影响运行期缓存。
+        """
+        path = LOG_DIR / "luminalium.log"
+        try:
+            with path.open("rb") as handle:
+                size = path.stat().st_size
+                if size > self._LOG_TAIL_BYTES:
+                    handle.seek(-self._LOG_TAIL_BYTES, os.SEEK_END)
+                    # 截断点多半落在一行中间，丢掉这半行免得读到半个时间戳。
+                    handle.readline()
+                data = handle.read()
+        except OSError:
+            log.debug("读取日志失败: %s", path, exc_info=True)
+            return ""
+        return data.decode("utf-8", "replace")
+
+    @Slot()
+    def openLogDir(self) -> None:
+        self._open_directory(LOG_DIR)
+
+    @Slot()
+    def openAppDir(self) -> None:
+        # 应用目录 = 打包时的 exe 同级 / 源码时的仓库根，与 ``paths.data_dir()``
+        # 同一套解析（且尊重 ``LUMINALIUM_DATA_DIR``，自检不会开错目录）。
+        self._open_directory(data_dir())
+
+    def _open_directory(self, path) -> None:
+        url = QUrl.fromLocalFile(str(path))
+        if not QDesktopServices.openUrl(url):
+            log.warning("打开目录失败: %s", path)
+
+    @Slot(str)
+    def createShortcut(self, kind: str) -> None:
+        """``kind``：``desktop`` / ``start_menu``（见 ``app/system_actions.py``）。
+
+        结果不发回 QML —— 菜单已经关了，没有地方显示横幅；走信号交给应用层
+        转托盘气泡。
+        """
+        ok, message = system_actions.create_shortcut(
+            kind, str(self._config.get("app.name", "Luminalium 2"))
+        )
+        self.shortcutCreateResult.emit(ok, message)
 
     @Slot()
     def openMainEditor(self) -> None:

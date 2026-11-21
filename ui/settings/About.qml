@@ -87,6 +87,8 @@ import Luminalium
     同一套「混色」还被复用到右下角的 YUNOFACTORY 字标上（2026-10-05 用户指令，
     见 ``aboutCredits``）—— ``GlassLogo`` 与「Logo」其实无关，它做的就是「一堆
     半透明白渐变按单色剪影蒙形」，换成字标素材、关掉光晕与投影就是一份落款。
+    2026-11-21 又在这份落款上方压了一枚 SECTL 标志（见 ``aboutSectl``），同样
+    复用 ``GlassLogo``，于是右下角成了一个「标志 + 字标」的锁定版式。
 
     英雄区走 ``FluentPage.contentHeader``（2026-11-15 用户指令「把流光背景
     从圆角矩形包裹改为和设置主页同款的占满渐变」）：整套公式照抄 ``Home.qml``
@@ -210,6 +212,8 @@ Rin.FluentPage {
 
         /*! 尺寸见 ``Lumi.aboutCreditsWidth`` 上方的说明（150 宽 ≈ 英雄区的 19%）。 */
         GlassLogo {
+            id: aboutCredits
+
             objectName: "aboutCredits"
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -220,6 +224,48 @@ Rin.FluentPage {
             glowEnabled: false
             shadowEnabled: false
             maskUrl: Backend.resourceFile("design_by_yunofactory.svg")
+        }
+
+        /*! 落款上方的 SECTL 标志（2026-11-21 用户指令「将 logo-sectl.svg 的
+            SECTL Logo 放在关于界面 hero 的 YUNOFACTORY LOGO 上方」，并要求「同样
+            保持与下方 YUNOFACTORY LOGO 一样的玻璃质感」）。
+
+            所以还是 ``GlassLogo`` 那一套「两层半透明白渐变按剪影蒙形」，参数与
+            字标**逐项一致** —— 尤其 ``glowEnabled`` / ``shadowEnabled`` 也关掉：
+            它们的模糊半径按 248 的 Logo 配，压在 32 宽的小标志上会糊成一团，
+            外撑的 3σ 还会越过英雄区下沿洒到页面上。
+
+            **横向跟字标右对齐**（2026-11-21 用户指令「右对齐」）：字标 150 宽、
+            标志 32 宽，两者右边缘落在同一条竖线上，整块落款的右边界是齐的 ——
+            居中对齐那版标志会压着字标中段，右边缘反倒参差。
+
+            素材用 ``logo_sectl_mark.svg`` 而不是原始的 ``logo-sectl.svg`` ——
+            原档的视图框四周各有三成死白（墨迹只占 37% 宽），``PreserveAspectFit``
+            会连带死白一起缩，32 的盒子里那枚 S 只剩 12 宽，还偏在盒子中线往上。
+            派生件只把视图框收紧到墨迹包围盒，图形本身没动，理由写在那个 svg 里。
+
+            ⚠️ 深色档这枚标志是「浅面 + 深边」的立体 S（多边形之间那些抗锯齿细缝
+            透出流光，看着像是刻面）；**浅色档会洗成一块实心白剪影**，S 的立体感
+            只剩下中间那道缺口 —— 这是「按剪影蒙形」的必然结果（剪影里没有刻面
+            信息），与字标在浅色档变成一块纯白是同一回事，不是渲染坏了。 */
+        GlassLogo {
+            objectName: "aboutSectl"
+
+            anchors.right: aboutCredits.right
+            anchors.bottom: aboutCredits.top
+            anchors.bottomMargin: Lumi.aboutSectlGap
+            width: Lumi.aboutSectlWidth
+            height: width / Lumi.aboutSectlAspect
+            /*! 整体再压一档透明度（2026-11-21 用户指令「这个 SECTL LOGO 的透明度
+                搞小一点」）。理由与取值见 ``Lumi.aboutSectlOpacity``。
+
+                ⚠️ 压的是**实例整体**，不是 ``GlassLogo`` 的色阶 —— 色阶是 L1 原档
+                的数，动了正中那个 Logo 和字标会一起变。 */
+            opacity: Lumi.aboutSectlOpacity
+            layerPrefix: "aboutSectl"
+            glowEnabled: false
+            shadowEnabled: false
+            maskUrl: Backend.resourceFile("logo_sectl_mark.svg")
         }
     }
 

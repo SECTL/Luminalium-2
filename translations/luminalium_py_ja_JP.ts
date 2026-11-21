@@ -210,4 +210,54 @@
         <translation>更新</translation>
     </message>
 </context>
-<context><name>timer</name><message><source>计时器</source><translation type="finished">タイマー</translation></message><message><source>打开 / 收起计时器</source><translation type="finished">タイマーの開閉</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation type="finished">ミニ黒板</translation></message><message><source>打开 / 收起小黑板</source><translation type="finished">ミニ黒板の開閉</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation type="finished">スポットライト</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation type="finished">スポットライトマスクの開閉</translation></message><message><source>聚光灯遮罩</source><translation type="finished">スポットライトマスク</translation></message></context><context><name>Plugins</name><message><source>选择插件文件夹</source><translation type="finished">プラグインフォルダーを選択</translation></message><message><source>选择插件包</source><translation type="finished">プラグインパッケージを選択</translation></message><message><source>插件包 (*.zip);;所有文件 (*)</source><translation type="finished">プラグインパッケージ (*.zip);;すべてのファイル (*)</translation></message></context></TS>
+<context><name>timer</name><message><source>计时器</source><translation type="finished">タイマー</translation></message><message><source>打开 / 收起计时器</source><translation type="finished">タイマーの開閉</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation type="finished">ミニ黒板</translation></message><message><source>打开 / 收起小黑板</source><translation type="finished">ミニ黒板の開閉</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation type="finished">スポットライト</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation type="finished">スポットライトマスクの開閉</translation></message><message><source>聚光灯遮罩</source><translation type="finished">スポットライトマスク</translation></message></context><context><name>Plugins</name><message><source>选择插件文件夹</source><translation type="finished">プラグインフォルダーを選択</translation></message><message><source>选择插件包</source><translation type="finished">プラグインパッケージを選択</translation></message><message><source>插件包 (*.zip);;所有文件 (*)</source><translation type="finished">プラグインパッケージ (*.zip);;すべてのファイル (*)</translation></message></context><context>
+    <name>LogWindow</name>
+    <message>
+        <source>日志</source>
+        <translation>ログ</translation>
+    </message>
+    <message>
+        <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
+        <translation>logs/luminalium.log · 読み取り専用、最新 256 KB</translation>
+    </message>
+    <message>
+        <source>刷新</source>
+        <translation>更新</translation>
+    </message>
+    <message>
+        <source>打开日志目录</source>
+        <translation>ログフォルダーを開く</translation>
+    </message>
+    <message>
+        <source>暂无日志内容</source>
+        <translation>ログはまだありません</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>快捷方式</source>
+        <translation>ショートカット</translation>
+    </message>
+    <message>
+        <source>已在桌面创建快捷方式</source>
+        <translation>デスクトップにショートカットを作成しました</translation>
+    </message>
+    <message>
+        <source>已在开始菜单创建快捷方式</source>
+        <translation>スタートメニューにショートカットを作成しました</translation>
+    </message>
+    <message>
+        <source>创建快捷方式失败，详情见日志</source>
+        <translation>ショートカットを作成できませんでした。詳細はログを参照してください</translation>
+    </message>
+    <message>
+        <source>找不到目标文件夹</source>
+        <translation>保存先フォルダーが見つかりません</translation>
+    </message>
+    <message>
+        <source>未知的快捷方式类型</source>
+        <translation>不明なショートカットの種類です</translation>
+    </message>
+</context>
+</TS>

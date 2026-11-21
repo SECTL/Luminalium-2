@@ -38,7 +38,9 @@ import Luminalium
       入口是连点左上角标题文本 10 次，见文件末尾的 ``debugTitleHotspot``。
 
     标题栏右侧、三个窗口按钮的**正左边**还挂着一个版本号（``settingsVersionLabel``，
-    2026-10-04 用户指令），挂点与坑写在文件末尾那一段注释里。
+    2026-10-04 用户指令），挂点与坑写在文件末尾那一段注释里。2026-11-21 用户指令
+    又在版本号**右侧**塞了一枚「更多」按钮（``settingsMoreButton``），所以现在那一行
+    从右往左是：三大键 ← 更多 ← 版本号（← 需要重启）。
 
     关闭按钮只隐藏窗口，不销毁 —— 桌面常驻应用里重建一个窗口没有必要。
 */
@@ -95,6 +97,25 @@ Rin.FluentWindow {
     onClosing: function (event) {
         event.accepted = false
         Backend.closeSettings()
+    }
+
+    /*! 关掉标题栏中间托管区的裁剪。
+
+        ``TitleBar.qml`` 的 ``contentItem`` 带 ``clip: true``，而它和三个窗口按钮
+        之间还有 **48px** 的 ``RowLayout`` 间距。结果是：托管区里塞得下的东西全被
+        挤在那 48px 左侧，「更多」按钮右缘离最小化按钮五十来像素，中间一条空白
+        （2026-11-21 用户截图圈出来问「如此大的空隙想要干什么」）。
+
+        间距本身改不了（RinUI 的 ``RowLayout.spacing``，包必须是 pip 装的原样）。
+        能改的是裁剪：关掉 clip 后，「更多」按钮用负 ``rightMargin`` 伸进那 48px，
+        就能贴着最小化按钮站。托管区里其它东西（版本号、需要重启、菜单锚）都排在
+        按钮左侧 / 高度为 0，不会跟着溢出去。
+
+        ⚠️ 别只加负 margin 不关 clip：子项越过托管区右缘会被裁成半截（版本号
+        那段注释里记过这个坑，当时因此放弃了负边距）。 */
+    Component.onCompleted: {
+        if (titleBarHost)
+            titleBarHost.clip = false
     }
 
     /*! **原生边框交给 RinUI 管，QML 侧不再干预 ``flags``。**
@@ -187,6 +208,148 @@ Rin.FluentWindow {
         onClicked: settingsWindow.registerDebugTitleTap()
     }
 
+    // ============================================================ 标题栏「更多」
+    /*! 2026-11-21 用户指令：「在最小化按钮左侧，版本号右侧增加『更多』按钮」，
+        点开是一个纵向菜单：创建桌面快捷方式 / 创建开始菜单快捷方式 / 日志 /
+        重新启动并进入维护模式 / 打开日志目录 / 打开应用目录。
+        （用户原本把前两项描述成「创建快捷方式」的子菜单，内嵌 Menu 在这个窗口
+        里弹不出来，退成平铺 —— 原因写在菜单本体那段注释里。）
+
+        挂点与版本号同一个 ``titleBarHost``（理由见下面版本号那段长注释），
+        锚 ``parent.right`` + ``rightMargin: 4`` —— 于是版本号改成锚它的左边缘，
+        顺序自然就是「版本号 → 更多 → 三大键」。**别反过来让更多按钮去锚版本号
+        的右边**：版本号贴着托管区右缘（``rightMargin: 8``）时右边只剩 8px，
+        ``titleBarHost`` 带 ``clip: true``，按钮会被裁成半个（版本号注释里记过）。
+
+        ``flat: true``：RinUI 的 flat 按钮平时背景 ``opacity: 0``、悬停才浮出
+        ``subtleSecondary``，正是标题栏图标按钮该有的样子。高度 24 与「需要
+        重启」按钮对齐（32 会把标题栏撑满，见那一段注释）。
+
+        菜单项文案里的「维护模式」那一项**故意是禁用态**：用户 2026-11-21 说
+        实现方案稍后再给，先把入口占住，别让它看起来像已经能用。 */
+    Rin.Button {
+        id: settingsMoreButton
+
+        objectName: "settingsMoreButton"
+        parent: settingsWindow.titleBarHost
+        anchors.right: parent.right
+        // ⚠️ 负值，故意伸进托管区右侧那 48px（RinUI ``TitleBar`` 的 RowLayout
+        // spacing）。见下面 ``titleBarHost.clip`` 的说明 —— 不关 clip 就会被裁。
+        anchors.rightMargin: -40
+        anchors.verticalCenter: parent.verticalCenter
+        width: 28
+        height: 24
+        radius: 6
+        flat: true
+        icon.name: "ic_fluent_more_horizontal_20_regular"
+        onClicked: settingsMoreMenu.open()
+
+        Rin.ToolTip {
+            text: qsTr("更多")
+            visible: parent.hovered
+        }
+    }
+
+    /*! 菜单的**定位锚**（照 ``ui/ErrorReport/SplitActionButton.qml`` 的写法）：
+        ``Rin.Menu`` 按 ``parent`` 居中 / 下沿弹出，所以 parent 必须是「和菜单
+        等宽、右缘贴住按钮右缘」的一块，不能直接拿按钮当 parent —— 按钮只有
+        28 宽，比它宽的菜单会往右戳出窗口，被窗口边缘裁掉。
+
+        高度 0：菜单的 ``position: Bottom`` 走 ``posY = parent.height + 5``，
+        锚在标题栏底沿（``y: parent.height``）再 +5 就是内容区顶上方，正好是
+        标题栏按钮该下拉的位置。 */
+    Item {
+        id: settingsMoreMenuAnchor
+
+        parent: settingsWindow.titleBarHost
+        anchors.right: parent.right
+        anchors.rightMargin: -40
+        y: parent.height
+        // 与菜单同宽：菜单宽度现在由最长条目决定（见下面那条注释），这里必须
+        // 跟着它，别写死数字 —— 不一致时 ``posX`` 会把菜单挪到按钮左边去。
+        width: settingsMoreMenu.width
+        height: 0
+    }
+
+    Rin.Menu {
+        id: settingsMoreMenu
+
+        objectName: "settingsMoreMenu"
+        parent: settingsMoreMenuAnchor
+        position: Rin.Position.Bottom
+
+        /*! ⚠️ 宽度**不写死**（2026-11-21 用户反馈「hover 没铺满」后改）。
+
+            ``Rin.Menu`` 的 ``contentItem`` 是一列 ``Layout.fillWidth`` 的
+            ``MenuItem``，而那一列的宽度等于**最宽条目**的 ``implicitWidth``，
+            再 ``anchors.centerIn`` 到菜单里。给菜单写一个比内容宽的数字（原来写的
+            240），整列就会居中、左右各留一截空白：悬停底色只铺到列宽，两侧露着
+            菜单本体，看着像「高亮块没铺满」。
+
+            让它按内容自适应，列宽 == 菜单宽，悬停底色就横贯整条了；定位锚的宽度
+            绑到 ``settingsMoreMenu.width`` 维持右对齐（见上面那段）。 */
+
+        /*! ⚠️ 「创建快捷方式」**没有做成二级菜单**（用户原话是「创建快捷方式
+            （两个：创建桌面快捷方式 / 创建快捷菜单快捷方式）」）。
+
+            试过 ``MenuItem`` 里内嵌 ``Rin.Menu``（Qt Quick Controls 文档的官方
+            写法），实测在这个窗口里不成立：内嵌的 Menu 拿到 ``parent`` 之后
+            ``parentItem`` / ``window`` 仍然是空，``open()`` 返回受理但永远不
+            ``visible``；点父项只会把整个菜单关掉（MenuItem 被 trigger）。
+
+            两条路都试过也没救回来：显式写 ``parent:`` 那只 MenuItem 无效；
+            ``parentItem`` 是 QQuickPopup 的只读属性（QML 报 "Cannot assign
+            to non-existent property"）。
+
+            所以退成**平铺 + 分隔线**：两条紧挨着放在菜单顶部，与下面几项用
+            ``MenuSeparator`` 隔开，层级靠分组表达。真要做成 flyout，得自己写
+            一层带定位的 Popup —— 为一个两条目的子菜单不值得。 */
+        Rin.MenuItem {
+            objectName: "settingsMoreDesktopShortcut"
+            text: qsTr("创建桌面快捷方式")
+            icon.name: "ic_fluent_desktop_20_regular"
+            onTriggered: Backend.createShortcut("desktop")
+        }
+        Rin.MenuItem {
+            objectName: "settingsMoreStartMenuShortcut"
+            text: qsTr("创建开始菜单快捷方式")
+            icon.name: "ic_fluent_apps_list_20_regular"
+            onTriggered: Backend.createShortcut("start_menu")
+        }
+
+        Rin.MenuSeparator {}
+
+        Rin.MenuItem {
+            objectName: "settingsMoreLogItem"
+            text: qsTr("日志")
+            icon.name: "ic_fluent_document_text_20_regular"
+            onTriggered: Backend.openLogWindow()
+        }
+
+        Rin.MenuItem {
+            objectName: "settingsMoreMaintenanceItem"
+            text: qsTr("重新启动并进入维护模式")
+            icon.name: "ic_fluent_wrench_20_regular"
+            // 维护模式还没实现（用户 2026-11-21 说方案稍后给），入口先占位。
+            enabled: false
+        }
+
+        Rin.MenuSeparator {}
+
+        Rin.MenuItem {
+            objectName: "settingsMoreOpenLogDirItem"
+            text: qsTr("打开日志目录")
+            icon.name: "ic_fluent_folder_open_20_regular"
+            onTriggered: Backend.openLogDir()
+        }
+        Rin.MenuItem {
+            objectName: "settingsMoreOpenAppDirItem"
+            text: qsTr("打开应用目录")
+            icon.name: "ic_fluent_folder_20_regular"
+            onTriggered: Backend.openAppDir()
+        }
+    }
+
     // ============================================================ 标题栏版本号
     /*! 2026-10-04 用户指令：「在设置的三大键左侧显示程序的版本号」。
 
@@ -206,11 +369,14 @@ Rin.FluentWindow {
 
         纯 ``Text`` 不吃鼠标事件，压在标题栏那条拖拽 ``MouseArea`` 上不会挡拖动。
 
-        ⚠️ ``rightMargin`` 必须是**非负**的，别想着用负值把那 48px 的
-        ``RowLayout`` 间距吃掉：``titleBarHost``（``TitleBar.qml`` 的
-        ``contentItem``）带 ``clip: true``，子项一越过它的右边缘就被**裁掉** ——
-        负边距的版本号会显示成 ``26.0`` 这种半截（踩过）。所以它只能待在
-        ``titleBarHost`` 里，右缘离三大键保持那 48px。
+        ⚠️ ``rightMargin`` 必须是**非负**的，别想着用负值把间距吃掉：
+        ``titleBarHost``（``TitleBar.qml`` 的 ``contentItem``）带 ``clip: true``，
+        子项一越过它的右边缘就被**裁掉** —— 负边距的版本号会显示成 ``26.0``
+        这种半截（踩过）。所以它只能待在 ``titleBarHost`` 里。
+
+        2026-11-21 起它不再直接贴托管区右缘，而是锚在「更多」按钮左侧
+        （``rightMargin: 12``）—— 用户要求「更多」在最小化左侧、版本号右侧。
+        托管区右缘那 48px 间距照旧由「更多」按钮吃满，版本号跟着被推左 40px。
 
         ``wrapMode`` 不用管：``Rin.Text`` 默认的 ``Text.WordWrap`` 在这里不会生效
         —— 只挂 ``anchors.right`` 时标签宽度就等于一行文字的自然宽（实测三种
@@ -220,8 +386,8 @@ Rin.FluentWindow {
 
         objectName: "settingsVersionLabel"
         parent: settingsWindow.titleBarHost
-        anchors.right: parent.right
-        anchors.rightMargin: 8
+        anchors.right: settingsMoreButton.left
+        anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         typography: Rin.Typography.Caption
         color: Lumi.textSecondary

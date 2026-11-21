@@ -1258,6 +1258,34 @@
         <source>重启</source>
         <translation>重新開</translation>
     </message>
+    <message>
+        <source>更多</source>
+        <translation>更多</translation>
+    </message>
+    <message>
+        <source>创建桌面快捷方式</source>
+        <translation>建立桌面捷徑</translation>
+    </message>
+    <message>
+        <source>创建开始菜单快捷方式</source>
+        <translation>建立開始選單捷徑</translation>
+    </message>
+    <message>
+        <source>日志</source>
+        <translation>日誌</translation>
+    </message>
+    <message>
+        <source>重新启动并进入维护模式</source>
+        <translation>重新開機並入維護模式</translation>
+    </message>
+    <message>
+        <source>打开日志目录</source>
+        <translation>開日誌資料夾</translation>
+    </message>
+    <message>
+        <source>打开应用目录</source>
+        <translation>開 App 資料夾</translation>
+    </message>
 </context>
 <context>
     <name>SidePager</name>
@@ -1849,6 +1877,29 @@
         <location filename="../ui/presentation/ZoomPanel.qml" line="81"/>
         <source>向右移位</source>
         <translation>向右移</translation>
+    </message>
+</context>
+<context>
+    <name>LogWindow</name>
+    <message>
+        <source>日志</source>
+        <translation>日誌</translation>
+    </message>
+    <message>
+        <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
+        <translation>logs/luminalium.log · 唯讀，顯示最新 256 KB</translation>
+    </message>
+    <message>
+        <source>刷新</source>
+        <translation>重新載入</translation>
+    </message>
+    <message>
+        <source>打开日志目录</source>
+        <translation>開日誌資料夾</translation>
+    </message>
+    <message>
+        <source>暂无日志内容</source>
+        <translation>未有日誌內容</translation>
     </message>
 </context>
 </TS>

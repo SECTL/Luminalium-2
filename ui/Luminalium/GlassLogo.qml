@@ -6,11 +6,11 @@ import Luminalium
     混色剪影（玻璃质感）—— Luminalium 1 ``.about-main-logo`` 的 QML 版。
 
     一句话：**两层半透明白渐变，按一份单色剪影蒙出形状，叠在背后的东西上**。
-    所以它跟「Logo」其实无关，任何单色剪影都能用 —— 目前两个调用点：
-    ``ui/settings/About.qml`` 英雄区正中的星形 Logo（L1 原档）与**右下角的
-    YUNOFACTORY 字标**。⚠️ 几何全部按自身 ``width`` / ``height`` 现算，**不是
-    为正方形写死的**：字标那份就是把宽高设成素材的 4687:734，``PreserveAspectFit``
-    自己会把剪影填满盒子。
+    所以它跟「Logo」其实无关，任何单色剪影都能用 —— 目前三个调用点：
+    ``ui/settings/About.qml`` 英雄区正中的星形 Logo（L1 原档）、**右下角的
+    YUNOFACTORY 字标**与它上方那枚 **SECTL 标志**（2026-11-21 加）。⚠️ 几何
+    全部按自身 ``width`` / ``height`` 现算，**不是为正方形写死的**：字标那份就是
+    把宽高设成素材的 4687:734，``PreserveAspectFit`` 自己会把剪影填满盒子。
 
     L1 原文（``plugins/builtins/settings/settings.html``）::
 

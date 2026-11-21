@@ -218,4 +218,54 @@ Purpose: check the layout, emoji, and primary button ("Ignore") of the error rep
         <translation>Update</translation>
     </message>
 </context>
-<context><name>timer</name><message><source>计时器</source><translation type="finished">Timer</translation></message><message><source>打开 / 收起计时器</source><translation type="finished">Toggle the timer</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation type="finished">Mini Blackboard</translation></message><message><source>打开 / 收起小黑板</source><translation type="finished">Toggle the mini blackboard</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation type="finished">Spotlight</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation type="finished">Toggle the spotlight mask</translation></message><message><source>聚光灯遮罩</source><translation type="finished">Spotlight mask</translation></message></context></TS>
+<context><name>timer</name><message><source>计时器</source><translation type="finished">Timer</translation></message><message><source>打开 / 收起计时器</source><translation type="finished">Toggle the timer</translation></message></context><context><name>blackboard</name><message><source>小黑板</source><translation type="finished">Mini Blackboard</translation></message><message><source>打开 / 收起小黑板</source><translation type="finished">Toggle the mini blackboard</translation></message></context><context><name>spotlight</name><message><source>聚光灯</source><translation type="finished">Spotlight</translation></message><message><source>开启 / 关闭聚光灯遮罩</source><translation type="finished">Toggle the spotlight mask</translation></message><message><source>聚光灯遮罩</source><translation type="finished">Spotlight mask</translation></message></context><context>
+    <name>LogWindow</name>
+    <message>
+        <source>日志</source>
+        <translation>Log</translation>
+    </message>
+    <message>
+        <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
+        <translation>logs/luminalium.log · read-only, latest 256 KB</translation>
+    </message>
+    <message>
+        <source>刷新</source>
+        <translation>Refresh</translation>
+    </message>
+    <message>
+        <source>打开日志目录</source>
+        <translation>Open log folder</translation>
+    </message>
+    <message>
+        <source>暂无日志内容</source>
+        <translation>No log entries yet</translation>
+    </message>
+</context>
+<context>
+    <name>MoreMenu</name>
+    <message>
+        <source>快捷方式</source>
+        <translation>Shortcuts</translation>
+    </message>
+    <message>
+        <source>已在桌面创建快捷方式</source>
+        <translation>Shortcut created on the desktop</translation>
+    </message>
+    <message>
+        <source>已在开始菜单创建快捷方式</source>
+        <translation>Shortcut created in the Start menu</translation>
+    </message>
+    <message>
+        <source>创建快捷方式失败，详情见日志</source>
+        <translation>Could not create the shortcut — see the log for details</translation>
+    </message>
+    <message>
+        <source>找不到目标文件夹</source>
+        <translation>Target folder not found</translation>
+    </message>
+    <message>
+        <source>未知的快捷方式类型</source>
+        <translation>Unknown shortcut type</translation>
+    </message>
+</context>
+</TS>

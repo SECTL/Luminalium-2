@@ -4755,6 +4755,58 @@ def main() -> int:
                     f" 宽高比={got_ratio:.3f}（期望 {want_ratio:.3f}）"
                 ),
             )
+        # 落款上方那枚 SECTL 标志（2026-11-21 用户指令「将 logo-sectl.svg 的
+        # SECTL Logo 放在关于界面 hero 的 YUNOFACTORY LOGO 上方」，同样玻璃质感）。
+        # 混色参数与字标**逐项一致**，所以先钉同样的三条（层齐 / 光晕投影关 /
+        # 前缀独立），再补两条只有它才有的关系：
+        #   ① 与字标**右边缘齐** —— 它俩是一份锁定版式（2026-11-21 用户指令
+        #      「右对齐」），标志飘到别处就散了；
+        #   ② 立在字标上方 ``Lumi.aboutSectlGap``。
+        # ⚠️ 只断言 ``visible`` 是不够的：位置错了照样「存在且可见」，而这枚标志
+        # 一旦贴到字标上，浅色档两块白会糊成一坨（见 ``Lumi.aboutSectlGap``）。
+        sectl_st = _find_named(page_st, "aboutSectl")
+        check(
+            "关于页英雄区有 SECTL 标志（在署名字标上方）",
+            sectl_st is not None,
+            "" if sectl_st is not None else "未找到 aboutSectl",
+        )
+        if sectl_st is not None and credit_st is not None:
+            s_layers = [n for n in ("aboutSectlMask", "aboutSectlBefore",
+                                    "aboutSectlSheen")
+                        if _find_named(page_st, n) is None]
+            s_plain = (sectl_st.property("glowEnabled") is False
+                       and sectl_st.property("shadowEnabled") is False)
+            s_prefix = sectl_st.property("layerPrefix") == "aboutSectl"
+            check(
+                "SECTL 标志：混色两层在 / 光晕与投影关掉 / objectName 前缀独立",
+                not s_layers and s_plain and s_prefix,
+                "" if (not s_layers and s_plain and s_prefix) else (
+                    f"缺层={s_layers} 光晕开启={not s_plain} 前缀={s_prefix}"
+                ),
+            )
+            s_br = sectl_st.mapToItem(page_st, QPointF(float(sectl_st.width()),
+                                                       float(sectl_st.height())))
+            c_tl = credit_st.mapToItem(page_st, QPointF(0.0, 0.0))
+            c_br = credit_st.mapToItem(page_st, QPointF(float(credit_st.width()),
+                                                        float(credit_st.height())))
+            # 对齐量右边缘（两者宽度差 4 倍以上，比中心只会永远差半截）。
+            right_dx = s_br.x() - c_br.x()
+            gap_y = c_tl.y() - s_br.y()
+            want_gap_y = 10  # Lumi.aboutSectlGap
+            # 宽高比钉住：素材是收过视图框的派生件（760.3 : 815.1）
+            want_s_ratio = 760.3 / 815.1
+            got_s_ratio = sectl_st.width() / max(1e-6, sectl_st.height())
+            check(
+                "SECTL 标志立在字标正上方（右边缘齐 / 间距 10 / 不拉变形）",
+                abs(right_dx) <= 1.5 and abs(gap_y - want_gap_y) <= 1.5
+                and abs(got_s_ratio - want_s_ratio) <= 0.02,
+                "" if (abs(right_dx) <= 1.5 and abs(gap_y - want_gap_y) <= 1.5
+                       and abs(got_s_ratio - want_s_ratio) <= 0.02) else (
+                    f"右边缘差={right_dx:.1f} 垂直间距={gap_y:.1f}"
+                    f"（期望 {want_gap_y}）宽高比={got_s_ratio:.3f}"
+                    f"（期望 {want_s_ratio:.3f}）"
+                ),
+            )
         # 等页面滑入转场收尾：转场期间 ``mapToItem`` 的坐标还在动，
         # 后面按星心坐标取像素会取到隔壁。
         QTest.qWait(300)

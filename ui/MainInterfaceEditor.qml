@@ -5,6 +5,9 @@ import QtQuick.Layouts
 import QtQuick.Shapes
 import RinUI as Rin
 import Luminalium
+// 课件续页卡片（2026-11-08）：编辑器里直接声明一份副本，所以要能按类型名找到它。
+// 控制条副本走 ``Loader`` + URL，不需要这条 import。
+import "presentation"
 
 /*!
     主界面编辑器 —— 顶层窗口的可视化编辑舞台。
@@ -237,9 +240,13 @@ Rin.FluentWindowBase {
             var target = item(cornerName)
             if (!target)
                 return Qt.rect(0, 0, 0, 0)
-            var factor = editorWindow.dockScaleFactor
             var margin = target.shadowMargin !== undefined
                     ? Number(target.shadowMargin) : 0
+            // 续页卡片**不跟** ``presentation.scale``（它不是控制条的一部分，
+            // 组件里也没有 ``scale`` 变换）—— 它的 width/height 就是屏幕像素，
+            // 再除一次 ``dockScaleFactor`` 会把框算小（2026-11-08）。
+            var factor = (cornerName === editorWindow.resumeCardCorner)
+                    ? 1.0 : editorWindow.dockScaleFactor
             var visibleW = Number(target.width) / factor - margin * 2
             var visibleH = Number(target.height) / factor - margin * 2
             if (!(visibleW > 0) || !(visibleH > 0))
@@ -438,8 +445,14 @@ Rin.FluentWindowBase {
     // 插件注册的组由此能以「有名字的组件」出现在编辑器里。
 
     /*! 某个角落启用了哪些区块（组名列表，内建是 tools / actions / pager / exit，
-        插件组名由插件自定）。 */
+        插件组名由插件自定）。
+
+        续页卡片不是角落，但它要复用「按名字查组」的整套链路（设置项、组件名、
+        取景），所以这里给它一个**虚拟组列表** —— 与它注册的那个组同名
+        （``resume_card``，见 ``windows.py::_BUILTIN_DOCK_GROUPS``）。 */
     function groupsOf(cornerName) {
+        if (cornerName === resumeCardCorner)
+            return [resumeCardCorner]
         var config = Backend.presentationConfig
         var corners = config && config.corners !== undefined ? config.corners : ({})
         var entry = corners[cornerName]
@@ -469,7 +482,31 @@ Rin.FluentWindowBase {
         return undefined
     }
 
-    /*! 角落的组里有没有带指定语义标记（``traits`` 键）的注册组。 */
+    /*! 续页卡片当前的位置预设（编辑器副本用，与真机 ``TopWindow`` 同一份配置、
+        同一套回落：空串 / 未知值 → ``bottom_right``）。 */
+    readonly property string resumeCardPreset: {
+        var cfg = Backend.presentationConfig
+        var memory = cfg && cfg.page_memory !== undefined ? cfg.page_memory : ({})
+        var value = memory.position !== undefined ? String(memory.position) : ""
+        return value !== "" ? value : "bottom_right"
+    }
+
+    /*! 续页卡片的**虚拟角落名**（2026-11-08 用户指令：「把卡片放进主界面编辑器吧，
+        点击卡片时弄几个位置预设：左上左下右上右下还有中间」）。
+
+        卡片不是控制条、不参与 ``corners`` 编排，但在编辑器里它要**长得像一条可
+        选中的组件**：能点中、能取景、右侧出设置项。做法是给它一个不在
+        ``cornerOrder`` 里的名字，复用 ``dockLayout`` 的记账 / ``focusRect`` 的
+        取景 / 面板的描述符驱动 —— 那三条链路都只按「名字」找东西，不关心
+        名字背后是真控制条还是卡片。
+
+        ⚠️ 这个名字**绝不能**出现在 ``enabledCorners`` 里（那个列表是
+        ``corners`` 配置的投影，真机按它建控制条）。它只在编辑器的选中态里流通。 */
+    readonly property string resumeCardCorner: "resume_card"
+
+    /*! 选中项是不是续页卡片。 */
+    readonly property bool selectedIsResumeCard: selectedCorner === resumeCardCorner
+
     function cornerHasTrait(cornerName, traitName) {
         var groups = groupsOf(cornerName)
         for (var i = 0; i < groups.length; ++i) {
@@ -489,6 +526,9 @@ Rin.FluentWindowBase {
     function componentName(cornerName) {
         if (!cornerName || cornerName.length === 0)
             return ""
+        // 续页卡片不是控制条，没有注册组可查 —— 先短路（2026-11-08）。
+        if (cornerName === resumeCardCorner)
+            return qsTr("课件续页卡片")
         var entry = cornerGroupEntry(cornerName)
         if (entry === undefined) {
             console.warn("MainInterfaceEditor: 角落", cornerName,
@@ -513,6 +553,8 @@ Rin.FluentWindowBase {
         内建图标；插件组用注册表条目自己的 ``icon``；未知组回落默认图标
         （警告在 ``componentName`` 里打过了，这里不重复打）。 */
     function componentIcon(cornerName) {
+        if (cornerName === resumeCardCorner)
+            return "ic_fluent_history_20_regular"
         var entry = (cornerName && cornerName.length > 0)
                 ? cornerGroupEntry(cornerName) : undefined
         if (entry === undefined)
@@ -526,6 +568,8 @@ Rin.FluentWindowBase {
     }
 
     function cornerLabel(cornerName) {
+        if (cornerName === resumeCardCorner)
+            return qsTr("屏幕边缘（位置可选）")
         return cornerLabels[cornerName] !== undefined ? cornerLabels[cornerName] : cornerName
     }
 
@@ -780,6 +824,17 @@ Rin.FluentWindowBase {
         遍历 ``enabledCorners`` 的**倒序** —— 与绘制顺序相反，先命中后画
         （更靠上）的那条。 */
     function dockAt(planeX, planeY) {
+        // 续页卡片**先判**（2026-11-08）：它在窗口根级、压在其他副本之上
+        // （z 更高），而且可能和控制条重叠 —— 重叠时用户点到的显然是看得见的
+        // 那一张。判定用卡片本体的可见范围（扣掉投影余量），与控制条同一口径。
+        var card = findDockItem(resumeCardCorner)
+        if (card) {
+            var margin = card.shadowMargin !== undefined ? Number(card.shadowMargin) : 0
+            if (planeX >= card.x + margin && planeX <= card.x + card.width - margin
+                    && planeY >= card.y + margin
+                    && planeY <= card.y + card.height - margin)
+                return resumeCardCorner
+        }
         var corners = enabledCorners
         for (var i = corners.length - 1; i >= 0; --i) {
             var item = findDockItem(corners[i])
@@ -832,6 +887,12 @@ Rin.FluentWindowBase {
     function refreshFromConfig() {
         if (selectedCorner.length === 0)
             return
+        // 续页卡片不在 ``enabledCorners`` 里（它不是角落），别被下面那条
+        // 「选中的角落被关掉了」误伤（2026-11-08）。
+        if (selectedCorner === resumeCardCorner) {
+            updateFocusRect()
+            return
+        }
         if (enabledCorners.indexOf(selectedCorner) < 0) {
             var counterpart = pagerCounterpart(selectedCorner)
             if (counterpart.length > 0 && enabledCorners.indexOf(counterpart) >= 0)
@@ -970,10 +1031,14 @@ Rin.FluentWindowBase {
             readonly property real pathHoleW: holeValid ? dimMask.holeW : 1
             readonly property real pathHoleH: holeValid ? dimMask.holeH : 1
 
-            /*! 洞的圆角半径 = 短边一半（胶囊），与 ``selectionRing`` 同一套几何
-                （那边也是 ``Math.min(width, height) / 2``）—— 于是描边与洞同心。
+            /*! 洞的圆角半径：控制条是**胶囊**（短边一半，与 ``selectionRing``
+                同一套几何）；续页卡片是**圆角卡片**（``dockPaletteRadius``，
+                跟着相机缩放）—— 拿短边一半会挖出一个包住整张卡的大椭圆
+                （2026-11-08 实测）。
                 镜像给自检读：``ShapePath`` 的子路径 Python 侧摸不到。 */
-            readonly property real holeRadius: Math.min(pathHoleW, pathHoleH) / 2
+            readonly property real holeRadius: editorWindow.selectedIsResumeCard
+                ? Lumi.dockPaletteRadius * planeLayer.scale
+                : Math.min(pathHoleW, pathHoleH) / 2
 
             ShapePath {
                 objectName: "editorDimPath"
@@ -1253,6 +1318,49 @@ Rin.FluentWindowBase {
                     y: planeLayer.height - 90 - height
                     z: 10
                 }
+
+                // ======================================== 课件续页卡片副本
+                // 2026-11-08 用户指令「把卡片放进主界面编辑器吧」。
+                //
+                // 与真机**同一份组件、同一条定位规则**：``positionPreset`` 直接
+                // 读 ``presentation.page_memory.position``，组件内部的 anchors
+                // 把它贴到屏幕坐标系的对应边 —— 所以编辑器里看到的就是放映时
+                // 的样子（这是编辑器的立身之本，别在这里另写一套定位）。
+                //
+                // ⚠️ 这里**不用** ``Loader``（控制条副本走 Loader 是因为要按角落
+                //    解析不同组件）：卡片只有一份、组件固定，直接声明更省事。
+                // ⚠️ ``enabled: false``：它是**素材**，点它不该真的跳页 / 收起。
+                //    鼠标事件由 ``stageShield`` 接住、经 ``dockAt`` 反查（见那里）。
+                ResumeCard {
+                    id: previewResumeCard
+
+                    objectName: "editorPreviewResumeCard"
+                    // 编辑器里**总是**显示（真机上要等命中记忆才出现）——
+                    // 否则用户进了编辑器什么都看不到，也就没法选它、没法设位置。
+                    opened: true
+                    animate: false
+                    // 假数据：版式与真机一致，数字是占位。
+                    lastPage: 8
+                    lastTotal: 41
+                    currentTotal: 41
+                    currentPage: 8
+                    fileName: qsTr("课件.pptx")
+                    ageSeconds: 180
+                    resumed: false
+
+                    z: 20
+                    positionPreset: editorWindow.resumeCardPreset
+
+                    // 记账：让 ``dockAt`` / ``focusRect`` 能按虚拟角落名找到它
+                    Component.onCompleted: {
+                        dockLayout.record(editorWindow.resumeCardCorner, previewResumeCard)
+                        dockLayout.markPlaced(editorWindow.resumeCardCorner)
+                        editorWindow.updateFocusRect()
+                    }
+                    // 位置预设一改，取景框跟着走（不然选着它换位置，相机不跟）
+                    onXChanged: editorWindow.updateFocusRect()
+                    onYChanged: editorWindow.updateFocusRect()
+                }
             }
 
         }
@@ -1386,7 +1494,13 @@ Rin.FluentWindowBase {
             // 控制条的底板**恒为全圆胶囊**（``Lumi.dockSurfaceRadius`` = 999，由
             // ``FlyoutSurface`` 按短边钳成高/2），所以选中框也跟着取短边的一半 ——
             // 方角框套在胶囊外面，四个角上会空出一大块。
-            radius: Math.min(width, height) / 2
+            //
+            // ⚠️ 续页卡片**不是**胶囊（它是圆角卡片，``dockPaletteRadius`` = 8），
+            // 跟着取短边一半会画成一个包住整张卡的大椭圆（2026-11-08 实测）。
+            // 所以按选中对象分档：卡片用圆角，控制条用胶囊。
+            radius: editorWindow.selectedIsResumeCard
+                ? Lumi.dockPaletteRadius * planeLayer.scale
+                : Math.min(width, height) / 2
             border.width: Lumi.editorSelectionRingWidth
             border.color: Lumi.accent
             z: 6

@@ -158,6 +158,7 @@ from PySide6.QtCore import (  # noqa: E402
     QObject,
     QPoint,
     QPointF,
+    QRect,
     Qt,
     QTimer,
     qInstallMessageHandler,
@@ -166,6 +167,7 @@ from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtGui import QColor, QCursor, QGuiApplication  # noqa: E402
 
 import app.config as app_config  # noqa: E402
+import app.page_memory as page_memory  # noqa: E402
 import app.paths as app_paths  # noqa: E402
 from app import ppt_controller  # noqa: E402
 from app import autostart  # noqa: E402
@@ -2953,6 +2955,15 @@ def main() -> int:
         return _offline_self_test()
     if scenario is not None:
         return _plugin_scenario_main(scenario)
+    # 课件续页的记忆落盘必须**在应用构造之前**隔离（2026-11-08）：
+    # ``LuminaliumApplication`` 的装配段就构造 ``PageMemory``，它立刻
+    # ``_load()`` 真实 ``data/page_memory.json``（筛过期条目时还会写回）。
+    # 拿到 ``app`` 时构造早就完成了，那时再改 ``_file`` 已经晚了一步 ——
+    # 两次把自检记录写进了仓库根。所以走 ``PageMemory`` 认的环境变量通道，
+    # 而**不用** ``LUMINALIUM_DATA_DIR``（那会把 config 一起挪走，而这里
+    # 要验的正是真实 config 的字节级一致性）。
+    _pm_dir = Path(tempfile.mkdtemp(prefix="lumi_smoke_page_memory_"))
+    os.environ[page_memory._ISOLATION_ENV] = str(_pm_dir)
     app = LuminaliumApplication(sys.argv)
     qt_app = app.qt_app
 
@@ -4218,6 +4229,228 @@ def main() -> int:
                 "bottom" if pager_prev == "bottom" else "side",
                 "还原后真机控制条回到原形态（自检不留副作用）",
             )
+
+        # ================================================================
+        # 课件续页（2026-11-08，见 app/page_memory.py）
+        # ================================================================
+        # 这一段在「退出放映」**之前**：续页记忆要靠「退出边沿强制落盘」，
+        # 提前退出就把环境改了。全程不碰 COM、不碰用户真实数据 ——
+        # 记忆文件用临时目录。
+        #
+        # ⚠️ 落盘隔离在 ``main()`` 里就做好了（构造之前设
+        # ``page_memory._ISOLATION_ENV``）—— 这里只需把内存表清空，从「零记忆」
+        # 起跑。构造期读真实文件那条坑见 ``_ISOLATION_ENV`` 的说明。
+        app.page_memory._entries.clear()
+        app.page_memory._dirty = False
+        try:
+            _deck_path = r"D:\课件\自检课件.pptx"
+            _deck_name = "自检课件.pptx"
+
+            # ---- 第一场：翻到第 7 页后退出 → 应该记住 7 ----
+            app.ppt.inject_state(
+                PresentationState(active=True, slide_index=3, slide_total=20))
+            _pump(app, 60)
+            app.ppt.deckReady.emit(_deck_path, _deck_name)
+            _pump(app, 60)
+            check(
+                "续页：首次放映没有记录 → 卡片不出现",
+                app.backend.pageMemory.get("visible") is False,
+                f"pageMemory={app.backend.pageMemory}",
+            )
+            check(
+                "续页：认出课件（deckReady 链路已接通）",
+                app.backend.pageMemory.get("identified") is True,
+            )
+            app.ppt.inject_state(
+                PresentationState(active=True, slide_index=7, slide_total=20))
+            _pump(app, 60)
+            app.ppt.inject_state(PresentationState(active=False))
+            _pump(app, 60)
+            _pm_entry = app.page_memory._entries.get(
+                page_memory.deck_key(_deck_path, _deck_name))
+            check(
+                "续页：退出放映后记住第 7 页",
+                _pm_entry is not None and _pm_entry.get("page") == 7,
+                f"entry={_pm_entry}",
+            )
+            check(
+                "续页：记忆已落盘到独立侧文件（不写 config.json）",
+                (app.page_memory._file).exists(),
+                str(app.page_memory._file),
+            )
+
+            # ---- 第二场：同一份课件再放映 → 卡片出现，页码是 7 ----
+            app.ppt.inject_state(
+                PresentationState(active=True, slide_index=1, slide_total=20))
+            _pump(app, 60)
+            app.ppt.deckReady.emit(_deck_path, _deck_name)
+            _pump(app, 120)
+            _pm = app.backend.pageMemory
+            check(
+                "续页：同一课件再放映 → 卡片出现",
+                _pm.get("visible") is True, f"pageMemory={_pm}",
+            )
+            check(
+                "续页：卡片显示上次的第 7 页（不是当前页 1）",
+                _pm.get("page") == 7, f"page={_pm.get('page')}",
+            )
+            check(
+                "续页：卡片显示课件文件名",
+                _pm.get("name") == _deck_name, f"name={_pm.get('name')!r}",
+            )
+
+            # 翻页后卡片上的页码**不能**跟着当前页走（预览里抓到的 bug）
+            app.ppt.inject_state(
+                PresentationState(active=True, slide_index=9, slide_total=20))
+            _pump(app, 60)
+            check(
+                "续页：本场翻页后卡片仍显示上次的第 7 页",
+                app.backend.pageMemory.get("page") == 7,
+                f"page={app.backend.pageMemory.get('page')}",
+            )
+
+            # ---- 卡片真的在窗口根上、贴在右下角（区域塑形已把它包进去）----
+            # 2026-11-08 用户指令「让那个卡片显示在右下角」之后，卡片不再挂在
+            # 控制条里 —— 它是 ``TopWindow`` 根上的直接子项，由
+            # ``resumeCardItem`` 暴露、由 ``windows._resume_card_rect_local``
+            # 单独并进区域（与开发水印同一套）。
+            _pm_card = (app.windows.overlay.property("resumeCardItem")
+                        if app.windows.overlay is not None else None)
+            if _pm_card is not None:
+                # 等进场动画跑完再读几何：``reveal`` 到位之前卡片的 y 还是滑入
+                # 途中的值（``PenPaletteCard`` 头注释记着这条坑），拿半路值去
+                # 比对区域会假失败。
+                _pm_reveal = _wait_property(
+                    _pm_card, "reveal", lambda v: v is not None and float(v) > 0.99, 3000)
+                check(
+                    "续页：卡片在窗口根上且可见",
+                    _pm_card.isVisible()
+                    and float(_pm_reveal or 0) > 0.99
+                    and _pm_card.property("lastPage") == 7,
+                    f"visible={_pm_card.isVisible()} reveal={_pm_reveal} "
+                    f"lastPage={_pm_card.property('lastPage')}",
+                )
+                # 贴右下角：量**卡片本体**（不含投影余量）距窗口边的距离。
+                # Item 的 x/y 含四周 ``shadowMargin`` 的投影余量（卡片本体在
+                # Item 内往里偏了这么多），直接拿 Item 的几何去比会把投影余量
+                # 算进去 —— 2026-11-08 第一版就是这样差出 20px 的。
+                _pm_edge = 16
+                _pm_shadow = float(_pm_card.property("shadowMargin") or 0)
+                _pm_overlay = app.windows.overlay
+                _pm_right_gap = (_pm_overlay.width()
+                                 - (_pm_card.x() + _pm_card.width() - _pm_shadow))
+                _pm_bottom_gap = (_pm_overlay.height()
+                                  - (_pm_card.y() + _pm_card.height() - _pm_shadow))
+                check(
+                    "续页：卡片贴在窗口右下角",
+                    abs(_pm_right_gap - _pm_edge) <= 2
+                    and abs(_pm_bottom_gap - _pm_edge) <= 2,
+                    f"right_gap={_pm_right_gap} bottom_gap={_pm_bottom_gap} "
+                    f"期望={_pm_edge} shadow={_pm_shadow}",
+                )
+                # ---- 位置预设六档（2026-11-08 用户指令）----
+                # 每档只验「贴的是哪两条边 / 居中」—— 边距的精确值上一条已经量过，
+                # 这里关心的是**切换真的生效**（anchors 用条件绑定写会在切档时
+                # 残留旧 anchor，卡片撑满整屏 —— 2026-11-08 实测过这一版）。
+                _pm_preset_expect = {
+                    "top_left": ("left", "top"),
+                    "top_right": ("right", "top"),
+                    "middle_left": ("left", "middle"),
+                    "middle_right": ("right", "middle"),
+                    "bottom_left": ("left", "bottom"),
+                    "bottom_right": ("right", "bottom"),
+                }
+                _pm_bad: list = []
+                for _preset, (_h, _v) in _pm_preset_expect.items():
+                    app.backend.setSetting("presentation_page_memory_position", _preset)
+                    _pump(app, 160)
+                    _card_x = float(_pm_card.x())
+                    _card_y = float(_pm_card.y())
+                    _card_w = float(_pm_card.width())
+                    _card_h = float(_pm_card.height())
+                    _win_w = float(_pm_overlay.width())
+                    _win_h = float(_pm_overlay.height())
+                    # 卡片尺寸不能被 anchors 改（撑满整屏就是这一条挂了）
+                    size_ok = (abs(_card_w - 272) <= 2 and abs(_card_h - 233) <= 2)
+                    if _h == "left":
+                        horiz_ok = abs(_card_x - (-4)) <= 2
+                    else:
+                        horiz_ok = abs(_card_x - (_win_w - _card_w + 4)) <= 2
+                    if _v == "top":
+                        vert_ok = abs(_card_y - (-4)) <= 2
+                    elif _v == "bottom":
+                        vert_ok = abs(_card_y - (_win_h - _card_h + 4)) <= 2
+                    else:
+                        vert_ok = abs(_card_y - (_win_h - _card_h) / 2) <= 2
+                    if not (size_ok and horiz_ok and vert_ok):
+                        _pm_bad.append(
+                            f"{_preset}: x={_card_x:.0f} y={_card_y:.0f} "
+                            f"size={_card_w:.0f}x{_card_h:.0f}"
+                        )
+                check(
+                    "续页：位置预设六档都生效（卡片尺寸不变、贴对边 / 居中）",
+                    not _pm_bad,
+                    "; ".join(_pm_bad) if _pm_bad else "六档全对",
+                )
+                # 还原成默认档，别把用户配置留在自检最后那一档
+                app.backend.setSetting("presentation_page_memory_position", "bottom_right")
+                _pump(app, 160)
+                # 区域塑形：卡片矩形必须真的进了 SetWindowRgn 的区域集，
+                # 否则「画不出来 + 点不动」。
+                _pm_local = app.windows._resume_card_rect_local()
+                _pm_region = app.windows._dock_rects_local()
+                _pm_hit = False
+                if _pm_local is not None:
+                    _pm_cx = _pm_local[0] + _pm_local[2] // 2
+                    _pm_cy = _pm_local[1] + _pm_local[3] // 2
+                    for _rx, _ry, _rw, _rh in _pm_region:
+                        if _rx <= _pm_cx < _rx + _rw and _ry <= _pm_cy < _ry + _rh:
+                            _pm_hit = True
+                            break
+                check(
+                    "续页：卡片矩形被并进窗口区域（区域塑形含它）",
+                    _pm_local is not None and _pm_hit,
+                    f"card_local={_pm_local} region={_pm_region}",
+                )
+            else:
+                check("续页：卡片在窗口根上", False, "找不到 TopWindow.resumeCardItem")
+
+            # ---- 点「跳过去」：走 pager:goto:N（与快速切页面板同一条路）----
+            _pm_actions: list = []
+            _pm_conn = app.backend.actionTriggered.connect(_pm_actions.append)
+            try:
+                app.backend.resumeToMemory()
+                _pump(app, 80)
+            finally:
+                app.backend.actionTriggered.disconnect(_pm_conn)
+            check(
+                "续页：「点这里跳过去」发出 pager:goto:7",
+                "pager:goto:7" in _pm_actions, str(_pm_actions),
+            )
+            check(
+                "续页：跳转后卡片仍在，文案切到「已从第 7 页开始放映」",
+                app.backend.pageMemory.get("resumed") is True
+                and app.backend.pageMemory.get("visible") is True,
+                f"pageMemory={app.backend.pageMemory}",
+            )
+
+            # ---- 点 × 收起：本场不再出现，但记录留着 ----
+            app.backend.dismissPageMemory()
+            _pump(app, 60)
+            check(
+                "续页：点 × 收起后本场不再出现",
+                app.backend.pageMemory.get("visible") is False,
+            )
+            check(
+                "续页：收起不删记录（下次放映照旧提示）",
+                app.page_memory._entries.get(
+                    page_memory.deck_key(_deck_path, _deck_name)) is not None,
+            )
+        finally:
+            # 清空本段写进内存表的记录（落盘目录本来就是隔离的临时目录）
+            app.page_memory._save_timer.stop()
+            app.page_memory._entries.clear()
+            app.page_memory._dirty = False
 
         # ---- 模拟退出放映：顶层窗口整体隐藏 ----
         app.ppt.inject_state(PresentationState(active=False))

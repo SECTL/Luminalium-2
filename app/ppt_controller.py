@@ -1227,6 +1227,46 @@ class _ComBackend:
             log.debug("导出第 %d 页缩略图失败", index, exc_info=True)
             return False
 
+    def read_deck_identity(self) -> tuple[str, str]:
+        """读**放映中**这份课件的身份：``(完整路径, 文件名)``，读不到给空串。
+
+        2026-11-08（课件续页）：只用于「按课件文件记住上次讲到第几页」，与
+        :meth:`export_slide` 取的是**同一个** ``Presentation`` 对象（同一个
+        两级回退），区别只在读属性而不是导图。
+
+        * 路径优先 ``Presentation.FullName``，回退 ``Presentation.Path``
+          （极少数绑定下只有后者）；
+        * 文件名优先 ``Presentation.Name``，回退从路径里切 basename。
+
+        ⚠️ **只读，绝不写回**：这个功能对用户的承诺是「只读不改，课件原样」，
+        所以这里连 ``Presentation.Save`` / ``SaveAs`` 的影子都不许出现。
+        ⚠️ 动态 COM 绑定下这些属性**不一定存在**（``view.Presentation`` 都踩过
+        ``AttributeError``，见 ``read_state`` 的注释），所以逐条 ``getattr`` +
+        try/except，读不到就当没有 —— 调用方据此静默降级成「本场不记忆」。
+        """
+        presentation = self._presentation()
+        if presentation is None:
+            return ("", "")
+        full_name = ""
+        for attribute in ("FullName", "Path"):
+            try:
+                value = getattr(presentation, attribute, None)
+            except Exception:
+                continue
+            if value:
+                full_name = str(value)
+                break
+        name = ""
+        try:
+            value = getattr(presentation, "Name", None)
+            if value:
+                name = str(value)
+        except Exception:
+            pass
+        if not name and full_name:
+            name = full_name.replace("\\", "/").rsplit("/", 1)[-1]
+        return (full_name, name)
+
     def set_pointer(self, pointer_type: int, hwnd: int = 0) -> bool:
         """切换放映指针（笔 / 橡皮 / 箭头）。
 
@@ -1407,6 +1447,12 @@ WATCHDOG_REPEAT_S = 15.0
 # 「翻页过快（上限 2 次/秒），本次丢弃」就是它）。闸门保留，只是别卡得比手快。
 PAGE_TURN_WINDOW_S = 1.0
 PAGE_TURN_LIMIT_DEFAULT = 4
+# 课件身份（2026-11-08 课件续页）每场放映最多试读几次。
+# 进场那一拍 PowerPoint 的放映窗口可能还没进 ``SlideShowWindows`` 集合，
+# 对象模型要晚半拍才给得出 ``Presentation`` —— 读空不认账、留几次重试；
+# 真读不到（WPS / 永中 / 没装 pywin32）时到点就放弃，别整场放映每 5 拍
+# 都去摸一次对象模型（那是 2026-10-17「翻页卡顿」同一笔账）。
+_DECK_IDENTITY_TRIES = 3
 
 
 class _Heartbeat:
@@ -1618,6 +1664,14 @@ class _ComThread(QThread):
     """
 
     thumbnailReady = Signal(int, str)  # (页码 1-based, 导出的 PNG 路径)
+    #: 放映**进场**时读到的课件身份：``(完整路径, 文件名)``，读不到两者皆空串。
+    #:
+    #: 2026-11-08（课件续页）新增。为什么不塞进 :class:`PresentationState`：
+    #: 那条链是 7 个基本类型位置参数的跨线程信号（``stateReady``），加字段要同步
+    #: 改 Signal 声明 / emit / 槽签名 / ``inject_state`` 四处，``tools/`` 下还有
+    #: 十几处直接构造；而课件身份**只需要进场读一次**，独立信号干净得多，也不
+    #: 会让 ``marker`` 多一项（多一项就是每读一次身份多一条 ``stateChanged``）。
+    deckReady = Signal(str, str)
 
     def __init__(self, interval_ms: int = 800, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -1637,6 +1691,11 @@ class _ComThread(QThread):
         #: 主循环拍了多少拍（只数轮询，不含命令后的即时刷新）—— 用于
         #: 「每 5 拍补一次完整刷新」的节拍（见 ``run``）。
         self._loop_ticks = 0
+        #: 上一次读过课件身份的放映窗口句柄（2026-11-08 课件续页）。0 = 还没读过；
+        #: 句柄变了就重读一次 —— 同一次放映里不必每拍都去摸对象模型。
+        self._deck_hwnd = 0
+        #: 当前这场放映里已经试读过几次课件身份（见 ``_refresh_snapshot``）。
+        self._deck_tries = 0
         self.heartbeat = _Heartbeat("COM 线程")
 
     # ---------------------------------------------------- 主线程侧（非阻塞）
@@ -1795,6 +1854,38 @@ class _ComThread(QThread):
             # 迟到不影响别的功能）。⚠️ 只在**完整**刷新里读：轻量路径是为了
             # 让页码第一时间跟上手势，不该在这里多花一次跨进程调用。
             self._zoom_baseline = self._com.read_zoom()
+
+        # 课件续页（2026-11-08）：**只在进场边沿读一次**课件身份。
+        # 两条限制都不能松：
+        # * 不能在轻量路径读 —— 那条路径是为了让页码第一时间跟上手势，多一次
+        #   跨进程属性读就是多一次插队（2026-10-17「翻页卡顿」的同一笔账）；
+        # * 不能每拍读 —— ``FullName`` 走完整对象模型，比读一个整数慢得多。
+        # 用「这一拍在放映、上一拍不在」判进场；同一场里窗口句柄变了也算换场
+        # （退出再进同一份课件时句柄会变）。
+        if presenting and not light:
+            entered = (not previous.presenting
+                       or (hwnd and previous.window_handle and hwnd != previous.window_handle))
+            if entered or self._deck_hwnd != int(hwnd or 0):
+                # 进场时 PowerPoint 的放映窗口可能还没进 ``SlideShowWindows``
+                # 集合（对象模型要晚半拍），所以读空不认账、留两次重试；
+                # 真读不到（WPS / 永中 / 没装 pywin32）时两次之后就放弃，
+                # 免得整场放映每 5 拍都去摸一次对象模型。
+                self._deck_hwnd = int(hwnd or 0)
+                self._deck_tries = 0
+            if self._deck_tries < _DECK_IDENTITY_TRIES:
+                self._deck_tries += 1
+                try:
+                    deck_path, deck_name = self._com.read_deck_identity()
+                except Exception:
+                    deck_path = deck_name = ""
+                    log.debug("读取课件身份失败", exc_info=True)
+                if deck_path or deck_name:
+                    self._deck_tries = _DECK_IDENTITY_TRIES
+                    log.info("放映课件: %s", deck_name or deck_path)
+                self.deckReady.emit(str(deck_path), str(deck_name))
+        elif not presenting:
+            self._deck_hwnd = 0
+            self._deck_tries = 0
 
         now = time.monotonic()
         self._snapshot = _ComSnapshot(
@@ -2343,6 +2434,10 @@ class PptController(QObject):
     #: ⚠️ 失败时路径是**空串**（不是不发信号）—— 调用方据此区分「还在路上」与
     #: 「这次没成」，然后决定要不要重试。
     thumbnailReady = Signal(int, str)
+    #: 放映**进场**时读到的课件身份：``(完整路径, 文件名)``，读不到两者皆空串。
+    #: 由 ``app/page_memory.py`` 接（课件续页）。⚠️ 读不到也**照发**空串 ——
+    #: 调用方据此知道「这一场认不出课件，别记忆」，而不是永远等一个不来的信号。
+    deckReady = Signal(str, str)
 
     def __init__(
         self,
@@ -2356,6 +2451,7 @@ class PptController(QObject):
         self._thread = _ProbeThread(interval_ms, self._com, self)
         self._thread.stateReady.connect(self._on_state_ready)
         self._com.thumbnailReady.connect(self.thumbnailReady)
+        self._com.deckReady.connect(self.deckReady)
         self._watchdog = QTimer(self)
         self._watchdog.setInterval(WATCHDOG_INTERVAL_MS)
         self._watchdog.timeout.connect(self._on_watchdog)

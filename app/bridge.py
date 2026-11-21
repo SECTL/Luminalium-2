@@ -121,6 +121,16 @@ SETTING_PATHS: Dict[str, str] = {
     "panel_section_shortcuts": "quick_panel.sections.shortcuts",
     "panel_section_footer": "quick_panel.sections.footer",
     "presentation_poll_interval_ms": "presentation.poll_interval_ms",
+    # 课件续页（2026-11-08）：按课件文件记住上次讲到第几页。开关与保留天数都
+    # 登记成扁平键，设置页才读得到；记忆本体**不在 config 里**（见
+    # ``app/page_memory.py`` 头注释：运行期状态不落 config，smoke 对
+    # ``config/config.json`` 做字节级对比）。
+    "presentation_page_memory": "presentation.page_memory.enabled",
+    "presentation_page_memory_keep_days": "presentation.page_memory.keep_days",
+    # 续页卡片的位置预设（2026-11-08 用户指令：「点击卡片时弄几个位置预设：
+    # 左上左下右上右下还有中间」）。入口在主界面编辑器 → 选中续页卡片。
+    # 六档取值见 ``config/default_config.json`` 的 ``//position`` 注释。
+    "presentation_page_memory_position": "presentation.page_memory.position",
     "presentation_margin_x": "presentation.margin_x",
     "presentation_margin_y": "presentation.margin_y",
     "presentation_bar_height": "presentation.bar_height",
@@ -375,6 +385,10 @@ class Backend(QObject):
     slideChanged = Signal()
     #: 幻灯片缩略图表变了（某几张就绪 / 整场复位，见 ``thumbUrls``）
     slideThumbsChanged = Signal()
+    #: 课件续页卡片的数据变了（显隐 / 页码 / 已跳转，见 ``pageMemory``）。
+    #: 2026-11-08：整份重发，不逐字段发 —— 一张卡片就那么几行字，维护六条信号
+    #: 不如重读一次（与 ``slideThumbsChanged`` 同一条取舍）。
+    pageMemoryChanged = Signal()
     activeToolChanged = Signal()
     #: 放大镜开 / 关了（2026-10-06：它**独立于** ``activeTool``，
     #: 理由见 :meth:`setZoomActive`）
@@ -472,6 +486,10 @@ class Backend(QObject):
         #: 播完 COM 控制器之后接上（``attach_slide_thumbs``）—— 预览 / 自检这类
         #: 只造 Backend 的宿主没有它，此时 ``thumbUrls`` 是空表、请求静默忽略。
         self._slide_thumbs = None
+        #: 课件续页的页数记忆（``app/page_memory.py``）。同一个接法
+        #: （``attach_page_memory``）：预览 / 自检宿主没有它，``pageMemory``
+        #: 返回一份「不可见」的空表，卡片自然不出现。
+        self._page_memory = None
         #: 默认工具是**鼠标指针**（``arrow``）。
         #:
         #: ⚠️ 2026-10-01 用户指令「顶层窗口的工具栏的 Segmented 默认工具不应该
@@ -1024,6 +1042,76 @@ class Backend(QObject):
             cache.urlsChanged.connect(self.slideThumbsChanged)
             self.slideThumbsChanged.emit()
 
+    # ---------------------------------------------------------- 课件续页（页数记忆）
+    # 2026-11-08：按课件文件记住上次讲到第几页，控制条旁弹一张卡片提示
+    # 「上次停在第 N 页 · 点这里跳过去」。数据与持久化全在 ``app/page_memory.py``，
+    # 这里只是三面镜子：给 QML 的只读表（``pageMemory``）、两个交互槽
+    # （``resumeToMemory`` / ``dismissPageMemory``），以及「忘掉记录」。
+    def attach_page_memory(self, memory) -> None:
+        """接上页数记忆（由 ``application.py`` 装配，见 ``page_memory.py``）。"""
+        self._page_memory = memory
+        if memory is not None:
+            memory.changed.connect(self.pageMemoryChanged)
+            self.pageMemoryChanged.emit()
+
+    def _get_page_memory(self) -> Dict[str, Any]:
+        """卡片要的全部数据；没接上记忆时给一份「不可见」的空表。
+
+        ⚠️ 必须是 ``@Property``（QML 侧把 ``@Slot`` 当属性读**永远不报错**，
+        拿到的是形参个数 —— 这个坑本项目在 ``licenseText`` 上踩过）。
+        """
+        memory = self._page_memory
+        if memory is None:
+            return {
+                "visible": False, "page": 0, "total": 0,
+                "current": 0, "currentTotal": 0, "name": "",
+                "ageSeconds": 0.0, "resumed": False, "identified": False,
+            }
+        return memory.snapshot()
+
+    #: 课件续页卡片的数据（见 ``app/page_memory.py::PageMemory.snapshot``）。
+    pageMemory = Property("QVariantMap", _get_page_memory, notify=pageMemoryChanged)
+
+    @Slot()
+    def resumeToMemory(self) -> None:
+        """卡片上「点这里跳过去」—— 跳到记忆里那一页。
+
+        走的是与快速切页面板**完全相同**的一条路（``pager:goto:N`` →
+        ``application._on_action`` → ``ppt.goto_slide``）：不另发明通道，翻页
+        限流 / 跳后刷新 / 非放映态门控全都自动沿用。
+        """
+        memory = self._page_memory
+        if memory is None:
+            return
+        data = memory.snapshot()
+        page = int(data.get("page") or 0)
+        if page <= 0:
+            return
+        memory.mark_resumed()
+        self.actionTriggered.emit(f"pager:goto:{page}")
+        log.info("课件续页：跳到第 %d 页", page)
+
+    @Slot()
+    def dismissPageMemory(self) -> None:
+        """卡片上「×」—— 本场不再弹（记录本身留着，下次放映照旧提示）。"""
+        memory = self._page_memory
+        if memory is not None:
+            memory.dismiss()
+
+    @Slot()
+    def forgetPageMemory(self) -> None:
+        """设置页「清除当前课件的续页记录」。"""
+        memory = self._page_memory
+        if memory is not None:
+            memory.forget_current()
+
+    @Slot()
+    def clearPageMemory(self) -> None:
+        """设置页「清除全部续页记录」。"""
+        memory = self._page_memory
+        if memory is not None:
+            memory.clear()
+
     @Slot(int, int)
     def requestThumbnails(self, start: int, end: int) -> None:
         """要 ``[start, end]``（1-based 闭区间）这几页的缩略图。
@@ -1108,6 +1196,12 @@ class Backend(QObject):
         cache = self._slide_thumbs
         if cache is not None:
             cache.set_show(bool(state.active), int(state.slide_total))
+
+        # 课件续页同理：**每一条状态快照**都要经过它 —— 翻页就是「上次停在哪」
+        # 的唯一来源，少一条就是少记一页（见 ``page_memory.PageMemory.observe``）。
+        memory = self._page_memory
+        if memory is not None:
+            memory.observe(state)
 
     def set_status_text(self, text: str) -> None:
         if text != self._status_text:

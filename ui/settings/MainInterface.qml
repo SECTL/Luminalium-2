@@ -331,4 +331,102 @@ Rin.FluentPage {
             onToggled: Backend.setSetting("presentation_shadow_enabled", checked)
         }
     }
+
+    // ------------------------------------------------------------------ 课件续页
+    //
+    // 2026-11-08 用户指令（参照 ClassIsland 的「课件续页」插件）：按课件文件
+    // 记住上次讲到第几页，下次放映同一份课件时在屏幕右下角弹一张卡片
+    // 「上次停在第 N 页 · 点这里跳过去」。
+    //
+    // 归本页的理由：它调的是**放映时主界面上多出来的一块**，与位置 / 缩放 /
+    // 外观同属「主界面长什么样」。数据与持久化在 ``app/page_memory.py``，
+    // 卡片是 ``ui/presentation/ResumeCard.qml``。
+    //
+    // 三条承诺写进描述里（用户看得见的地方）：只读不改课件、不联网只存本机、
+    // 历史留 N 天 —— 它们是这个功能的卖点，也是实现的红线。
+    Rin.Text {
+        Layout.fillWidth: true
+        Layout.topMargin: 10
+        typography: Rin.Typography.BodyStrong
+        text: qsTr("课件续页")
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfacePageMemory"
+
+        Layout.fillWidth: true
+        title: qsTr("记住上次讲到哪一页")
+        description: qsTr("放映时在右下角提示「上次停在第 N 页」，点一下跳过去；"
+                          + "只读不改课件，不联网，记录只存本机")
+        icon.name: "ic_fluent_history_20_regular"
+
+        Rin.Switch {
+            primaryColor: Lumi.accent
+            // 缺键按开处理（与 default_config.json 的 enabled: true 一致）
+            checked: Backend.settings.presentation_page_memory !== false
+            onToggled: Backend.setSetting("presentation_page_memory", checked)
+        }
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfacePageMemoryKeepDays"
+
+        Layout.fillWidth: true
+        // 总开关关掉时这一项无的放矢（与 Ink.qml 的手掌擦除同一条惯例：
+        // 裸 visible 绑定，不做收起动画）
+        visible: Backend.settings.presentation_page_memory !== false
+        title: qsTr("记录保留天数")
+        description: qsTr("超过这个天数的记录会被自动清掉；0 表示永不清理")
+        icon.name: "ic_fluent_calendar_clock_20_regular"
+
+        Row {
+            spacing: 8
+
+            Rin.SpinBox {
+                width: 120
+                from: 0
+                to: 365
+                value: Backend.settings.presentation_page_memory_keep_days !== undefined
+                    ? Number(Backend.settings.presentation_page_memory_keep_days) : 21
+                onValueModified: Backend.setSetting(
+                    "presentation_page_memory_keep_days", value)
+            }
+
+            Rin.Button {
+                objectName: "mainInterfacePageMemoryClear"
+                text: qsTr("清除全部记录")
+                onClicked: Backend.clearPageMemory()
+            }
+        }
+    }
+
+    Rin.SettingCard {
+        objectName: "mainInterfacePageMemoryPosition"
+
+        Layout.fillWidth: true
+        visible: Backend.settings.presentation_page_memory !== false
+        title: qsTr("卡片位置")
+        description: qsTr("续页提示卡贴在屏幕的哪一处；"
+                          + "也可以在主界面编辑器里点中卡片来改")
+        icon.name: "ic_fluent_position_to_back_20_regular"
+
+        Rin.ComboBox {
+            Layout.preferredWidth: 150
+            // 顺序与注册表描述符（``windows.py::_BUILTIN_DOCK_GROUPS`` 的
+            // ``resume_card``）**必须一致** —— 主界面编辑器右侧那组单选也是
+            // 同一份取值，两处说法不一样会让人以为改了没生效。
+            readonly property var values: [
+                "top_left", "top_right", "middle_left",
+                "middle_right", "bottom_left", "bottom_right"
+            ]
+            model: [qsTr("左上"), qsTr("右上"), qsTr("左侧居中"),
+                    qsTr("右侧居中"), qsTr("左下"), qsTr("右下")]
+            currentIndex: Math.max(0, values.indexOf(
+                Backend.settings.presentation_page_memory_position !== undefined
+                    ? String(Backend.settings.presentation_page_memory_position)
+                    : "bottom_right"))
+            onActivated: Backend.setSetting(
+                "presentation_page_memory_position", values[currentIndex])
+        }
+    }
 }

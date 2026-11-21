@@ -61,6 +61,41 @@ Window {
     */
     readonly property Item watermarkItem: devWatermark
 
+    /*! 右下角的**课件续页卡片**（2026-11-08 用户指令：「让那个卡片显示在右下角」）。
+
+        为什么不挂在控制条里（改这块前必读）：这张卡是**贴屏幕右下角**的固定
+        位置，与控制条在哪无关 —— 而控制条自己的 ``interactiveRect`` 只覆盖
+        「条 + 紧贴它的浮出层」，卡片离条太远，硬塞进去会让那条交互矩形撑满
+        小半个屏幕（区域塑形之后整个右下角都吃点击，放映时点画面翻不了页）。
+
+        所以它走**开发水印的同一条路**：作为窗口根的直接子项，由 Python 侧
+        ``windows.py::_resume_card_rect_local`` 把矩形单独并进 ``SetWindowRgn``
+        的区域与命中判定 —— 与 ``watermarkItem`` 逐字同一套机制。
+
+        ⚠️ 与 ``watermarkItem`` 同一条：**不要用 ``property alias``**
+        （别名会推断成匿名 QML 类型，PySide6 的 ``property()`` 转换不了）。
+    */
+    readonly property Item resumeCardItem: resumeCard
+
+    /*! 根级浮出物（续页卡片）的矩形变了 —— Python 侧据此**立刻**重算窗口区域。
+
+        为什么需要（2026-11-08）：卡片挂在窗口根上、不进任何控制条的
+        ``interactiveRect``，所以它挪位置 / 显隐时没有任何东西通知 Python。
+        只靠 ``_assert_topmost`` 那 800ms 一拍的话，用户在主界面编辑器里换了
+        位置预设，屏幕上要过半秒才点得动。接法与控制条的 ``hitRectChanged``
+        完全一致（``windows.py::_connect_hit_rect`` 是同一个槽）。
+    */
+    signal hitRectChanged()
+
+    Connections {
+        target: resumeCard
+        function onXChanged() { topWindow.hitRectChanged() }
+        function onYChanged() { topWindow.hitRectChanged() }
+        function onWidthChanged() { topWindow.hitRectChanged() }
+        function onHeightChanged() { topWindow.hitRectChanged() }
+        function onVisibleChanged() { topWindow.hitRectChanged() }
+    }
+
     /*! 「临时隐去」开关（Python 侧 ``windows.py::_set_overlay_suppressed`` 置位）。
 
         放映窗口不在前台时（用户切去别的程序），控制条淡出；切回来自动淡入。
@@ -91,5 +126,51 @@ Window {
         z: 10
         // 水印是窗口根的直接子项（不在 container 里），临时隐去要跟着一起淡
         opacity: containerItem.opacity
+    }
+
+    // ======================================== 课件续页卡片（2026-11-08）
+    // 用户指令：「让那个卡片显示在右下角」—— 固定贴**窗口**右下角，与控制条
+    // 的位置无关（控制条可能在左下、右下或底中，三种都不该带着卡片跑）。
+    //
+    // 与开发水印同一个挂法（窗口根的直接子项），理由见 ``resumeCardItem``：
+    // 控制条的 ``interactiveRect`` 装不下它，硬塞会把整个右下角变成吃点击的
+    // 死区。这里由 Python 侧单独把它的矩形并进区域与命中判定。
+    //
+    // ⚠️ 同样**不用 anchors**（``contentItem`` 高度为 0 的老坑），对窗口尺寸绑。
+    // ⚠️ ``z`` 要压在控制条之上（控制条在 container 里，z 默认 0）。
+    ResumeCard {
+        id: resumeCard
+        objectName: "resumeCard"
+
+        opened: Backend.pageMemory.visible === true
+        animate: true
+
+        lastPage: Backend.pageMemory.page !== undefined
+            ? Number(Backend.pageMemory.page) : 0
+        lastTotal: Backend.pageMemory.total !== undefined
+            ? Number(Backend.pageMemory.total) : 0
+        currentTotal: Backend.slideTotal
+        currentPage: Backend.slideIndex
+        fileName: Backend.pageMemory.name !== undefined
+            ? String(Backend.pageMemory.name) : ""
+        ageSeconds: Backend.pageMemory.ageSeconds !== undefined
+            ? Number(Backend.pageMemory.ageSeconds) : 0
+        resumed: Backend.pageMemory.resumed === true
+
+        z: 20
+        // 位置由配置的预设决定（2026-11-08 用户指令：主界面编辑器里给六档位置
+        // 预设）。空串 / 未知值一律回落 ``bottom_right`` —— 卡片总得有个地方待着，
+        // 而右下角是用户最初指定的那一档。
+        positionPreset: {
+            var memory = Backend.presentationConfig.page_memory
+            var value = memory !== undefined && memory.position !== undefined
+                ? String(memory.position) : ""
+            return value !== "" ? value : "bottom_right"
+        }
+        // 临时隐去（放映窗口不在前台）时跟着一起淡 —— 与 container / 水印同源
+        opacity: containerItem.opacity
+
+        onResumeRequested: Backend.resumeToMemory()
+        onDismissRequested: Backend.dismissPageMemory()
     }
 }

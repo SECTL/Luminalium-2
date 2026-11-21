@@ -73,6 +73,18 @@ def slide_thumb_dir() -> Path:
     """放映页缩略图目录（见 ``app/slide_thumbs.py``）。"""
     return cache_dir() / "slide_thumbs"
 
+
+def page_memory_file() -> Path:
+    """课件页数记忆的落盘文件（见 ``app/page_memory.py``）。
+
+    ⚠️ 走 ``data_dir()`` 而**不是** ``cache_dir()``：后者是「可随时删」的运行期
+    缓存，``slide_thumbs`` 每换一场放映就 ``rmtree`` 自己的子目录 —— 21 天的
+    记忆放那儿，迟早被一次「顺手统一清理」连带删掉。函数形态的理由与
+    :func:`cache_dir` 相同：它要跟随 ``LUMINALIUM_DATA_DIR`` 的覆盖，自检 /
+    探针跑起来才碰不到用户真实数据。
+    """
+    return data_dir() / "page_memory.json"
+
 DEFAULT_CONFIG_FILE = RESOURCE_ROOT / "config" / "default_config.json"
 USER_CONFIG_FILE = CONFIG_DIR / "config.json"
 

@@ -309,6 +309,15 @@
         "enabled": true,
         "groups": ["pager"]
       }
+    },
+    "//page_memory": "**课件续页**（2026-11-08 用户指令，参照 ClassIsland 的「课件续页」插件）：按课件文件记住上次讲到第几页，下次放映同一份课件时在屏幕**右下角**弹一张卡片「上次停在第 N 页 · 点这里跳过去」。三条承诺是功能的边界，实现见 app/page_memory.py 头注释：**只读不改课件**（只经 COM 读 Presentation.FullName，绝不 Save）、**不联网只存本机**（数据根下的 page_memory.json）、**历史留 keep_days 天**（读取时顺手清理过期条目，不开定时器）。⚠️ 记忆本体**不写 config.json** —— 它是运行期状态，config 只存用户设定。放在 corners 之后而不是 pager 里：它不归翻页组件管，横版竖版哪个角落都同一份",
+    "page_memory": {
+      "//enabled": "续页提示总开关。关掉后不再弹卡片，但「记住讲到哪一页」也一并停掉（不记忆就不会有提示；「只记不提示」这种需求不存在）",
+      "enabled": true,
+      "//keep_days": "记忆保留天数（默认 21，对齐 ClassIsland 课件续页的「历史留 21 天」）。0 = 永不过期；读取时按时间戳筛掉超期条目并顺手写回，不另开清理定时器",
+      "keep_days": 21,
+      "//position": "续页卡片摆在屏幕哪一处（2026-11-08 用户指令：「点击卡片时弄几个位置预设：左上左下右上右下还有中间」）。入口：主界面编辑器 → 选中续页卡片 → 「卡片位置」六选一。取值 bottom_right（默认）/ bottom_left / top_left / top_right / middle_left / middle_right —— ⚠️ 这里的「中间」是**屏幕右侧垂直居中**（middle_right），不是正中央：卡片浮在幻灯片正中间会挡住讲课内容，而贴边一列既不挡画面又能一眼看到。与 corners 里那套名字同源，只是卡片不走 corners（它不属于控制条的角落编排）",
+      "position": "bottom_right"
     }
   }
 }

@@ -909,81 +909,170 @@
         <source>底板下方的柔和投影；纯色背景下关掉更清爽</source>
         <translation>바닥판 아래의 부드러운 그림자입니다. 단색 배경에서는 끄는 편이 더 깔끔합니다</translation>
     </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="351"/>
+        <source>课件续页</source>
+        <translation>강의 이어보기</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="358"/>
+        <source>记住上次讲到哪一页</source>
+        <translation>마지막으로 진행한 페이지 기억</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="359"/>
+        <source>放映时在右下角提示「上次停在第 N 页」，点一下跳过去；只读不改课件，不联网，记录只存本机</source>
+        <translation>발표 중 화면 오른쪽 아래에 「마지막으로 N 페이지에서 중단」을 표시하고 클릭하면 그 페이지로 이동합니다. 파일은 읽기만 하며 수정하지 않고, 네트워크에 연결하지 않으며, 기록은 이 PC에만 저장됩니다.</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="408"/>
+        <source>卡片位置</source>
+        <translation>카드 위치</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="409"/>
+        <source>续页提示卡贴在屏幕的哪一处；也可以在主界面编辑器里点中卡片来改</source>
+        <translation>이어보기 카드를 화면 어디에 둘지 정합니다. 메인 화면 편집기에서 카드를 클릭해 바꿀 수도 있습니다</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="422"/>
+        <source>左上</source>
+        <translation>왼쪽 위</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="422"/>
+        <source>右上</source>
+        <translation>오른쪽 위</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="422"/>
+        <source>左侧居中</source>
+        <translation>왼쪽 가운데</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="423"/>
+        <source>右侧居中</source>
+        <translation>오른쪽 가운데</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="423"/>
+        <source>左下</source>
+        <translation>왼쪽 아래</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="423"/>
+        <source>右下</source>
+        <translation>오른쪽 아래</translation>
+    </message>
+    <message>
+        <source>放映时在控制条旁提示「上次停在第 N 页」，点一下跳过去；只读不改课件，不联网，记录只存本机</source>
+        <translation type="vanished">발표 중 컨트롤 바 옆에 「마지막으로 N 페이지에서 중단」을 표시하고 클릭하면 그 페이지로 이동합니다. 파일은 읽기만 하며 수정하지 않고, 네트워크에 연결하지 않으며, 기록은 이 PC에만 저장됩니다.</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="378"/>
+        <source>记录保留天数</source>
+        <translation>기록 보관 일수</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="379"/>
+        <source>超过这个天数的记录会被自动清掉；0 表示永不清理</source>
+        <translation>이 일수를 넘긴 기록은 자동으로 삭제됩니다. 0은 영구 보관입니다</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="397"/>
+        <source>清除全部记录</source>
+        <translation>모든 기록 지우기</translation>
+    </message>
 </context>
 <context>
     <name>MainInterfaceEditor</name>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="120"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="123"/>
         <source>主界面编辑器</source>
         <translation>메인 화면 편집기</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="364"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="371"/>
         <source>屏幕左下角</source>
         <translation>화면 왼쪽 아래</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="365"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="372"/>
         <source>屏幕底边居中</source>
         <translation>화면 아래쪽 가운데</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="366"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="373"/>
         <source>屏幕右下角</source>
         <translation>화면 오른쪽 아래</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="367"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="374"/>
         <source>屏幕左上角</source>
         <translation>화면 왼쪽 위</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="368"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="375"/>
         <source>屏幕顶边居中</source>
         <translation>화면 위쪽 가운데</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="369"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="376"/>
         <source>屏幕右上角</source>
         <translation>화면 오른쪽 위</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="370"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="377"/>
         <source>屏幕左侧垂直居中</source>
         <translation>화면 왼쪽 세로 가운데</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="371"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="378"/>
         <source>屏幕右侧垂直居中</source>
         <translation>화면 오른쪽 세로 가운데</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="496"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="531"/>
+        <source>课件续页卡片</source>
+        <translation>강의 이어보기 카드</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="536"/>
         <source>控制条</source>
         <translation>컨트롤 바</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="504"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="544"/>
         <source>组 | 工具栏和翻页器</source>
         <translation>그룹 | 도구 모음과 페이지 넘김</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="506"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="546"/>
         <source>工具栏</source>
         <translation>도구 모음</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="508"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="548"/>
         <source>翻页组件</source>
         <translation>페이지 넘김 요소</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1658"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="572"/>
+        <source>屏幕边缘（位置可选）</source>
+        <translation>화면 가장자리 (위치 변경 가능)</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1347"/>
+        <source>课件.pptx</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1772"/>
         <source>开</source>
         <translation>켬</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1659"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1773"/>
         <source>关</source>
         <translation>끔</translation>
     </message>
@@ -1248,57 +1337,57 @@
         <translation>돋보기</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1050"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1065"/>
         <source>上一页</source>
         <translation>이전 페이지</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1120"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1135"/>
         <source>下一页</source>
         <translation>다음 페이지</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1270"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1285"/>
         <source>缩放</source>
         <translation>확대/축소</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1272"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1287"/>
         <source>移位</source>
         <translation>이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1288"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1303"/>
         <source>放大</source>
         <translation>확대</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1290"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1305"/>
         <source>缩小</source>
         <translation>축소</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1292"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1307"/>
         <source>恢复原始大小</source>
         <translation>원래 크기로</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1294"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1309"/>
         <source>向上移位</source>
         <translation>위로 이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1296"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1311"/>
         <source>向下移位</source>
         <translation>아래로 이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1298"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1313"/>
         <source>向左移位</source>
         <translation>왼쪽으로 이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1300"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1315"/>
         <source>向右移位</source>
         <translation>오른쪽으로 이동</translation>
     </message>
@@ -1332,6 +1421,49 @@
     </message>
 </context>
 <context>
+    <name>ResumeCard</name>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="241"/>
+        <source>上次停在第 %1 页</source>
+        <translation>마지막으로 %1 페이지에서 중단</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="244"/>
+        <source>已从第 %1 页开始放映</source>
+        <translation>%1 페이지부터 발표를 시작했습니다</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="245"/>
+        <source>点击从第 %1 页开始放映</source>
+        <translation>클릭하면 %1 페이지부터 시작</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="251"/>
+        <source>记录于 刚刚</source>
+        <translation>방금 기록됨</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="254"/>
+        <source>记录于 %1 分钟前</source>
+        <translation>%1분 전에 기록됨</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="257"/>
+        <source>记录于 %1 小时前</source>
+        <translation>%1시간 전에 기록됨</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="259"/>
+        <source>记录于 %1 天前</source>
+        <translation>%1일 전에 기록됨</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="315"/>
+        <source>课件续页</source>
+        <translation>강의 이어보기</translation>
+    </message>
+</context>
+<context>
     <name>SectionHeader</name>
     <message>
         <location filename="../ui/QuickPanel/SectionHeader.qml" line="46"/>
@@ -1357,76 +1489,76 @@
         <translation>설정</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="227"/>
-        <source>更多</source>
-        <translation>자세히</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="276"/>
-        <source>创建桌面快捷方式</source>
-        <translation>바탕 화면 바로 가기 만들기</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="282"/>
-        <source>创建开始菜单快捷方式</source>
-        <translation>시작 메뉴 바로 가기 만들기</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="291"/>
-        <source>日志</source>
-        <translation>로그</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="298"/>
-        <source>重新启动并进入维护模式</source>
-        <translation>유지 관리 모드로 다시 시작</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="308"/>
-        <source>打开日志目录</source>
-        <translation>로그 폴더 열기</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="314"/>
-        <source>打开应用目录</source>
-        <translation>앱 폴더 열기</translation>
-    </message>
-    <message>
-        <location filename="../ui/Settings.qml" line="398"/>
-        <location filename="../ui/Settings.qml" line="450"/>
+        <location filename="../ui/Settings.qml" line="431"/>
+        <location filename="../ui/Settings.qml" line="483"/>
         <source>需要重启</source>
         <translation>다시 시작 필요</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="403"/>
+        <location filename="../ui/Settings.qml" line="436"/>
         <source>部分设置需要重启才能生效，点击以重启应用。</source>
         <translation>일부 설정은 적용하려면 다시 시작해야 합니다. 눌러서 앱을 다시 시작하세요.</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="458"/>
+        <location filename="../ui/Settings.qml" line="491"/>
         <source>部分设置需要重启以应用</source>
         <translation>일부 설정은 적용하려면 다시 시작해야 합니다</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="468"/>
+        <location filename="../ui/Settings.qml" line="501"/>
         <source>取消</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="477"/>
+        <location filename="../ui/Settings.qml" line="510"/>
         <source>重启</source>
         <translation>다시 시작</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="248"/>
+        <source>更多</source>
+        <translation>자세히</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="309"/>
+        <source>创建桌面快捷方式</source>
+        <translation>바탕 화면 바로 가기 만들기</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="315"/>
+        <source>创建开始菜单快捷方式</source>
+        <translation>시작 메뉴 바로 가기 만들기</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="324"/>
+        <source>日志</source>
+        <translation>로그</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="331"/>
+        <source>重新启动并进入维护模式</source>
+        <translation>유지 관리 모드로 다시 시작</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="341"/>
+        <source>打开日志目录</source>
+        <translation>로그 폴더 열기</translation>
+    </message>
+    <message>
+        <location filename="../ui/Settings.qml" line="347"/>
+        <source>打开应用目录</source>
+        <translation>앱 폴더 열기</translation>
     </message>
 </context>
 <context>
     <name>SidePager</name>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="247"/>
+        <location filename="../ui/presentation/SidePager.qml" line="255"/>
         <source>上一页</source>
         <translation>이전 페이지</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/SidePager.qml" line="328"/>
+        <location filename="../ui/presentation/SidePager.qml" line="336"/>
         <source>下一页</source>
         <translation>다음 페이지</translation>
     </message>

@@ -88,11 +88,13 @@ import Luminalium
     见 ``aboutCredits``）—— ``GlassLogo`` 与「Logo」其实无关，它做的就是「一堆
     半透明白渐变按单色剪影蒙形」，换成字标素材、关掉光晕与投影就是一份落款。
 
-    ⚠️ 英雄区**没有**走 ``FluentPage.contentHeader``。那个槽名义上是「页面级
-    全宽」的，但实测（2026-10-01，``page_About`` 用红底试色）Item 会被塞进内容
-    列 ``container``，宽度受 ``horizontalPadding`` 夹到 846 并居中 —— 与普通
-    content 无异，白折腾。所以这里就用普通的 content 子项：宽度跟随内容列，
-    靠**圆角 + 强调色底**把它读成一张横幅。
+    英雄区走 ``FluentPage.contentHeader``（2026-11-15 用户指令「把流光背景
+    从圆角矩形包裹改为和设置主页同款的占满渐变」）：整套公式照抄 ``Home.qml``
+    —— 页面 ``horizontalPadding: 0`` + ``wrapperWidth`` 夹内容列，头部槽里的
+    Item 自己写 ``width: parent.width`` 才拿得到全宽（⚠️ 2026-10-01 红底试色
+    时头部被夹到 846，是因为当时 ``horizontalPadding`` 还是默认值；置 0 之后
+    头部就是真正的通栏）。直角、无圆角包裹，靠 ``AuroraFlow`` 蒙版的底部
+    渐隐化进页面 —— 与主页横幅同一条「占满」观感。
 
     页面**不带标题**（2026-10-01 用户指令「把关于大标题去掉」）。机制：
     ``Rin.FluentPage`` 的头部高度是 ``title !== "" ? 36 + 44 : 0``，所以不写
@@ -100,11 +102,6 @@ import Luminalium
     L1 的 ``#section-about`` 本身就是**光秃秃一块英雄区**，上方没有小节标题。
     左侧导航里的「关于」项照旧（那是 ``navigationItems`` 的 ``title``，与页面
     标题是两码事，别一起删）。
-
-    ⚠️ 圆角是**四角统一** 16，L1 原值是 ``16px 16px 0 0``（上圆下直）：L1 那块
-    是出血横幅（左右各多 48、顶上顶出 32，下沿直接接下一组设置），本项目是张
-    内嵌卡，照抄会让下沿像被切一刀。理由与原文都记在 ``Lumi.qml`` 的
-    ``aboutHeroRadius`` 上方。
 
     ## 二、应用信息卡（2026-10-01 用户指令「参考 Class Widgets 2 的关于界面的
     那个设置卡，填充关于界面的内容」）
@@ -137,6 +134,12 @@ import Luminalium
 Rin.FluentPage {
     id: aboutPage
 
+    /*! 与设置主页（``Home.qml``）同一套通栏公式：``horizontalPadding: 0``
+        让 ``contentHeader``（英雄区）真正全宽出血，内容列再由 ``wrapperWidth``
+        夹回去（其余内容仍与「通用」等页同宽居中）。 */
+    horizontalPadding: 0
+    wrapperWidth: Math.min(width - 42 * 2, 1200)
+
     contentSpacing: 10
 
     /*! 两条外链。集中在这里而不是散在下面：自检要在树里比对它们，
@@ -145,33 +148,31 @@ Rin.FluentPage {
     readonly property string repoUrl: "https://github.com/SECTL/Luminalium-2"
     readonly property string issuesUrl: repoUrl + "/issues/new/choose"
 
-    /*! 英雄区 = 一块圆角底板 + 流光 + Logo。
+    /*! 英雄区 = 一块**通栏**底板 + 流光 + Logo，摆进 ``contentHeader``
+        （2026-11-15 用户指令「和设置主页同款的占满渐变」，机制见文件头注释）。
         底板取 ``Lumi.auroraSurface``，也就是 L1 ``--bg-surface`` 那一档
         （深色主题下 = 强调色压暗到 30%）。十团光斑只比它亮一点点，所以「板」
         是整块的强调色底、光斑是上面缓慢流动的深浅变化 —— 和 L1 里头图与页面
-        同色时的关系一致；本项目页面是中性灰（#202020），这块底才需要靠圆角
-        被读成**刻意的横幅**而不是「页面上一块色斑」。 */
-    Item {
+        同色时的关系一致。 */
+    contentHeader: Item {
         id: hero
 
         objectName: "aboutHero"
-        Layout.fillWidth: true
-        Layout.preferredHeight: Lumi.aboutHeroHeight
-        implicitHeight: Lumi.aboutHeroHeight
+        width: parent.width
+        height: Lumi.aboutHeroHeight
 
         Rectangle {
             id: heroSurface
             anchors.fill: parent
-            radius: Lumi.aboutHeroRadius
             color: Lumi.auroraSurface
 
-            /*! 流光自带圆角蒙版 —— 别指望 ``heroSurface`` 的 ``clip: true``：
-                Qt 的裁剪是**矩形**的，不认 ``radius``，圆角会被流光的实色方块
-                盖成直角（踩过）。 */
+            /*! 底部渐隐由 ``AuroraFlow`` 自己的 OpacityMask 蒙版负责。
+                圆角已随「占满」一并取消 —— 蒙版只剩竖直渐隐这一件事
+                （别指望 ``heroSurface`` 的 ``clip: true``：Qt 的裁剪是
+                **矩形**的，蒙版裁的是渐隐而不是裁边）。 */
             AuroraFlow {
                 objectName: "aboutAurora"
                 anchors.fill: parent
-                cornerRadius: Lumi.aboutHeroRadius
                 fadeHeight: Lumi.aboutHeroFade
             }
         }
@@ -197,7 +198,7 @@ Rin.FluentPage {
             * ``glowEnabled`` / ``shadowEnabled`` 都关掉。那两层的模糊半径
               （22 / 28）是给 248 的 Logo 配的，压在 150×23 的字标上只会糊成一
               团；更要紧的是它们的容器四周要外撑 3σ（≈ 42px），而英雄区底部只留
-              20 的边距 —— 辉光会**越过卡片的圆角**洒到页面上，卡片的边就没了。
+              20 的边距 —— 辉光会**越过英雄区的下沿**洒到页面上。
             * ``layerPrefix`` 换成 ``aboutCredits``：两个实例内部的 ``objectName``
               本来一模一样，重名之后自检按名字找「Logo 四层」会翻到字标那四层上
               去 —— 找得到，但量的是别人。

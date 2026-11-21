@@ -3889,6 +3889,17 @@ def main() -> int:
         check("开发水印开关 = 配置 app.dev_watermark",
               app.backend.devWatermark == (app.config.get("app.dev_watermark") is not False),
               f"backend={app.backend.devWatermark} config={app.config.get('app.dev_watermark')}")
+
+        # ---- 第二行的 commit 短号（2026-11-15 用户指令）----
+        # 只断言 Backend 有值不够：要落在**真正显示出来的文字**上（本项目踩过
+        # 「后端有值、QML 没拼上」这类静默失效），所以按 objectName 找第二行 Text。
+        wm_detail = _find_named(wm_item, "devWatermarkDetail") if wm_item is not None else None
+        commit = app.backend.commitHash
+        detail = str(wm_detail.property("text") or "") if wm_detail is not None else ""
+        check("开发水印第二行含 commit 短号",
+              bool(commit) and commit in detail,
+              f"commit={commit!r} detail={detail!r}")
+
         if app.windows._region_mode and wm_item is not None:
             # 区域塑形模式下，水印若没被算进区域就会整块被裁掉（踩过思路盲区）
             wm_local = app.windows._watermark_rect_local()

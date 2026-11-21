@@ -339,7 +339,7 @@
 <context>
     <name>DevWatermark</name>
     <message>
-        <location filename="../ui/DevWatermark.qml" line="40"/>
+        <location filename="../ui/DevWatermark.qml" line="48"/>
         <source>开发中版本，不代表最终品质</source>
         <translation>In-development build; not representative of final quality</translation>
     </message>
@@ -629,6 +629,141 @@
         <location filename="../ui/settings/Ink.qml" line="88"/>
         <source>接触直径达到该值才算手掌；指尖约 8~12 毫米，掌心 25 毫米以上</source>
         <translation>A contact counts as a palm once its diameter reaches this value; fingertips are ~8-12 mm, palms usually 25 mm or more</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="328"/>
+        <source>色板</source>
+        <translation>Palette</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="329"/>
+        <source>放映时笔的选单与小黑板的粉笔共用这份颜色表，共 %1 个颜色</source>
+        <translation>The pen menu during slideshows and the blackboard chalk share this color list (%1 colors)</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="336"/>
+        <source>编辑颜色</source>
+        <translation>Edit colors</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="480"/>
+        <source>添加颜色</source>
+        <translation>Add color</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="554"/>
+        <source>删除这个颜色</source>
+        <translation>Delete this color</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="565"/>
+        <source>点「完成」后，所有使用此色板的界面都会立即应用新的颜色。</source>
+        <translation>After you click Done, every screen using this palette applies the new colors right away.</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="578"/>
+        <source>取消</source>
+        <translation>Cancel</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="588"/>
+        <source>完成</source>
+        <translation>Done</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="181"/>
+        <source>白色</source>
+        <translation>White</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="177"/>
+        <source>黑色</source>
+        <translation>Black</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="184"/>
+        <source>浅灰</source>
+        <translation>Light gray</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="187"/>
+        <source>灰</source>
+        <translation>Gray</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="189"/>
+        <source>深灰</source>
+        <translation>Dark gray</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="193"/>
+        <source>红</source>
+        <translation>Red</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="195"/>
+        <source>橙</source>
+        <translation>Orange</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="197"/>
+        <source>金</source>
+        <translation>Gold</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="199"/>
+        <source>黄</source>
+        <translation>Yellow</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="201"/>
+        <source>黄绿</source>
+        <translation>Yellow-green</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="203"/>
+        <source>绿</source>
+        <translation>Green</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="205"/>
+        <source>青</source>
+        <translation>Cyan</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="207"/>
+        <source>蓝</source>
+        <translation>Blue</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="209"/>
+        <source>靛</source>
+        <translation>Indigo</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="211"/>
+        <source>紫</source>
+        <translation>Purple</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="213"/>
+        <source>品红</source>
+        <translation>Magenta</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="216"/>
+        <source>灰%1</source>
+        <translation>Muted %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="220"/>
+        <source>深%1</source>
+        <translation>Dark %1</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/Ink.qml" line="223"/>
+        <source>浅%1</source>
+        <translation>Light %1</translation>
     </message>
 </context>
 <context>

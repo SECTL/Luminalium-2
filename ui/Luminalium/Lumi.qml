@@ -735,9 +735,10 @@ QtObject {
     //     圆角 L1 原值是 ``16px 16px 0 0``（**上圆下直**），因为它是「出血」的：
     //     ``width: calc(100% + 96px)`` + ``margin: -32px -48px 32px``，左右各
     //     多出 48、顶上顶出 32，下沿是一条直边直接接上后面的设置组。
-    //     本项目把英雄区摆成页面里的一张**内嵌卡**（四周都有留白），下沿没有
-    //     「接着往下流」的东西，所以**刻意**用四角统一的 16（``aboutHeroRadius``）
-    //     —— 照抄 16/16/0/0 会让卡片下沿像被切了一刀，不是设计意图。
+    //     本项目 2026-10-01 起曾把英雄区摆成**内嵌卡**（四角统一 16，
+    //     ``aboutHeroRadius``），2026-11-15 用户指令「和设置主页同款的占满
+    //     渐变」后改回 L1 同款**通栏出血**：进 ``FluentPage.contentHeader``、
+    //     无圆角，靠 ``AuroraFlow`` 的底部渐隐化进页面（该属性随之删除）。
     //   · ``.hyperos-bg``          —— HyperOS 风格的「流光」：10 层 radial-gradient
     //     铺成 200%×200% 的画幅、``blur(60px)``、25s 匀速自转 360° 且
     //     中点缩到 1.1（``@keyframes hyperos-flow``）；
@@ -751,7 +752,6 @@ QtObject {
     // 十团光斑的颜色照 L1 ``applyMonetPalette()`` 的 Monet 公式以强调色为种
     // 现算（L1 那套是从壁纸抽色的，本项目没有抽色源，直接用强调色）。
     readonly property int aboutHeroHeight: 320
-    readonly property int aboutHeroRadius: 16
     /*! 底部渐隐高度（L1 ``.about-header::after`` 的 100）。 */
     readonly property int aboutHeroFade: 100
     readonly property int aboutLogoSize: 248

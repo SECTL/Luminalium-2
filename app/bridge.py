@@ -73,8 +73,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QJSValue
 
 from . import autostart
+from . import build_info
 from . import i18n
 from . import markdown_html
 from . import monitors
@@ -165,13 +167,23 @@ SETTING_PATHS: Dict[str, str] = {
     "presentation_ink_eraser_mode": "presentation.ink.eraser_mode",
     "presentation_ink_palm_erase": "presentation.ink.palm_erase",
     "presentation_ink_palm_threshold_mm": "presentation.ink.palm_threshold_mm",
+    # 全局色板（放映笔选单 + 小黑板粉笔共用那张颜色表）。
+    # 2026-11-21 用户指令：「『墨迹和批注』设置新增一个色板颜色，用于更改全局
+    # 色板场景的颜色列表」—— 入口是 ``settings/Ink.qml`` 的「色板」卡，点色块
+    # 就地改色 / 追加 / 删除。**整表替换**：配置里存的就是一张颜色列表，没有
+    # 「改第 N 项」这种路径，QML 侧改一格就把整表传回来。命中 ``presentation_``
+    # 前缀规则 → 广播 ``presentationConfigChanged``，放映条
+    # （``PresentationDock`` → ``PenPaletteCard``）与小黑板
+    # （``BlackboardWindow``）都是整块读 ``presentationConfig.pen``，当场换色。
+    "presentation_pen_palette": "presentation.pen.palette",
     # ⚠️ ``presentation.pen.widths`` / ``default_width``（2026-10-07 自建批注的
     #    笔粗细档）与 ``presentation.ink.eraser_widths`` / ``eraser_default_width``
-    #    （2026-10-08 的像素橡皮粗细档）刻意**不**登记：与 ``pen.palette`` 同一条
-    #    链路 —— QML 经 ``presentationConfig`` 整块读，选中值是**会话状态**
-    #    （``_pen_width`` / ``_eraser_width``，不落配置，与 ``_pen_color`` 同读法）。
-    #    登记进来只会多一份没人写的代理属性（上面 ``presentation.divider.enabled``
-    #    的反面教材）。
+    #    （2026-10-08 的像素橡皮粗细档）刻意**不**登记：QML 经 ``presentationConfig``
+    #    整块读，选中值是**会话状态**（``_pen_width`` / ``_eraser_width``，不落配置，
+    #    与 ``_pen_color`` 同读法）。登记进来只会多一份没人写的代理属性（下面
+    #    ``presentation.divider.enabled`` 的反面教材）。
+    #    ⚠️ 同一条链路上的 ``pen.palette`` 是**例外**（就上面那行）：设置页要写它，
+    #    有写方的不算多出来的代理属性。
     # 只在调试窗口出现（隐藏入口：设置标题连点 10 次），普通用户看不到水印开关
     "dev_watermark": "app.dev_watermark",
     # 更新模式 / 更新通道（设置 → 更新 → 更新设置）。⚠️ ``update.`` 段里其余的键
@@ -685,6 +697,16 @@ class Backend(QObject):
 
         raw = f"{platform.node()}|{uuid.getnode():x}"
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8].upper()
+
+    @Property(str, constant=True)
+    def commitHash(self) -> str:
+        """构建时的 commit 短号（水印第二行第三段，2026-11-15 用户指令）。
+
+        源码跑读 ``.git/HEAD``（实时），打包跑读 spec 构建时注入的
+        ``build_info.json``，取法与回退全在 ``app/build_info.py``。
+        **读不到就是空串** —— QML 侧据此把整段省掉，不显示假号。
+        """
+        return build_info.commit_hash()
 
     @Slot(str, result=str)
     def resourceFile(self, name: str) -> str:
@@ -1795,6 +1817,14 @@ class Backend(QObject):
         if path is None:
             log.info("未知设置项: %s", key)
             return
+
+        # ⚠️ QML 传数组过来时到手的是 ``QJSValue`` 而**不是** Python list（槽签名
+        # 是 ``QVariant``）。原样存进配置的后果是静默的：读回来 QML 照样能当数组用，
+        # 但落盘时 ``json.dump`` 序列化不了它 → 整次保存抛 TypeError、
+        # ``presentation_pen_palette`` 永远进不了 ``config.json``（2026-11-21
+        # 色板卡实测：改完色重启回来又变成默认 30 色）。这里统一转成原生值。
+        if isinstance(value, QJSValue):
+            value = value.toVariant()
 
         # 开机自启：**本体是注册表**，单独走一条路。通用的「改内存 + 延迟落盘」
         # 会把「写注册表失败」这件事吞掉 —— 那正是「关了却没关掉」的来源。

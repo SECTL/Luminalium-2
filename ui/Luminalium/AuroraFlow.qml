@@ -48,6 +48,10 @@ import Luminalium
       的渐变盖住底部 100px。这里不画颜色、改用 ``OpacityMask`` 把流光本身按
       竖直渐变淡出，于是不需要知道页面底色是什么（深/浅主题通用）。
 
+    ⚠️ 2026-11-15 用户指令「和设置主页同款的占满渐变」后，关于页英雄区改为
+      通栏出血，原先的 ``cornerRadius``（圆角蒙版）已随内嵌卡形态一并删除 ——
+      蒙版只剩竖直渐隐这一件事。
+
     ⚠️ 缓存的层次：``field`` 的内容是静态的，它的 ``layer`` 只烘一次；自转 /
       缩放只改 ``rotator``（无 layer）的变换，纹理照用。最外那层
       ``fadeHost`` 带 OpacityMask，因为底下在转所以每帧重画 —— 但它只有一次
@@ -78,9 +82,6 @@ Item {
     property real downscale: 3
     /*! 底部渐隐的高度（屏幕像素，0 = 不渐隐）。 */
     property real fadeHeight: Lumi.aboutHeroFade
-    /*! 输出的圆角（0 = 直角）。**必须由这里裁**：Qt 的 ``Item.clip`` 只认矩形，
-        父级 ``Rectangle`` 的 ``radius`` 拦不住子项的实色方块，直角会露出来。 */
-    property real cornerRadius: 0
 
     /*! 10 层光斑：``gradient`` 是取哪一号色，``cx/cy`` 是圆心（画幅分数，
         对应 CSS 的 ``at X% Y%``），``extent`` 是 CSS 里 ``transparent`` 那一档
@@ -128,9 +129,9 @@ Item {
             maskSource: Rectangle {
                 width: fadeHost.width
                 height: fadeHost.height
-                /*! 圆角形状 × 竖直渐隐 —— ``Rectangle`` 同时支持这两样，
-                    所以「裁圆角」和「底部化开」合成一次蒙版，不多花一层 FBO。 */
-                radius: root.cornerRadius
+
+                /*! 竖直渐隐 —— 曾与圆角合成一次蒙版（``Rectangle`` 同时支持
+                    两样），圆角删除后只剩渐变，不多花一层 FBO。 */
                 gradient: Gradient {
                     GradientStop { position: 0.0; color: "#FFFFFFFF" }
                     GradientStop { position: root.fadeStop; color: "#FFFFFFFF" }

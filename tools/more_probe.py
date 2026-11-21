@@ -334,8 +334,9 @@ def main() -> int:
     pump(app, 300)
 
     # ==================================================== 日志窗口（单独加载）
-    log_text = backend.readLogText()
-    check("readLogText 有内容", len(log_text) > 0, f"{len(log_text)} 字符")
+    payload = backend.readLogEntries(True)
+    log_entries = payload.get("entries", [])
+    check("readLogEntries 有内容", len(log_entries) > 0, f"{len(log_entries)} 条")
 
     log_component = QQmlComponent(rinui.engine, QUrl.fromLocalFile(str(UI_DIR / "LogWindow.qml")))
     if log_component.isError():
@@ -353,18 +354,14 @@ def main() -> int:
             pump(app, 900)
 
             flick = None
-            edit = None
 
-            # 日志正文的 id 不是 objectName（QML 的 id 不进元对象），所以按
-            # 「readOnly 为真」认它 —— 这个窗口里唯一的只读文本控件。
-            for node in _walk(log_window.contentItem()):
-                if node.property("readOnly") is True:
-                    edit = node
-                    break
-            check("日志正文控件存在", edit is not None)
-            if edit is not None:
-                shown = str(edit.property("text") or "")
-                check("日志正文已灌进窗口", len(shown) > 0, f"{len(shown)} 字符")
+            # 列表数据由 Backend 解析后灌进 filteredEntries，不再有「正文 TextEdit」。
+            filtered = log_window.property("filteredEntries").toVariant()
+            check("日志列表已灌进窗口", len(filtered) > 0, f"{len(filtered)} 条")
+            check("默认只显示警告及以上",
+                  all(entry["level"] in ("WARNING", "ERROR", "CRITICAL")
+                      for entry in filtered),
+                  f"等级集合 {sorted({entry['level'] for entry in filtered})}")
 
             # 「打开就在最新一行」：滚动到底后 contentY 应等于 contentHeight - height
             for node in _walk(log_window.contentItem()):

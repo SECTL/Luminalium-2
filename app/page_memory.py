@@ -1,4 +1,4 @@
-"""课件续页 —— 按课件文件记住「上次讲到第几页」，下次放映接着讲。
+"""续播 —— 按课件文件记住「上次讲到第几页」，下次放映接着讲。
 
 ## 它解决的事
 
@@ -267,7 +267,7 @@ class PageMemory(QObject):
         if not key:
             # 读不到身份（WPS / 永中 / COM 连不上）：不记忆，也不弹卡片。
             # 静默降级 —— 日志留一条，真机排查时能看出「为什么没生效」。
-            log.debug("课件续页：拿不到课件身份，本场不记忆")
+            log.debug("续播：拿不到课件身份，本场不记忆")
             return
         if key == self._key:
             return
@@ -289,7 +289,7 @@ class PageMemory(QObject):
         # 放映（``observe`` 的 active=False 分支强制落盘）。
         if self._recorded is not None:
             log.info(
-                "课件续页：命中记忆 %s 第 %s 页（记录于 %s）",
+                "续播：命中记忆 %s 第 %s 页（记录于 %s）",
                 self._name or key,
                 self._recorded.get("page"),
                 self._format_time(self._recorded.get("at")),
@@ -342,7 +342,7 @@ class PageMemory(QObject):
         keep_days = self._keep_days()
         at = float(entry.get("at") or 0)
         if keep_days > 0 and at > 0 and (time.time() - at) > keep_days * 86400:
-            log.info("课件续页：记忆已过期（%s 天），丢弃", keep_days)
+            log.info("续播：记忆已过期（%s 天），丢弃", keep_days)
             self._entries.pop(key, None)
             self._dirty = True
             self._save_timer.start()
@@ -350,7 +350,7 @@ class PageMemory(QObject):
         total = int(entry.get("total") or 0)
         live_total = int(self._total or 0)
         if live_total > 0 and page > live_total:
-            log.info("课件续页：记忆页码 %s 超出当前总页数 %s，不提示", page, live_total)
+            log.info("续播：记忆页码 %s 超出当前总页数 %s，不提示", page, live_total)
             return None
         del total  # 只在上面那条越界判据里用到（记忆里的 total 作参考，不参与比较）
         # ⚠️ 返回**副本**：``_entries[key]`` 会在本场翻页时被 ``_remember_current``
@@ -470,11 +470,11 @@ class PageMemory(QObject):
         except FileNotFoundError:
             return
         except (OSError, ValueError):
-            log.warning("课件续页：记忆文件读不出来，按空表处理（%s）", self._file,
+            log.warning("续播：记忆文件读不出来，按空表处理（%s）", self._file,
                         exc_info=True)
             return
         if not isinstance(data, dict) or int(data.get("version") or 0) != FORMAT_VERSION:
-            log.info("课件续页：记忆文件版本不认识，丢弃重建")
+            log.info("续播：记忆文件版本不认识，丢弃重建")
             return
         entries = data.get("entries")
         if not isinstance(entries, dict):
@@ -503,12 +503,12 @@ class PageMemory(QObject):
             }
         self._entries = kept
         if len(kept) != len(entries):
-            log.info("课件续页：载入 %d 条记忆（另有 %d 条已过期）",
+            log.info("续播：载入 %d 条记忆（另有 %d 条已过期）",
                      len(kept), len(entries) - len(kept))
             self._dirty = True
             self._save()
         else:
-            log.debug("课件续页：载入 %d 条记忆", len(kept))
+            log.debug("续播：载入 %d 条记忆", len(kept))
 
     def _save(self) -> None:
         """整份重写（先写临时文件再 ``os.replace``，中途崩了不会留下半个 JSON）。"""
@@ -530,7 +530,7 @@ class PageMemory(QObject):
             os.replace(temp, self._file)
             self._dirty = False
         except OSError:
-            log.warning("课件续页：记忆写盘失败（%s）", self._file, exc_info=True)
+            log.warning("续播：记忆写盘失败（%s）", self._file, exc_info=True)
             try:
                 if temp.exists():
                     temp.unlink()

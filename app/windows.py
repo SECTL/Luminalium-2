@@ -301,8 +301,9 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
             "orientation": "vertical",
         },
     },
-    # 课件续页卡片（2026-11-08 用户指令：「把卡片放进主界面编辑器吧，点击卡片时
-    # 弄几个位置预设：左上左下右上右下还有中间」）。
+    # 续播提示卡片（2026-11-08 用户指令：「把卡片放进主界面编辑器吧，点击卡片时
+    # 弄几个位置预设：左上左下右上右下还有中间」；2026-11-22 表述改为通用，
+    # 原「课件续页卡片」→「续播提示卡片」）。
     #
     # 它不是控制条的一个区块、不参与 ``corners`` 编排 —— 登记成组纯粹是为了
     # **复用描述符驱动那条链路**：编辑器右侧面板取「选中对象各组的
@@ -314,7 +315,7 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
     # 控制条」的语义判据（组件名、预览组件解析都读它）。卡片两样都不是，
     # 给了就会把它错认成控制条。
     "resume_card": {
-        "display_name": "课件续页卡片",
+        "display_name": "续播提示卡片",
         "icon": "ic_fluent_history_20_regular",
         "inspector_items": [
             {
@@ -1866,7 +1867,7 @@ class WindowManager(QObject):
             # 把这块补进去（否则卡片既画不出来也点不动，点击会穿透到 PowerPoint
             # 在幻灯片上乱画）。控制条为此发 ``hitRectChanged``。
             #
-            # 课件续页卡片**不在这里挂**（2026-11-08 用户指令「让那个卡片显示在
+            # 续播提示卡片**不在这里挂**（2026-11-08 用户指令「让那个卡片显示在
             # 右下角」）：它固定贴窗口右下角、与控制条位置无关，挂在控制条里会把
             # 那条的 ``interactiveRect`` 撑满半个屏幕（区域塑形后整个右下角都吃
             # 点击、放映时点画面翻不了页）。它在 ``TopWindow.qml`` 根上，由
@@ -3208,7 +3209,7 @@ class WindowManager(QObject):
                     return True
             except RuntimeError:  # pragma: no cover - 组件已释放
                 continue
-        # 课件续页卡片（2026-11-08）：它挂在窗口根上、不在 ``_docks`` 里 ——
+        # 续播提示卡片（2026-11-08）：它挂在窗口根上、不在 ``_docks`` 里 ——
         # 不在这里认账的话，触屏上点它会被当成「点画布」，那一按要么落墨、
         # 要么穿透到幻灯片。与开发水印同一个处理位置。
         card = self._resume_card_rect_local()
@@ -4062,7 +4063,7 @@ class WindowManager(QObject):
                 wm_rect.translate(origin)
                 hit = wm_rect.contains(cursor)
         if not hit:
-            # 课件续页卡片同理（2026-11-08）：兜底模式下它也得点得动
+            # 续播提示卡片同理（2026-11-08）：兜底模式下它也得点得动
             card = self._resume_card_rect_local()
             if card is not None:
                 card_rect = QRect(card[0], card[1], card[2], card[3])
@@ -4090,7 +4091,7 @@ class WindowManager(QObject):
         return (scene.x(), scene.y(), scene.width(), scene.height())
 
     def _resume_card_rect_local(self) -> Optional[tuple[int, int, int, int]]:
-        """右下角**课件续页卡片**的矩形（顶层窗口局部坐标，逻辑像素）。
+        """右下角**续播提示卡片**的矩形（顶层窗口局部坐标，逻辑像素）。
 
         2026-11-08 用户指令「让那个卡片显示在右下角」之后，卡片不在控制条里
         —— 它固定贴窗口右下角，离控制条很远，硬并进 ``interactiveRect`` 会把
@@ -4149,7 +4150,7 @@ class WindowManager(QObject):
             bottom = min(limit_h, wm[1] + wm[3] + wm_padding)
             if right > x and bottom > y:
                 rects.append((x, y, right - x, bottom - y))
-        # 课件续页卡片（2026-11-08）：与开发水印同一套 —— 它挂在窗口根上，
+        # 续播提示卡片（2026-11-08）：与开发水印同一套 —— 它挂在窗口根上，
         # 不算进区域就是「画不出来 + 点不动」。余量给 ``region_padding`` 那份
         # （与控制条同档）：卡片带投影，边缘那圈淡影需要一点地方画。
         card = self._resume_card_rect_local()

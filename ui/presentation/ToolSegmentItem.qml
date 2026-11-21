@@ -12,19 +12,24 @@ import Luminalium
       高/2 时正好是**圆**（旧版式是「圆角矩形容器 + 圆角矩形选中板 + 下划线」）；
     * **没有下划线**（基类 contentItem 里那条 ``Indicator`` 随 contentItem 一起被换掉）。
 
-    ## 固定胶囊档（2026-10-09 用户指令「把小黑板的胶囊照搬 PPT 叠加层内的胶囊」）
+    ## 配色（2026-11-22 用户指令：默认跟主题，固定深壳收成可选）
 
-    取色从主题令牌整套换成当时小黑板 ``CapsuleButton`` 的**固定胶囊档**
-    （那个组件已于 2026-10-17 退役；2026-11-01 起小黑板胶囊直接复用本组件）：
-    图标 / 名称文本白 92%，圆钮选中白 15%、悬停白 8%、常态透明 ——
-    与容器（``ToolSegment``）的固定深壳配套，理由同源：控制条浮在任意
-    幻灯片内容上，浅色档的 ``Lumi.textPrimary`` 派生令牌（黑系）压在
-    深壳上等于没有。禁用 = 基类 ``enabled`` 契约原样（分段项恒启用，
+    默认：图标 / 名称文本 ``Lumi.textPrimary``，选中钮 ``Lumi.dockSegmentCheckedBg``
+    （textPrimary 15%）、悬停 ``Lumi.dockButtonHoverFill``（textPrimary 8%）——
+    与控制条底板、其余圆钮（``IconButton``）同族，深色主题是白系、浅色主题
+    是黑系，不会再出现「白图标压在一块浅色底板/深灰胶囊上」的组合。
+
+    ``fixedDarkShell: true`` 时退回 2026-10-09 的**固定胶囊档**（图标 / 名称
+    白 92%，圆钮选中白 15%、悬停白 8%、常态透明）：只给**恒深**的小黑板用
+    （2026-11-01 起小黑板直接复用本组件），理由与 ``ToolSegment`` 文件头同源。
+    宿主（``ToolSegment``）有同名属性；静态子项没走 Repeater，父链也不相通，
+    所以要在实例上显式绑定 ``fixedDarkShell: toolSegment.fixedDarkShell``。
+    禁用 = 基类 ``enabled`` 契约原样（分段项恒启用，
     小黑板那套 35% 降透明度在本组件没有对应物，不引入）。
 
     「选单开着」提示环（``segmentExpandedRing``）保留，**仍用
     ``Lumi.accent``**：强调色来自用户配置、深浅主题同值，且必须与
-    「选中 = 白圆」在色相上拉开 —— 换成白色会和选中态糊成一层，
+    选中钮在色相上拉开 —— 换成白色会和选中态糊成一层，
     用户反而读不出「再点一下能关选单」。
 
     ## 名称文本（``label`` / ``showLabel``）
@@ -58,8 +63,13 @@ Rin.SegmentedItem {
     id: root
 
     property int glyphSize: Lumi.dockIconSize
-    // 固定白 92%（固定胶囊档，2026-10-09，见文件头）
-    property color glyphColor: Qt.rgba(1, 1, 1, 0.92)
+    /*! 固定深色壳（见文件头）：true = 2026-10-09 的固定胶囊档（小黑板），
+        false = 跟主题（放映控制条）。宿主 ``ToolSegment`` 有同名属性。 */
+    property bool fixedDarkShell: false
+    // 跟主题时用 textPrimary；固定深壳档退回白 92%
+    property color glyphColor: root.fixedDarkShell
+        ? Qt.rgba(1, 1, 1, 0.92)
+        : Lumi.textPrimary
     property string tooltip: ""
     property int itemHeight: Lumi.dockHitSize
     /*! 按钮的名称文本（工具分页的 ``label``：「鼠标指针」「笔」「橡皮」）。 */
@@ -115,11 +125,15 @@ Rin.SegmentedItem {
             anchors.fill: parent
             // 短边的一半 —— 正方形时是正圆，带名称文本时是胶囊
             radius: Math.min(width, height) / 2
-            // 固定胶囊档（2026-10-09，见文件头）：选中白 15% / 悬停白 8%，
-            // 与 IconButton 深色档的 dockButtonActiveFill / HoverFill 同值
-            color: root.checked
-                ? Qt.rgba(1, 1, 1, 0.15)
-                : (root.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent")
+            // 固定深壳档（小黑板，2026-10-09）：选中白 15% / 悬停白 8%；
+            // 默认跟主题（2026-11-22）：与 IconButton 同一对令牌
+            color: root.fixedDarkShell
+                ? (root.checked
+                    ? Qt.rgba(1, 1, 1, 0.15)
+                    : (root.hovered ? Qt.rgba(1, 1, 1, 0.08) : "transparent"))
+                : (root.checked
+                    ? Lumi.dockSegmentCheckedBg
+                    : (root.hovered ? Lumi.dockButtonHoverFill : "transparent"))
             // 基类的按下反馈落在被压平的那块板上，这里自己补一份
             scale: root.pressed ? 0.95 : 1
 

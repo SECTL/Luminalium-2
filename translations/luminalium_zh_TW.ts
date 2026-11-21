@@ -168,48 +168,48 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="551"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="556"/>
         <source>粉笔</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="571"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="577"/>
         <source>橡皮</source>
         <translation>橡皮擦</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="612"/>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="718"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="618"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="724"/>
         <source>板已空</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="618"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="624"/>
         <source>撤销</source>
         <translation>復原</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="632"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="638"/>
         <source>重做</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="644"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="650"/>
         <source>导出</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="764"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="770"/>
         <source>退出全屏</source>
         <translation type="unfinished">離開全螢幕</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="764"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="770"/>
         <source>全屏</source>
         <translation type="unfinished">全螢幕</translation>
     </message>
     <message>
-        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="596"/>
+        <location filename="../ui/plugins/blackboard/BlackboardWindow.qml" line="602"/>
         <source>清空</source>
         <translation>全部清除</translation>
     </message>
@@ -356,32 +356,32 @@
 <context>
     <name>EraserModeCard</name>
     <message>
-        <location filename="../ui/presentation/EraserModeCard.qml" line="78"/>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="83"/>
         <source>橡皮</source>
         <translation>橡皮擦</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/EraserModeCard.qml" line="90"/>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="101"/>
         <source>粗细</source>
         <translation>粗細</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/EraserModeCard.qml" line="195"/>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="209"/>
         <source>整笔擦除</source>
         <translation>整筆擦除</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/EraserModeCard.qml" line="196"/>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="210"/>
         <source>碰到哪一笔就整笔删掉</source>
         <translation>碰到哪一筆就整筆刪掉</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/EraserModeCard.qml" line="201"/>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="215"/>
         <source>像素擦除</source>
         <translation>像素擦除</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/EraserModeCard.qml" line="202"/>
+        <location filename="../ui/presentation/EraserModeCard.qml" line="216"/>
         <source>只擦掉划过的那一截</source>
         <translation>只擦掉劃過的那一截</translation>
     </message>
@@ -770,27 +770,106 @@
 <context>
     <name>LogWindow</name>
     <message>
-        <location filename="../ui/LogWindow.qml" line="32"/>
+        <location filename="../ui/LogWindow.qml" line="46"/>
         <source>日志</source>
         <translation>日誌</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="88"/>
+        <location filename="../ui/LogWindow.qml" line="101"/>
+        <location filename="../ui/LogWindow.qml" line="152"/>
+        <source>灾难</source>
+        <extracomment>顶栏胶囊的数据源：顺序照 ClassIsland（严重 → 追踪）。</extracomment>
+        <translation>災難</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="103"/>
+        <location filename="../ui/LogWindow.qml" line="153"/>
+        <source>错误</source>
+        <translation>錯誤</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="105"/>
+        <location filename="../ui/LogWindow.qml" line="154"/>
+        <source>警告</source>
+        <translation>警告</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="107"/>
+        <location filename="../ui/LogWindow.qml" line="155"/>
+        <source>信息</source>
+        <translation>資訊</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="109"/>
+        <location filename="../ui/LogWindow.qml" line="156"/>
+        <source>调试</source>
+        <translation>偵錯</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="111"/>
+        <location filename="../ui/LogWindow.qml" line="157"/>
+        <source>追踪</source>
+        <translation>追蹤</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="297"/>
+        <source>已复制 %1 条日志</source>
+        <translation>已複製 %1 筆日誌</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="358"/>
+        <source>筛选日志…</source>
+        <translation>篩選日誌…</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="402"/>
+        <source>时间</source>
+        <translation>時間</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="409"/>
+        <source>等级</source>
+        <translation>等級</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="416"/>
+        <source>区域</source>
+        <translation>區域</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="423"/>
+        <source>内容</source>
+        <translation>內容</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="562"/>
+        <source>没有符合筛选条件的日志</source>
+        <translation>沒有符合篩選條件的日誌</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="584"/>
+        <source>清空日志</source>
+        <translation>清除日誌</translation>
+    </message>
+    <message>
+        <location filename="../ui/LogWindow.qml" line="591"/>
+        <source>复制选中</source>
+        <translation>複製選取項目</translation>
+    </message>
+    <message>
         <source>logs/luminalium.log · 只读，显示最新的 256 KB</source>
-        <translation>logs/luminalium.log · 唯讀，顯示最新的 256 KB</translation>
+        <translation type="vanished">logs/luminalium.log · 唯讀，顯示最新的 256 KB</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="93"/>
         <source>刷新</source>
-        <translation>重新整理</translation>
+        <translation type="vanished">重新整理</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="104"/>
         <source>打开日志目录</source>
-        <translation>開啟日誌資料夾</translation>
+        <translation type="vanished">開啟日誌資料夾</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="175"/>
+        <location filename="../ui/LogWindow.qml" line="561"/>
         <source>暂无日志内容</source>
         <translation>尚無日誌內容</translation>
     </message>
@@ -910,57 +989,77 @@
         <translation>底板下方的柔和陰影；純色背景下關掉會更清爽</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="351"/>
+        <location filename="../ui/settings/MainInterface.qml" line="354"/>
+        <source>续播</source>
+        <translation>續播</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="361"/>
+        <source>记住上次放映到哪一页</source>
+        <translation>記住上次放映到哪一頁</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="362"/>
+        <source>放映时，提示卡会显示上次放映到的页码。单击即可从该页继续放映。此功能仅读取文件，不会修改原文件，也不会连接到网络。记录仅保存在本机。</source>
+        <translation>放映時，提示卡會顯示上次放映的頁碼。按一下即可從該頁繼續放映。此功能只會讀取檔案，不會修改原始檔案，也不會連線到網路。記錄只會儲存在本機。</translation>
+    </message>
+    <message>
+        <source>放映时在提示卡上显示「上次放映到第 N 页」，点一下继续；只读不改原文件，不联网，记录只存本机</source>
+        <translation type="vanished">放映時在提示卡上顯示「上次放映到第 N 頁」，點一下繼續；唯讀不改原檔案，不連網，記錄只存本機</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="413"/>
+        <source>续播提示卡贴在屏幕的哪一处；也可以在主界面编辑器里点中卡片来改</source>
+        <translation>續播提示卡貼在螢幕的哪一處；也可以在主介面編輯器裡點中卡片來改</translation>
+    </message>
+    <message>
         <source>课件续页</source>
-        <translation>課件續頁</translation>
+        <translation type="vanished">課件續頁</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="358"/>
         <source>记住上次讲到哪一页</source>
-        <translation>記住上次講到哪一頁</translation>
+        <translation type="vanished">記住上次講到哪一頁</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="359"/>
         <source>放映时在右下角提示「上次停在第 N 页」，点一下跳过去；只读不改课件，不联网，记录只存本机</source>
-        <translation>放映時在右下角提示「上次停在第 N 頁」，點一下跳過去；只讀不改課件，不連網，記錄只存本機</translation>
+        <translation type="vanished">放映時在右下角提示「上次停在第 N 頁」，點一下跳過去；只讀不改課件，不連網，記錄只存本機</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="408"/>
+        <location filename="../ui/settings/MainInterface.qml" line="412"/>
         <source>卡片位置</source>
         <translation>卡片位置</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="409"/>
         <source>续页提示卡贴在屏幕的哪一处；也可以在主界面编辑器里点中卡片来改</source>
-        <translation>續頁提示卡貼在螢幕的哪一處；也可以在主介面編輯器裡點中卡片來改</translation>
+        <translation type="vanished">續頁提示卡貼在螢幕的哪一處；也可以在主介面編輯器裡點中卡片來改</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="422"/>
+        <location filename="../ui/settings/MainInterface.qml" line="426"/>
         <source>左上</source>
         <translation>左上</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="422"/>
+        <location filename="../ui/settings/MainInterface.qml" line="426"/>
         <source>右上</source>
         <translation>右上</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="422"/>
+        <location filename="../ui/settings/MainInterface.qml" line="426"/>
         <source>左侧居中</source>
         <translation>左側置中</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="423"/>
+        <location filename="../ui/settings/MainInterface.qml" line="427"/>
         <source>右侧居中</source>
         <translation>右側置中</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="423"/>
+        <location filename="../ui/settings/MainInterface.qml" line="427"/>
         <source>左下</source>
         <translation>左下</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="423"/>
+        <location filename="../ui/settings/MainInterface.qml" line="427"/>
         <source>右下</source>
         <translation>右下</translation>
     </message>
@@ -969,17 +1068,17 @@
         <translation type="vanished">放映時在控制列旁提示「上次停在第 N 頁」，點一下跳過去；只讀不改課件，不連網，記錄只存本機</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="378"/>
+        <location filename="../ui/settings/MainInterface.qml" line="382"/>
         <source>记录保留天数</source>
         <translation>記錄保留天數</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="379"/>
+        <location filename="../ui/settings/MainInterface.qml" line="383"/>
         <source>超过这个天数的记录会被自动清掉；0 表示永不清理</source>
         <translation>超過這個天數的記錄會被自動清掉；0 表示永不清理</translation>
     </message>
     <message>
-        <location filename="../ui/settings/MainInterface.qml" line="397"/>
+        <location filename="../ui/settings/MainInterface.qml" line="401"/>
         <source>清除全部记录</source>
         <translation>清除全部記錄</translation>
     </message>
@@ -1033,8 +1132,17 @@
     </message>
     <message>
         <location filename="../ui/MainInterfaceEditor.qml" line="531"/>
+        <source>续播提示卡片</source>
+        <translation>續播提示卡片</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1347"/>
+        <source>演示文稿.pptx</source>
+        <translation>簡報.pptx</translation>
+    </message>
+    <message>
         <source>课件续页卡片</source>
-        <translation>課件續頁卡片</translation>
+        <translation type="vanished">課件續頁卡片</translation>
     </message>
     <message>
         <location filename="../ui/MainInterfaceEditor.qml" line="536"/>
@@ -1062,11 +1170,6 @@
         <translation>螢幕邊緣（位置可選）</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1347"/>
-        <source>课件.pptx</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../ui/MainInterfaceEditor.qml" line="1772"/>
         <source>开</source>
         <translation>開</translation>
@@ -1078,19 +1181,91 @@
     </message>
 </context>
 <context>
+    <name>MultiInstanceDialog</name>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="46"/>
+        <source>Luminalium 2 已在运行</source>
+        <translation>Luminalium 2 已在執行</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="194"/>
+        <source>检测到程序已在运行</source>
+        <translation>偵測到程式已在執行</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="201"/>
+        <source>Luminalium 2 的另一个实例已经在后台运行。你可以在系统托盘区域点击图标打开「设置」进行配置。</source>
+        <translation>Luminalium 2 的另一個執行個體已在背景執行。你可以在系統匣區域點擊圖示開啟「設定」進行設定。</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="210"/>
+        <source>如果程序没有故障或设置错误，Luminalium 2 的主界面只会在放映时显示。
+
+如果仍然找不到旧实例，可能是出现了问题，可以尝试重新启动实例，或仍然启动新实例。</source>
+        <translation>如果程式沒有故障或設定錯誤，Luminalium 2 的主介面只會在放映時顯示。
+
+如果仍然找不到舊執行個體，可能是出現了問題，可以嘗試重新啟動執行個體，或仍然啟動新執行個體。</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="230"/>
+        <source>重新启动实例</source>
+        <translation>重新啟動執行個體</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="231"/>
+        <source>结束旧实例并启动此新实例</source>
+        <translation>結束舊執行個體並啟動此新執行個體</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="246"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="356"/>
+        <source>仍然启动</source>
+        <translation>仍然啟動</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="247"/>
+        <source>保留旧实例并强制启动新实例</source>
+        <translation>保留舊執行個體並強制啟動新執行個體</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="277"/>
+        <source>取消</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="325"/>
+        <source>不建议多开实例</source>
+        <translation>不建議多開執行個體</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="340"/>
+        <source>同时运行多个实例，可能会导致：资源占用翻倍、数据冲突或丢失、功能异常或崩溃等。
+
+因此，开发者不推荐多开实例。若你在生产环境中强行使用此类功能，开发者不对该行为产生的后果承担任何责任。</source>
+        <translation>同時執行多個執行個體，可能會導致：資源佔用翻倍、資料衝突或遺失、功能異常或當機等。
+
+因此，開發者不推薦多開執行個體。若你在生產環境中強行使用此類功能，開發者不對該行為產生的後果承擔任何責任。</translation>
+    </message>
+    <message>
+        <location filename="../ui/MultiInstanceDialog.qml" line="351"/>
+        <source>返回</source>
+        <translation>返回</translation>
+    </message>
+</context>
+<context>
     <name>PenPaletteCard</name>
     <message>
-        <location filename="../ui/presentation/PenPaletteCard.qml" line="84"/>
+        <location filename="../ui/presentation/PenPaletteCard.qml" line="88"/>
         <source>颜色</source>
         <translation>色彩</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PenPaletteCard.qml" line="85"/>
+        <location filename="../ui/presentation/PenPaletteCard.qml" line="89"/>
         <source>预览</source>
         <translation>預覽</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PenPaletteCard.qml" line="98"/>
+        <location filename="../ui/presentation/PenPaletteCard.qml" line="102"/>
         <source>粗细</source>
         <translation>粗細</translation>
     </message>
@@ -1321,73 +1496,73 @@
 <context>
     <name>PresentationDock</name>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="255"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="262"/>
         <source>更多操作</source>
         <translation>更多操作</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="272"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="279"/>
         <source>退出放映</source>
         <translation>結束放映</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="280"/>
-        <location filename="../ui/presentation/PresentationDock.qml" line="282"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="287"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="289"/>
         <source>放大镜</source>
         <translation>放大鏡</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1065"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1072"/>
         <source>上一页</source>
         <translation>上一頁</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1135"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1142"/>
         <source>下一页</source>
         <translation>下一頁</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1285"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1296"/>
         <source>缩放</source>
         <translation>縮放</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1287"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1298"/>
         <source>移位</source>
         <translation>移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1303"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1314"/>
         <source>放大</source>
         <translation>放大</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1305"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1316"/>
         <source>缩小</source>
         <translation>縮小</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1307"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1318"/>
         <source>恢复原始大小</source>
         <translation>恢復原始大小</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1309"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1320"/>
         <source>向上移位</source>
         <translation>向上移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1311"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1322"/>
         <source>向下移位</source>
         <translation>向下移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1313"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1324"/>
         <source>向左移位</source>
         <translation>向左移位</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1315"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1326"/>
         <source>向右移位</source>
         <translation>向右移位</translation>
     </message>
@@ -1423,44 +1598,60 @@
 <context>
     <name>ResumeCard</name>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="241"/>
         <source>上次停在第 %1 页</source>
-        <translation>上次停在第 %1 頁</translation>
+        <translation type="vanished">上次停在第 %1 頁</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="244"/>
         <source>已从第 %1 页开始放映</source>
-        <translation>已從第 %1 頁開始放映</translation>
+        <translation type="vanished">已從第 %1 頁開始放映</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="245"/>
         <source>点击从第 %1 页开始放映</source>
-        <translation>點擊從第 %1 頁開始放映</translation>
+        <translation type="vanished">點擊從第 %1 頁開始放映</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="251"/>
+        <location filename="../ui/presentation/ResumeCard.qml" line="258"/>
+        <source>上次放映到第 %1 页</source>
+        <translation>上次放映到第 %1 頁</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="264"/>
         <source>记录于 刚刚</source>
         <translation>記錄於 剛剛</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="254"/>
+        <location filename="../ui/presentation/ResumeCard.qml" line="267"/>
         <source>记录于 %1 分钟前</source>
         <translation>記錄於 %1 分鐘前</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="257"/>
+        <location filename="../ui/presentation/ResumeCard.qml" line="270"/>
         <source>记录于 %1 小时前</source>
         <translation>記錄於 %1 小時前</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="259"/>
+        <location filename="../ui/presentation/ResumeCard.qml" line="272"/>
         <source>记录于 %1 天前</source>
         <translation>記錄於 %1 天前</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/ResumeCard.qml" line="315"/>
+        <location filename="../ui/presentation/ResumeCard.qml" line="328"/>
+        <source>续播</source>
+        <translation>續播</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="415"/>
+        <source>继续放映</source>
+        <translation>繼續放映</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="434"/>
+        <source>已继续放映</source>
+        <translation>已繼續放映</translation>
+    </message>
+    <message>
         <source>课件续页</source>
-        <translation>課件續頁</translation>
+        <translation type="vanished">課件續頁</translation>
     </message>
 </context>
 <context>

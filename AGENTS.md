@@ -74,7 +74,7 @@ Luminalium 2，纯粹的演示注释工具：托盘 + 快捷面板，检测到 P
 | 改颜色 / 间距 / 尺寸 | `ui/Luminalium/Lumi.qml`（设计令牌单例） |
 | 取旁白 / 配音语种（含插件） | `app/narration.py`（`language(config)`；插件用 `ctx.narration_language()`），配置键 `narration.language` |
 | 改版本号 | `app/__init__.py` 的 `__version__`（唯一一处） |
-| 改设置标题栏「更多」菜单 / 日志窗口 | 菜单在 `ui/Settings.qml`；日志窗口 `ui/LogWindow.qml` + `bridge.readLogText`；创建快捷方式 `app/system_actions.py` |
+| 改设置标题栏「更多」菜单 / 日志窗口 | 菜单在 `ui/Settings.qml`；日志窗口 `ui/LogWindow.qml` + `bridge.readLogEntries`；创建快捷方式 `app/system_actions.py` |
 | 改崩溃 / 错误报告 | `app/error_handler.py` + `ui/ErrorReport/` |
 | 改翻译 | `translations/`（QML 侧 lupdate 生成；Python 侧 ts 手工维护，别用 lupdate 碰） |
 | 排查"控制条没出来/按钮没反应" | 按链路逐跳：探测 `ppt_controller` → `windows._on_presentation_state` → `bridge.Backend.apply_state` → QML |

@@ -63,6 +63,17 @@ QtObject {
     readonly property color surfaceBg: themeColors
         ? themeColors.backgroundAcrylicColor : "#2C2C2C"
 
+    /*! 窗口基色（``backgroundColor``）—— 比 ``surfaceBg`` 暗一档。
+
+        ``Rin.Dialog`` 是「正文 acrylic + 底栏 backgroundColor」的两层结构，
+        多实例对话框要照着 Dialog 高仿，底栏就得用这一档，别拿 ``surfaceBg``
+        当底栏（那样底栏反而比正文亮，和 Dialog 正好反过来）。 */
+    readonly property color windowBg: themeColors
+        ? themeColors.backgroundColor : "#202020"
+
+    readonly property int windowRadius: themeAppearance
+        ? themeAppearance.windowRadius : 8
+
     /*! 导航页的**实际**底色：RinUI ``NavigationView`` 的 appLayer 是一块
         ``layerColor``（深色 #3A3A3A @30%）盖在窗口基色（``pageBg``，深色
         #202020）上，页面本身透明，看到的就是这两层叠出来的色（深色约 #262626）
@@ -475,10 +486,10 @@ QtObject {
     readonly property int dockJumpEnterDuration: 400
     readonly property int dockJumpFadeDuration: durationFast
 
-    // ============================================================ 课件续页卡片
+    // ============================================================ 续播提示卡片
     //
-    // 2026-11-08 用户指令（参照 ClassIsland 的「课件续页」插件）：按课件文件
-    // 记住上次讲到第几页，控制条旁浮一张提示卡。组件是
+    // 2026-11-08 用户指令（参照 ClassIsland 的「课件续页」插件）：按演示文件
+    // 记住上次放到第几页，控制条旁浮一张提示卡。组件是
     // ``ui/presentation/ResumeCard.qml``，数据与持久化在 ``app/page_memory.py``。
     //
     // 它是**浮出层家族**的第四个成员（笔选单 / 放大镜选单 / 快速切页面板），

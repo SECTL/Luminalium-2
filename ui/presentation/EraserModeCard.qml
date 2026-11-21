@@ -18,6 +18,11 @@ import Luminalium
     藏起来 —— 「藏入口」比「点了没反应」更让人困惑，而模式值是持久配置，
     下次切回 self 引擎仍然作数。
 
+    2026-11-22 用户指令：com 引擎下**禁用「像素擦除」那一行** —— PowerPoint 的
+    放映橡皮没有「只擦一截」的接口，显示成能点只会让人以为是坏了。禁用态由
+    ``pixelEnabled`` 控制：整行降到 40% 不透明度、不吃 hover / 点击
+    （``enabled: false``），「整笔擦除」那行照常可选。
+
     ## 版式（与 PenPaletteCard 同一套 Fluent 2 flyout 语言）
 
     Caption 小标题 + 两行整宽的选项行（主标签 + 说明 caption 上下排），
@@ -82,6 +87,12 @@ Item {
     /*! 点了一行 —— 交给调用方去落 ``presentation.ink.eraser_mode``。 */
     signal modePicked(string mode)
 
+    /*! 「像素擦除」这一行能不能点。2026-11-22 用户指令：COM 画笔下禁用
+        （灰显 + 不吃输入）—— 那套橡皮没有「只擦一截」的接口。 */
+    property bool pixelEnabled: true
+    /*! 禁用态的不透明度（与 ``PenPaletteCard`` 同一档，不另建设计令牌）。 */
+    readonly property real disabledOpacity: 0.4
+
     /*! 像素橡皮的粗细档（逻辑 px 数组，``presentation.ink.eraser_widths``）。
         空数组 = 不出「粗细」那一段（连同它上面的分隔线）—— 与笔选单同一条
         规矩（翻页 pill 也挂着宿主组件，那里不给档位）。2026-10-08 用户指令：
@@ -96,8 +107,11 @@ Item {
     signal widthPicked(real value)
     readonly property bool hasWidths: widths !== undefined && widths.length > 0
     readonly property bool hasWidthSelection: selectedWidth > 0
-    /*! 「粗细」段只服务于像素擦除：整笔擦除碰到哪笔删哪笔，粗细无从谈起。 */
-    readonly property bool widthRowVisible: selectedMode === "pixel" && hasWidths
+    /*! 「粗细」段只服务于像素擦除：整笔擦除碰到哪笔删哪笔，粗细无从谈起。
+        像素擦除本身被禁用时（COM 画笔），它下面这排档位也一并收掉 ——
+        留一排「给不可用的模式调粗细」的控件只会更糊涂。 */
+    readonly property bool widthRowVisible: selectedMode === "pixel"
+        && hasWidths && pixelEnabled
 
     readonly property int shadowMargin: Lumi.dockPaletteShadowMargin
     readonly property int padding: Lumi.dockPalettePadding
@@ -213,6 +227,9 @@ Item {
                     是效果层，PySide 读不到）。 */
                 readonly property string modeValue: modelData.mode
                 readonly property bool modeSelected: root.selectedMode === modelData.mode
+                /*! 这一行是不是被禁用的（目前只有像素擦除：COM 引擎下不可用）。 */
+                readonly property bool modeDisabled: modelData.mode === "pixel"
+                    && !root.pixelEnabled
 
                 width: root.contentWidth
                 height: root.optionHeight
@@ -221,7 +238,10 @@ Item {
                 // 选中行不另铺底色 —— 选中由右沿的勾表达，叠底色会读成 hover。
                 color: option.hovered ? Lumi.dockButtonHoverFill : "transparent"
                 padding: 0
-                hoverEnabled: true
+                // 禁用行灰显且不吃 hover / 点击（2026-11-22 用户指令）
+                opacity: option.modeDisabled ? root.disabledOpacity : 1.0
+                enabled: !option.modeDisabled
+                hoverEnabled: !option.modeDisabled
                 onClicked: root.modePicked(option.modeValue)
 
                 Behavior on color {

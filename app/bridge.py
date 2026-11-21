@@ -121,7 +121,7 @@ SETTING_PATHS: Dict[str, str] = {
     "panel_section_shortcuts": "quick_panel.sections.shortcuts",
     "panel_section_footer": "quick_panel.sections.footer",
     "presentation_poll_interval_ms": "presentation.poll_interval_ms",
-    # 课件续页（2026-11-08）：按课件文件记住上次讲到第几页。开关与保留天数都
+    # 续播（2026-11-08）：按课件文件记住上次讲到第几页。开关与保留天数都
     # 登记成扁平键，设置页才读得到；记忆本体**不在 config 里**（见
     # ``app/page_memory.py`` 头注释：运行期状态不落 config，smoke 对
     # ``config/config.json`` 做字节级对比）。
@@ -385,7 +385,7 @@ class Backend(QObject):
     slideChanged = Signal()
     #: 幻灯片缩略图表变了（某几张就绪 / 整场复位，见 ``thumbUrls``）
     slideThumbsChanged = Signal()
-    #: 课件续页卡片的数据变了（显隐 / 页码 / 已跳转，见 ``pageMemory``）。
+    #: 续播卡片的数据变了（显隐 / 页码 / 已跳转，见 ``pageMemory``）。
     #: 2026-11-08：整份重发，不逐字段发 —— 一张卡片就那么几行字，维护六条信号
     #: 不如重读一次（与 ``slideThumbsChanged`` 同一条取舍）。
     pageMemoryChanged = Signal()
@@ -486,7 +486,7 @@ class Backend(QObject):
         #: 播完 COM 控制器之后接上（``attach_slide_thumbs``）—— 预览 / 自检这类
         #: 只造 Backend 的宿主没有它，此时 ``thumbUrls`` 是空表、请求静默忽略。
         self._slide_thumbs = None
-        #: 课件续页的页数记忆（``app/page_memory.py``）。同一个接法
+        #: 续播的页数记忆（``app/page_memory.py``）。同一个接法
         #: （``attach_page_memory``）：预览 / 自检宿主没有它，``pageMemory``
         #: 返回一份「不可见」的空表，卡片自然不出现。
         self._page_memory = None
@@ -585,6 +585,15 @@ class Backend(QObject):
         self._update_current_changelog = ""
         self._update_release_url = ""
         self._update_error = ""
+
+        # ------------------------------------------------ 日志窗口的增量缓存
+        #: 上次解析时的 ``(文件大小, mtime_ns, 清空切点)``。日志窗口每秒钟
+        #: 轮询一次，文件没动就直接回 ``changed=False``，不把上千个 dict 再搬
+        #: 过 QML 边界（见 :meth:`readLogEntries`）。
+        self._log_cache_key: Optional[tuple] = None
+        #: 「清空日志」的切点（文件字节偏移）。与 ClassIsland 一样只清**窗口里
+        #: 的显示**，日志文件本身不动 —— 偏移之前的行不再返回，之后新写的照常。
+        self._log_cleared_offset = 0
 
         # ---- 设置项注册表（内建常量 + 动态注册）----
         #: 动态注册的「扁平键 -> 点号路径」（插件走 ``register_setting_path``）。
@@ -1042,7 +1051,7 @@ class Backend(QObject):
             cache.urlsChanged.connect(self.slideThumbsChanged)
             self.slideThumbsChanged.emit()
 
-    # ---------------------------------------------------------- 课件续页（页数记忆）
+    # ---------------------------------------------------------- 续播（页数记忆）
     # 2026-11-08：按课件文件记住上次讲到第几页，控制条旁弹一张卡片提示
     # 「上次停在第 N 页 · 点这里跳过去」。数据与持久化全在 ``app/page_memory.py``，
     # 这里只是三面镜子：给 QML 的只读表（``pageMemory``）、两个交互槽
@@ -1069,7 +1078,7 @@ class Backend(QObject):
             }
         return memory.snapshot()
 
-    #: 课件续页卡片的数据（见 ``app/page_memory.py::PageMemory.snapshot``）。
+    #: 续播卡片的数据（见 ``app/page_memory.py::PageMemory.snapshot``）。
     pageMemory = Property("QVariantMap", _get_page_memory, notify=pageMemoryChanged)
 
     @Slot()
@@ -1089,7 +1098,7 @@ class Backend(QObject):
             return
         memory.mark_resumed()
         self.actionTriggered.emit(f"pager:goto:{page}")
-        log.info("课件续页：跳到第 %d 页", page)
+        log.info("续播：跳到第 %d 页", page)
 
     @Slot()
     def dismissPageMemory(self) -> None:
@@ -1197,7 +1206,7 @@ class Backend(QObject):
         if cache is not None:
             cache.set_show(bool(state.active), int(state.slide_total))
 
-        # 课件续页同理：**每一条状态快照**都要经过它 —— 翻页就是「上次停在哪」
+        # 续播同理：**每一条状态快照**都要经过它 —— 翻页就是「上次停在哪」
         # 的唯一来源，少一条就是少记一页（见 ``page_memory.PageMemory.observe``）。
         memory = self._page_memory
         if memory is not None:
@@ -2069,13 +2078,30 @@ class Backend(QObject):
     def closeLogWindow(self) -> None:
         self.logWindowCloseRequested.emit()
 
-    #: 日志窗口一次最多读这么多字节。日志轮转后单文件上限 1 MB，全量塞给
-    #: QML 的 TextEdit 在低配上会卡一拍；尾部 256 KB 对「刚出的问题」足够。
+    #: 日志窗口一次最多读这么多字节。日志轮转后单文件上限 1 MB，尾部 256 KB
+    #: 对「刚出的问题」足够；再往前的旧日志去「打开日志目录」里翻备份文件。
     _LOG_TAIL_BYTES = 256 * 1024
+    #: 一次最多解析这么多条（与 ClassIsland ``AppLogService.MaxLogEntries``
+    #: 同一档），超出的从最旧的丢。
+    _LOG_MAX_ENTRIES = 1000
 
-    @Slot(result=str)
-    def readLogText(self) -> str:
-        """日志窗口正文：当前日志文件的尾部。
+    #: ``setup_logging`` 的格式：
+    #: ``2026-11-21 10:00:00 [INFO   ] app.bridge: 消息``。
+    #: 等级左对齐补到 7 位（``%(levelname)-7s``），所以 ``\s*`` 要放在括号里。
+    _LOG_LINE_RE = re.compile(
+        r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[([A-Z]+)\s*\] ([^:]+): ?(.*)$"
+    )
+
+    @Slot(bool, result="QVariantMap")
+    def readLogEntries(self, force: bool = False) -> dict:
+        """日志窗口的数据源：把日志文件尾部解析成结构化条目。
+
+        ``force`` 为 False 且文件没动时只回 ``{"changed": False}`` —— 窗口每秒
+        轮询一次，没必要把上千个 dict 再搬过 QML 边界一遍。
+
+        每条 ``key`` 取该行在文件里的**绝对字节偏移**：轮询重读后条目顺序
+        可能变（新行追加、旧行被 256 KB 窗口挤掉），用自增序号当 key 会让
+        选中项错位，偏移则不会。
 
         ⚠️ 目录用 ``LOG_DIR`` 常量而不是 ``data_dir()/logs`` —— 日志写入
         （``application.setup_logging``）用的就是 ``LOG_DIR``，两边必须同一个
@@ -2083,17 +2109,88 @@ class Backend(QObject):
         """
         path = LOG_DIR / "luminalium.log"
         try:
-            with path.open("rb") as handle:
-                size = path.stat().st_size
-                if size > self._LOG_TAIL_BYTES:
-                    handle.seek(-self._LOG_TAIL_BYTES, os.SEEK_END)
-                    # 截断点多半落在一行中间，丢掉这半行免得读到半个时间戳。
-                    handle.readline()
-                data = handle.read()
+            stat = path.stat()
         except OSError:
+            cache_key = ("missing", self._log_cleared_offset)
+            if not force and cache_key == self._log_cache_key:
+                return {"changed": False}
+            self._log_cache_key = cache_key
+            return {"changed": True, "entries": []}
+
+        # 文件被轮转 / 手工截断后会比切点还小，此时旧切点已无意义。
+        if stat.st_size < self._log_cleared_offset:
+            self._log_cleared_offset = 0
+        cache_key = (stat.st_size, stat.st_mtime_ns, self._log_cleared_offset)
+        if not force and cache_key == self._log_cache_key:
+            return {"changed": False}
+        self._log_cache_key = cache_key
+        try:
+            entries = self._parse_log_tail(path, stat.st_size)
+        except OSError:
+            # stat 和 open 之间日志正好轮转 / 被删掉（UI 线程槽里不能让异常冒出去）。
             log.debug("读取日志失败: %s", path, exc_info=True)
-            return ""
-        return data.decode("utf-8", "replace")
+            entries = []
+        return {"changed": True, "entries": entries}
+
+    def _parse_log_tail(self, path: Path, size: int) -> list:
+        """把文件尾部按 ``setup_logging`` 的格式拆成条目。
+
+        没有时间戳开头的行（异常堆栈、多行消息）并进上一条的 ``message``；
+        尾部截断点之前的孤儿续行没有归属，直接丢弃。
+        """
+        start = max(0, size - self._LOG_TAIL_BYTES)
+        with path.open("rb") as handle:
+            handle.seek(start)
+            data = handle.read()
+        if start > 0:
+            # 截断点多半落在一行中间，丢掉这半行免得读到半个时间戳。
+            newline = data.find(b"\n")
+            if newline < 0:
+                return []
+            start += newline + 1
+            data = data[newline + 1:]
+
+        entries: list = []
+        current = None
+        offset = start
+        for raw in data.splitlines(keepends=True):
+            line_start = offset
+            offset += len(raw)
+            line = raw.decode("utf-8", "replace").rstrip("\r\n")
+            match = self._LOG_LINE_RE.match(line)
+            if match:
+                if current is not None:
+                    entries.append(current)
+                time_text, level, category, message = match.groups()
+                current = {
+                    "key": str(line_start),
+                    "time": time_text,
+                    "level": level,
+                    "category": category,
+                    "message": message,
+                }
+            elif current is not None:
+                current["message"] += "\n" + line
+        if current is not None:
+            entries.append(current)
+        if self._log_cleared_offset:
+            entries = [e for e in entries
+                       if int(e["key"]) >= self._log_cleared_offset]
+        return entries[-self._LOG_MAX_ENTRIES:]
+
+    @Slot()
+    def clearLogEntries(self) -> None:
+        """清空日志窗口的显示（**不动日志文件**）。
+
+        与 ClassIsland ``ButtonClearLogs_OnClick`` 清空内存集合同一语义：
+        切点记成当前文件大小，之前的行不再返回，之后新写的照常进来。
+        真正要删文件请去「打开日志目录」。
+        """
+        try:
+            self._log_cleared_offset = (LOG_DIR / "luminalium.log").stat().st_size
+        except OSError:
+            self._log_cleared_offset = 0
+        self._log_cache_key = None
 
     @Slot()
     def openLogDir(self) -> None:

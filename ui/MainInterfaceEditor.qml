@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import QtQuick.Shapes
 import RinUI as Rin
 import Luminalium
-// 课件续页卡片（2026-11-08）：编辑器里直接声明一份副本，所以要能按类型名找到它。
+// 续播提示卡片（2026-11-08）：编辑器里直接声明一份副本，所以要能按类型名找到它。
 // 控制条副本走 ``Loader`` + URL，不需要这条 import。
 import "presentation"
 
@@ -242,7 +242,7 @@ Rin.FluentWindowBase {
                 return Qt.rect(0, 0, 0, 0)
             var margin = target.shadowMargin !== undefined
                     ? Number(target.shadowMargin) : 0
-            // 续页卡片**不跟** ``presentation.scale``（它不是控制条的一部分，
+            // 续播提示卡**不跟** ``presentation.scale``（它不是控制条的一部分，
             // 组件里也没有 ``scale`` 变换）—— 它的 width/height 就是屏幕像素，
             // 再除一次 ``dockScaleFactor`` 会把框算小（2026-11-08）。
             var factor = (cornerName === editorWindow.resumeCardCorner)
@@ -447,7 +447,7 @@ Rin.FluentWindowBase {
     /*! 某个角落启用了哪些区块（组名列表，内建是 tools / actions / pager / exit，
         插件组名由插件自定）。
 
-        续页卡片不是角落，但它要复用「按名字查组」的整套链路（设置项、组件名、
+        续播提示卡不是角落，但它要复用「按名字查组」的整套链路（设置项、组件名、
         取景），所以这里给它一个**虚拟组列表** —— 与它注册的那个组同名
         （``resume_card``，见 ``windows.py::_BUILTIN_DOCK_GROUPS``）。 */
     function groupsOf(cornerName) {
@@ -482,7 +482,7 @@ Rin.FluentWindowBase {
         return undefined
     }
 
-    /*! 续页卡片当前的位置预设（编辑器副本用，与真机 ``TopWindow`` 同一份配置、
+    /*! 续播提示卡当前的位置预设（编辑器副本用，与真机 ``TopWindow`` 同一份配置、
         同一套回落：空串 / 未知值 → ``bottom_right``）。 */
     readonly property string resumeCardPreset: {
         var cfg = Backend.presentationConfig
@@ -491,7 +491,7 @@ Rin.FluentWindowBase {
         return value !== "" ? value : "bottom_right"
     }
 
-    /*! 续页卡片的**虚拟角落名**（2026-11-08 用户指令：「把卡片放进主界面编辑器吧，
+    /*! 续播提示卡的**虚拟角落名**（2026-11-08 用户指令：「把卡片放进主界面编辑器吧，
         点击卡片时弄几个位置预设：左上左下右上右下还有中间」）。
 
         卡片不是控制条、不参与 ``corners`` 编排，但在编辑器里它要**长得像一条可
@@ -504,7 +504,7 @@ Rin.FluentWindowBase {
         ``corners`` 配置的投影，真机按它建控制条）。它只在编辑器的选中态里流通。 */
     readonly property string resumeCardCorner: "resume_card"
 
-    /*! 选中项是不是续页卡片。 */
+    /*! 选中项是不是续播提示卡。 */
     readonly property bool selectedIsResumeCard: selectedCorner === resumeCardCorner
 
     function cornerHasTrait(cornerName, traitName) {
@@ -526,9 +526,9 @@ Rin.FluentWindowBase {
     function componentName(cornerName) {
         if (!cornerName || cornerName.length === 0)
             return ""
-        // 续页卡片不是控制条，没有注册组可查 —— 先短路（2026-11-08）。
+        // 续播提示卡不是控制条，没有注册组可查 —— 先短路（2026-11-08）。
         if (cornerName === resumeCardCorner)
-            return qsTr("课件续页卡片")
+            return qsTr("续播提示卡片")
         var entry = cornerGroupEntry(cornerName)
         if (entry === undefined) {
             console.warn("MainInterfaceEditor: 角落", cornerName,
@@ -824,7 +824,7 @@ Rin.FluentWindowBase {
         遍历 ``enabledCorners`` 的**倒序** —— 与绘制顺序相反，先命中后画
         （更靠上）的那条。 */
     function dockAt(planeX, planeY) {
-        // 续页卡片**先判**（2026-11-08）：它在窗口根级、压在其他副本之上
+        // 续播提示卡**先判**（2026-11-08）：它在窗口根级、压在其他副本之上
         // （z 更高），而且可能和控制条重叠 —— 重叠时用户点到的显然是看得见的
         // 那一张。判定用卡片本体的可见范围（扣掉投影余量），与控制条同一口径。
         var card = findDockItem(resumeCardCorner)
@@ -887,7 +887,7 @@ Rin.FluentWindowBase {
     function refreshFromConfig() {
         if (selectedCorner.length === 0)
             return
-        // 续页卡片不在 ``enabledCorners`` 里（它不是角落），别被下面那条
+        // 续播提示卡不在 ``enabledCorners`` 里（它不是角落），别被下面那条
         // 「选中的角落被关掉了」误伤（2026-11-08）。
         if (selectedCorner === resumeCardCorner) {
             updateFocusRect()
@@ -1032,7 +1032,7 @@ Rin.FluentWindowBase {
             readonly property real pathHoleH: holeValid ? dimMask.holeH : 1
 
             /*! 洞的圆角半径：控制条是**胶囊**（短边一半，与 ``selectionRing``
-                同一套几何）；续页卡片是**圆角卡片**（``dockPaletteRadius``，
+                同一套几何）；续播提示卡是**圆角卡片**（``dockPaletteRadius``，
                 跟着相机缩放）—— 拿短边一半会挖出一个包住整张卡的大椭圆
                 （2026-11-08 实测）。
                 镜像给自检读：``ShapePath`` 的子路径 Python 侧摸不到。 */
@@ -1319,7 +1319,7 @@ Rin.FluentWindowBase {
                     z: 10
                 }
 
-                // ======================================== 课件续页卡片副本
+                // ======================================== 续播提示卡片副本
                 // 2026-11-08 用户指令「把卡片放进主界面编辑器吧」。
                 //
                 // 与真机**同一份组件、同一条定位规则**：``positionPreset`` 直接
@@ -1344,7 +1344,7 @@ Rin.FluentWindowBase {
                     lastTotal: 41
                     currentTotal: 41
                     currentPage: 8
-                    fileName: qsTr("课件.pptx")
+                    fileName: qsTr("演示文稿.pptx")
                     ageSeconds: 180
                     resumed: false
 
@@ -1495,7 +1495,7 @@ Rin.FluentWindowBase {
             // ``FlyoutSurface`` 按短边钳成高/2），所以选中框也跟着取短边的一半 ——
             // 方角框套在胶囊外面，四个角上会空出一大块。
             //
-            // ⚠️ 续页卡片**不是**胶囊（它是圆角卡片，``dockPaletteRadius`` = 8），
+            // ⚠️ 续播提示卡**不是**胶囊（它是圆角卡片，``dockPaletteRadius`` = 8），
             // 跟着取短边一半会画成一个包住整张卡的大椭圆（2026-11-08 实测）。
             // 所以按选中对象分档：卡片用圆角，控制条用胶囊。
             radius: editorWindow.selectedIsResumeCard

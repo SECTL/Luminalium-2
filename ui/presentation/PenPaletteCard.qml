@@ -28,8 +28,12 @@ import Luminalium
 
     「粗细」段在 ``widths`` 为空时连同它上面那条分隔线一起不出（翻页 pill 也挂着
     本组件，那里不给档位）。选中档的读法与颜色相同：``selectedWidth`` 由调用方给，
-    卡片自己不存状态。com 引擎下这一行照样显示，但点了不生效（应用层忽略
-    ``pen_width:``，PowerPoint 的放映笔没有粗细接口）。
+    卡片自己不存状态。
+
+    2026-11-22 用户指令：com 引擎下**禁用**这一行的调节 —— PowerPoint 的放映笔
+    没有粗细接口，原先「显示但点了不生效」看起来像坏了。禁用态由 ``widthsEnabled``
+    控制：整段降到 40% 不透明度、不吃 hover / 点击（``enabled: false``），
+    分隔线与小标题照样在，用户仍看得出「这里本来能调」。
 
     动效照 Fluent 2 的 flyout enter：**淡入 + 从触发点外侧滑入**
     （卡片在条上方 → 从贴近条的位置向上浮），``OutQuint``（decelerate）；
@@ -102,8 +106,14 @@ Item {
     property real selectedWidth: 0
     /*! 点了一档粗细 —— 交给调用方经 Backend 发 ``pen_width:<px>``。 */
     signal widthPicked(real value)
+    /*! 粗细档能不能点。2026-11-22 用户指令：COM 画笔下整段禁用（灰显 +
+        不吃输入）—— 那套放映笔没有粗细接口，显示成能点只会让人以为坏了。 */
+    property bool widthsEnabled: true
     readonly property bool hasWidths: widths !== undefined && widths.length > 0
     readonly property bool hasWidthSelection: selectedWidth > 0
+    /*! 禁用态的不透明度（Fluent 2 的 disabled 档附近；不另建设计令牌，
+        只在选单内部用一次）。 */
+    readonly property real disabledOpacity: 0.4
 
     readonly property int shadowMargin: Lumi.dockPaletteShadowMargin
     readonly property int padding: Lumi.dockPalettePadding
@@ -334,11 +344,13 @@ Item {
             width: root.gridWidth
             height: 1
             color: Lumi.dockPaletteDivider
+            opacity: root.widthsEnabled ? 1.0 : root.disabledOpacity
         }
 
         Column {
             visible: root.hasWidths
             spacing: root.titleGap
+            opacity: root.widthsEnabled ? 1.0 : root.disabledOpacity
 
             Rin.Text {
                 objectName: "penPaletteTitleWidth"
@@ -369,7 +381,9 @@ Item {
                         radius: width / 2
                         color: "transparent"
                         padding: 0
-                        hoverEnabled: true
+                        // COM 画笔下整段禁用：不吃 hover / 点击（2026-11-22 用户指令）
+                        enabled: root.widthsEnabled
+                        hoverEnabled: root.widthsEnabled
                         onClicked: root.widthPicked(widthValue)
 
                         scale: widthTile.down ? 0.88 : 1.0

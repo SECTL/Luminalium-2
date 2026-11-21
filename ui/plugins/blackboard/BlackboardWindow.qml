@@ -533,6 +533,9 @@ Rin.FluentWindow {
             // onEraserOnChanged 同步回来
             ToolSegment {
                 id: toolSegment
+                // 黑板板面恒深，分段槽保持 2026-10-09 的固定深壳（白图标 /
+                // 白 15% 选中钮）；放映条已回到主题令牌（2026-11-22）
+                fixedDarkShell: true
                 currentIndex: boardWindow.eraserOn ? 1 : 0
                 onCurrentIndexChanged: boardWindow.eraserOn = currentIndex === 1
                 // ⚠️ contentWidth 必须显式给（2026-11-01 离屏实测）：两页是**静态
@@ -547,6 +550,8 @@ Rin.FluentWindow {
                 ToolSegmentItem {
                     id: chalkSegmentItem
                     objectName: "blackboardChalkButton"
+                    // 静态子项，父链不通；随宿主钉死深色档（见 ToolSegment 那处）
+                    fixedDarkShell: toolSegment.fixedDarkShell
                     icon.name: "ic_fluent_pen_20_regular"
                     label: qsTr("粉笔")
                     tooltip: label
@@ -567,6 +572,7 @@ Rin.FluentWindow {
                 ToolSegmentItem {
                     id: eraserSegmentItem
                     objectName: "blackboardEraserButton"
+                    fixedDarkShell: toolSegment.fixedDarkShell
                     icon.name: "ic_fluent_eraser_20_regular"
                     label: qsTr("橡皮")
                     tooltip: label

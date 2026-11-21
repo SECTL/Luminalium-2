@@ -803,18 +803,18 @@
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="351"/>
-        <source>课件续页</source>
-        <translation>課件續頁</translation>
+        <source>续播</source>
+        <translation>續播</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="358"/>
-        <source>记住上次讲到哪一页</source>
-        <translation>記住上次講到邊一頁</translation>
+        <source>记住上次放映到哪一页</source>
+        <translation>記住上次放映到邊一頁</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="359"/>
-        <source>放映时在右下角提示「上次停在第 N 页」，点一下跳过去；只读不改课件，不联网，记录只存本机</source>
-        <translation>放映時喺右下角提示「上次停喺第 N 頁」，撳一下跳過去；淨係讀唔改課件，唔連網，記錄淨係存喺本機</translation>
+        <source>放映时，提示卡会显示上次放映到的页码。单击即可从该页继续放映。此功能仅读取文件，不会修改原文件，也不会连接到网络。记录仅保存在本机。</source>
+        <translation>放映時，提示卡會顯示上次放映到嘅頁碼。撳一下就可以由嗰頁繼續放映。呢個功能淨係讀取檔案，唔會改原檔，亦都唔會連線到網絡。記錄淨係會存喺本機。</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="378"/>
@@ -838,8 +838,8 @@
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="410"/>
-        <source>续页提示卡贴在屏幕的哪一处；也可以在主界面编辑器里点中卡片来改</source>
-        <translation>續頁提示卡貼喺螢幕邊一忽；亦都可以喺主介面編輯器度撳中張卡嚟改</translation>
+        <source>续播提示卡贴在屏幕的哪一处；也可以在主界面编辑器里点中卡片来改</source>
+        <translation>續播提示卡貼喺螢幕邊一忽；亦都可以喺主介面編輯器度撳中張卡嚟改</translation>
     </message>
     <message>
         <location filename="../ui/settings/MainInterface.qml" line="427"/>
@@ -951,8 +951,13 @@
     </message>
     <message>
         <location filename="../ui/MainInterfaceEditor.qml" line="531"/>
-        <source>课件续页卡片</source>
-        <translation>課件續頁卡片</translation>
+        <source>续播提示卡片</source>
+        <translation>續播提示卡片</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1347"/>
+        <source>演示文稿.pptx</source>
+        <translation>簡報.pptx</translation>
     </message>
     <message>
         <location filename="../ui/MainInterfaceEditor.qml" line="545"/>
@@ -1291,18 +1296,18 @@
     <name>ResumeCard</name>
     <message>
         <location filename="../ui/presentation/ResumeCard.qml" line="132"/>
-        <source>上次停在第 %1 页</source>
-        <translation>上次停喺第 %1 頁</translation>
+        <source>上次放映到第 %1 页</source>
+        <translation>上次放映到第 %1 頁</translation>
     </message>
     <message>
         <location filename="../ui/presentation/ResumeCard.qml" line="135"/>
-        <source>已从第 %1 页开始放映</source>
-        <translation>已經由第 %1 頁開始放映</translation>
+        <source>已继续放映</source>
+        <translation>已經繼續放映</translation>
     </message>
     <message>
         <location filename="../ui/presentation/ResumeCard.qml" line="136"/>
-        <source>点击从第 %1 页开始放映</source>
-        <translation>撳一下由第 %1 頁開始放映</translation>
+        <source>继续放映</source>
+        <translation>繼續放映</translation>
     </message>
     <message>
         <location filename="../ui/presentation/ResumeCard.qml" line="142"/>
@@ -1326,8 +1331,8 @@
     </message>
     <message>
         <location filename="../ui/presentation/ResumeCard.qml" line="206"/>
-        <source>课件续页</source>
-        <translation>課件續頁</translation>
+        <source>续播</source>
+        <translation>續播</translation>
     </message>
 </context>
 <context>
@@ -2022,7 +2027,66 @@
     </message>
     <message>
         <source>暂无日志内容</source>
-        <translation>未有日誌內容</translation>
+        <translation>暫時未有日誌</translation>
+    </message>
+</context>
+<context>
+    <name>MultiInstanceDialog</name>
+    <message>
+        <source>Luminalium 2 已在运行</source>
+        <translation>Luminalium 2 已經喺度運行</translation>
+    </message>
+    <message>
+        <source>检测到程序已在运行</source>
+        <translation>偵測到程式已經喺度運行</translation>
+    </message>
+    <message>
+        <source>Luminalium 2 的另一个实例已经在后台运行。你可以在系统托盘区域点击图标打开「设置」进行配置。</source>
+        <translation>Luminalium 2 有另一個實例已經喺後台運行。你可以喺系統托盤點擊圖示打開「設定」嚟配置。</translation>
+    </message>
+    <message>
+        <source>如果程序没有故障或设置错误，Luminalium 2 的主界面只会在放映时显示。
+
+如果仍然找不到旧实例，可能是出现了问题，可以尝试重新启动实例，或仍然启动新实例。</source>
+        <translation>如果程式冇故障或者設定錯誤，Luminalium 2 嘅主介面只會喺放映時顯示。
+
+如果仍然搵唔到舊實例，可能係出咗問題，可以試吓重新啟動實例，或者照樣啟動新實例。</translation>
+    </message>
+    <message>
+        <source>重新启动实例</source>
+        <translation>重新啟動實例</translation>
+    </message>
+    <message>
+        <source>结束旧实例并启动此新实例</source>
+        <translation>結束舊實例並啟動呢個新實例</translation>
+    </message>
+    <message>
+        <source>仍然启动</source>
+        <translation>照樣啟動</translation>
+    </message>
+    <message>
+        <source>保留旧实例并强制启动新实例</source>
+        <translation>保留舊實例並強制啟動新實例</translation>
+    </message>
+    <message>
+        <source>取消</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>不建议多开实例</source>
+        <translation>唔建議多開實例</translation>
+    </message>
+    <message>
+        <source>同时运行多个实例，可能会导致：资源占用翻倍、数据冲突或丢失、功能异常或崩溃等。
+
+因此，开发者不推荐多开实例。若你在生产环境中强行使用此类功能，开发者不对该行为产生的后果承担任何责任。</source>
+        <translation>同時運行多個實例，可能會導致：資源佔用翻倍、資料衝突或者遺失、功能異常或者崩潰等。
+
+所以，開發者唔推薦多開實例。如果你喺生產環境強行使用呢類功能，開發者唔會對該行為產生嘅後果承擔任何責任。</translation>
+    </message>
+    <message>
+        <source>返回</source>
+        <translation>返回</translation>
     </message>
 </context>
 </TS>

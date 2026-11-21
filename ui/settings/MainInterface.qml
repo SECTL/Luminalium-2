@@ -332,32 +332,36 @@ Rin.FluentPage {
         }
     }
 
-    // ------------------------------------------------------------------ 课件续页
+    // ------------------------------------------------------------------ 续播
     //
-    // 2026-11-08 用户指令（参照 ClassIsland 的「课件续页」插件）：按课件文件
-    // 记住上次讲到第几页，下次放映同一份课件时在屏幕右下角弹一张卡片
-    // 「上次停在第 N 页 · 点这里跳过去」。
+    // 2026-11-08 用户指令（参照 ClassIsland 的「课件续页」插件）：按演示文件
+    // 记住上次放到第几页，下次放映同一份文件时在屏幕一角弹一张卡片
+    // 「上次放映到第 N 页 · 继续放映」。
+    //
+    // 2026-11-22 用户指令：表述从课堂场景改为通用（「课件续页」→「续播」）。
+    // 内部实现仍叫 page_memory —— 那是数据语义，不是界面文案。
     //
     // 归本页的理由：它调的是**放映时主界面上多出来的一块**，与位置 / 缩放 /
     // 外观同属「主界面长什么样」。数据与持久化在 ``app/page_memory.py``，
     // 卡片是 ``ui/presentation/ResumeCard.qml``。
     //
-    // 三条承诺写进描述里（用户看得见的地方）：只读不改课件、不联网只存本机、
+    // 三条承诺写进描述里（用户看得见的地方）：只读不改原文件、不联网只存本机、
     // 历史留 N 天 —— 它们是这个功能的卖点，也是实现的红线。
     Rin.Text {
         Layout.fillWidth: true
         Layout.topMargin: 10
         typography: Rin.Typography.BodyStrong
-        text: qsTr("课件续页")
+        text: qsTr("续播")
     }
 
     Rin.SettingCard {
         objectName: "mainInterfacePageMemory"
 
         Layout.fillWidth: true
-        title: qsTr("记住上次讲到哪一页")
-        description: qsTr("放映时在右下角提示「上次停在第 N 页」，点一下跳过去；"
-                          + "只读不改课件，不联网，记录只存本机")
+        title: qsTr("记住上次放映到哪一页")
+        description: qsTr("放映时，提示卡会显示上次放映到的页码。单击即可从该页继续放映。"
+                          + "此功能仅读取文件，不会修改原文件，也不会连接到网络。"
+                          + "记录仅保存在本机。")
         icon.name: "ic_fluent_history_20_regular"
 
         Rin.Switch {
@@ -406,7 +410,7 @@ Rin.FluentPage {
         Layout.fillWidth: true
         visible: Backend.settings.presentation_page_memory !== false
         title: qsTr("卡片位置")
-        description: qsTr("续页提示卡贴在屏幕的哪一处；"
+        description: qsTr("续播提示卡贴在屏幕的哪一处；"
                           + "也可以在主界面编辑器里点中卡片来改")
         icon.name: "ic_fluent_position_to_back_20_regular"
 

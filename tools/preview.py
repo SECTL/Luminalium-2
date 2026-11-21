@@ -15,6 +15,8 @@
 - ``splash_light.png``     —— 同上，浅色版。用 ``LUMI_PREVIEW_THEME=light`` 跑；
   此时别的窗口一律不截图（否则会把上面那些深色预览图覆盖成浅色的）
 - ``debug_window.png``     —— 调试窗口（入口是设置标题连点 10 次，不在导航里）
+- ``multi_instance.png`` / ``multi_instance_warning.png`` —— 多实例询问窗
+  （``ui/MultiInstanceDialog.qml``）：第二张是「不建议多开」警告框展开态
 - ``error_report_crash.png`` / ``error_report_error.png`` —— 错误 / 崩溃报告窗
   （``ui/ErrorReport/ErrorReportWindow.qml``）的两档对照：同一张窗，只有文案 /
   表情 / Split Button 的主操作不同（崩溃 = 重新启动，错误 = 忽略）。
@@ -101,10 +103,10 @@
   相交覆盖 / 擦除透明度）。深色常态全量档自动带出 ``ink.png``；
   ``LUMI_PREVIEW_INK=1`` 只出这一张（快速迭代用），配
   ``LUMI_PREVIEW_THEME=light`` 出浅色版 ``ink_light.png``。
-- ``LUMI_PREVIEW_RESUME=1`` —— 把**课件续页卡片**（``ui/presentation/ResumeCard.qml``，
+- ``LUMI_PREVIEW_RESUME=1`` —— 把**续播提示卡片**（``ui/presentation/ResumeCard.qml``，
   2026-11-08）摊开，输出 ``top_window_resume.png``；配 ``LUMI_PREVIEW_THEME=light``
   出浅色版 ``top_window_resume_light.png``。数据走真链路：内存态 ``PageMemory``
-  （``persist=False``，不碰磁盘）+ 一条「测试课件.pptx 上次停在第 8 页」的假记录，
+  （``persist=False``，不碰磁盘）+ 一条「演示文稿.pptx 上次放映到第 8 页」的假记录，
   卡片读的还是 ``Backend.pageMemory``。这一档同样会关掉左下角开发水印（它正好
   画在左条那一侧，出图看着像卡片被裁了一块）。
 
@@ -281,18 +283,18 @@ JUMP_LIGHT = IS_LIGHT and PREVIEW_JUMP
 if JUMP_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 同上
 
-#: 课件续页卡片（``ui/presentation/ResumeCard.qml``）预览：把卡片摊开，输出
+#: 续播提示卡片（``ui/presentation/ResumeCard.qml``）预览：把卡片摊开，输出
 #: ``top_window_resume.png``（浅色档 ``top_window_resume_light.png``）。
 #:
 #: 2026-11-08。数据是**真链路**：``main()`` 里给 ``Backend`` 接一个内存态
-#: ``PageMemory``（``persist=False``，不碰磁盘），塞一条「这份课件上次停在第 8 页」
-#: 的假记录，再由 ``apply_state`` 走正常的状态流 —— 卡片读的就是
-#: ``Backend.pageMemory``，与真机同一条路。伪造的只有「哪份课件 / 停在哪页」。
+#: ``PageMemory``（``persist=False``，不碰磁盘），塞一条「这份演示文件上次放映到
+#: 第 8 页」的假记录，再由 ``apply_state`` 走正常的状态流 —— 卡片读的就是
+#: ``Backend.pageMemory``，与真机同一条路。伪造的只有「哪份文件 / 停在哪页」。
 #:
 #: ⚠️ 与 ``PREVIEW_JUMP`` 同一条：展开时把 ``animate`` 关掉 —— 离屏抓帧时
 #: ``Behavior`` 的时间轴推进不可靠，会停在 ``reveal`` 0（整块不显示）。
 PREVIEW_RESUME = os.environ.get("LUMI_PREVIEW_RESUME", "") not in ("", "0")
-#: 浅色主题 **+** 续页卡片 = 只出那一张。理由同 ``PEN_LIGHT``：卡片底色 / 描边 /
+#: 浅色主题 **+** 续播提示卡 = 只出那一张。理由同 ``PEN_LIGHT``：卡片底色 / 描边 /
 #: 强调色页码都取主题色，浅色下对比度只能靠这张图核验。
 RESUME_LIGHT = IS_LIGHT and PREVIEW_RESUME
 if RESUME_LIGHT:
@@ -550,10 +552,10 @@ def main() -> int:
         thumbs.request(1, 41, burst=41)
         ready = sum(1 for url in thumbs.urls if url)
         print(f"[THUMBS] 假缩略图 {ready}/{len(thumbs.urls)} -> {thumbs.directory}")
-    # ---- 课件续页卡片（真 PageMemory + 假记录，见 PREVIEW_RESUME）----
+    # ---- 续播提示卡片（真 PageMemory + 假记录，见 PREVIEW_RESUME）----
     # 2026-11-08。三条与真机一致的要点：
     # * ``persist=False``：预览跑在用户真实数据根上，为一张假卡片写一条假记录
-    #   不划算（``page_memory.json`` 里留一条「测试课件.pptx」纯属垃圾）；
+    #   不划算（``page_memory.json`` 里留一条「演示文稿.pptx」纯属垃圾）；
     # * 顺序：先接记忆、再喂状态 —— ``apply_state`` 是每一条状态快照的入口，
     #   接晚了这一条就没人 observe（与缩略图的 ``set_show`` 同一个讲究）；
     # * 假记录直接写进 ``_entries``：真正的写入口 ``_remember_current`` 要
@@ -561,17 +563,17 @@ def main() -> int:
     if PREVIEW_RESUME:
         memory = PageMemory(config, persist=False)
         backend.attach_page_memory(memory)
-        key = deck_key(r"D:\课件\测试课件.pptx", "测试课件.pptx")
+        key = deck_key(r"D:\演示\演示文稿.pptx", "演示文稿.pptx")
         memory._entries[key] = {
-            "path": r"D:\课件\测试课件.pptx",
-            "name": "测试课件.pptx",
+            "path": r"D:\演示\演示文稿.pptx",
+            "name": "演示文稿.pptx",
             "page": 8,
             "total": 41,
             # 3 分钟前：让「记录于 N 分钟前」那一行走分钟档，而不是「刚刚」
             "at": time.time() - 180,
         }
         memory.observe(PresentationState(active=True, slide_index=26, slide_total=41))
-        memory._adopt_deck(r"D:\课件\测试课件.pptx", "测试课件.pptx")
+        memory._adopt_deck(r"D:\演示\演示文稿.pptx", "演示文稿.pptx")
         # 走一遍「真的翻到下一页」：记忆的更新入口就是这条，不伪造它的话
         # ``_moved`` 还是 False，卡片显示的是 ``_entries`` 里那条（第 8 页）——
         # 但真机上进场后翻页会把这条刷成本场当前页，抓图要的是**翻过页之后**
@@ -986,6 +988,27 @@ def main() -> int:
             error_report.setPosition(OFFSCREEN_X - 500, OFFSCREEN_Y - 1800)
             error_report.show()
 
+    # 多实例询问窗（2026-11-22）：真相是 ``application.py::_guard_multi_instance``
+    # 在启动段用 QQmlComponent 现建。预览里照同样的方式建，但**不接信号** ——
+    # 这张图只核版式，按钮按下去没有应用层可连（连了反而会把预览进程关掉）。
+    multi_instance = None
+    multi_instance_component = QQmlComponent(
+        rinui.engine,
+        QUrl.fromLocalFile(str(UI_DIR / "MultiInstanceDialog.qml")),
+    )
+    if multi_instance_component.isError():
+        for error in multi_instance_component.errors():
+            print("MULTI INSTANCE WINDOW ERROR:", error.toString())
+    else:
+        multi_instance = multi_instance_component.createWithInitialProperties({"visible": True})
+        if multi_instance is None:
+            for error in multi_instance_component.errors():
+                print("MULTI INSTANCE WINDOW CREATE ERROR:", error.toString())
+        else:
+            multi_instance._dialog_component = multi_instance_component  # 防引擎回收
+            multi_instance.setPosition(OFFSCREEN_X - 600, OFFSCREEN_Y - 2400)
+            multi_instance.show()
+
     # 各设置页单独渲染：用临时宿主窗口 + Loader 承载，逐页跑一遍
     page_hosts = _build_page_hosts(rinui.engine)
 
@@ -1054,6 +1077,8 @@ def main() -> int:
             if ink_scene is not None:
                 # 自建批注墨迹场景（2026-10-07 todo 11）：深色常态全量档带上
                 targets.append(("ink.png", ink_scene))
+            if multi_instance is not None:
+                targets.append(("multi_instance.png", multi_instance))
 
         if os.environ.get("LUMI_PREVIEW_SIZES"):
             for name, window in targets:
@@ -1063,6 +1088,23 @@ def main() -> int:
 
         for name, window in targets:
             _grab_pair(window, name)
+
+        # 多实例询问窗的第二档：「不建议多开」警告框盖上来。只在深色常态全量档
+        # 出图（别的档位根本没把这张窗放进 targets）。
+        if (multi_instance is not None and not ONLY_SPLASH and not PAGE_ONLY
+                and not EDITOR_LIGHT and not PEN_LIGHT and not JUMP_LIGHT
+                and not ERASER_LIGHT and not ZOOM_LIGHT and not RESUME_LIGHT
+                and not INK_LIGHT and not PREVIEW_INK):
+            multi_instance.setProperty("warningVisible", True)
+            # ⚠️ 警告层现在是 ``Rin.Dialog``，入场有 opacity / scale 动画；
+            # 设完属性立刻 grab 会抓到一层还没显示出来的空窗。空跑半秒
+            # （processEvents + sleep，见下方墨迹烘干的同款理由）等动画落地。
+            for _ in range(50):
+                QCoreApplication.processEvents()
+                time.sleep(0.01)
+            _grab_pair(multi_instance, "multi_instance_warning.png")
+            multi_instance.setProperty("warningVisible", False)
+            QCoreApplication.processEvents()
 
         # 报告窗两档对照图。放在最后：它要**改** ``ErrorHandler`` 的状态（切换
         # 崩溃 / 错误），放在别的窗口抓图之前会把中途状态漏出去。

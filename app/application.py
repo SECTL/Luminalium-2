@@ -47,14 +47,16 @@ from __future__ import annotations
 
 import logging
 import logging.handlers
+import os
 import subprocess
 import sys
 import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from PySide6.QtCore import QCoreApplication, QTimer, Qt
+from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer, Qt, QUrl
 from PySide6.QtGui import QColor, QCursor
+from PySide6.QtQml import QQmlComponent
 from PySide6.QtWidgets import QApplication, QMenu
 from RinUI import BackdropEffect, RinUIWindow, Theme
 from RinUI.core.config import is_win10, is_win11
@@ -62,6 +64,7 @@ from RinUI.core.config import is_win10, is_win11
 from . import __version__
 from . import echo_cave
 from . import i18n
+from . import multi_instance
 from . import rinui_patch
 from .bridge import Backend
 from .config import Config
@@ -302,6 +305,9 @@ class LuminaliumApplication:
     """把各模块拼装成一个可运行的应用。"""
 
     def __init__(self, argv: list[str]) -> None:
+        # 多实例询问窗里点了「取消」时置位：装配段提前收尾，``run()`` 空跑一圈
+        # 事件循环后退出（直接 return 会在解释器收尾时崩 0xC0000409）。
+        self._startup_cancelled = False
         # 插件加载阶段一（Wave 3 任务 11）：collect_defaults 必须在 Config()
         # 构造**之前**跑 —— 插件默认值只能随 extra_defaults 在构造时注入默认
         # 层，错过这个窗口就永远进不去（两阶段时机的为什么见 loader 头注释）。
@@ -369,7 +375,7 @@ class LuminaliumApplication:
         # 见 app/slide_thumbs.py。
         self.slide_thumbs = SlideThumbCache(self.ppt, self.backend)
         self.backend.attach_slide_thumbs(self.slide_thumbs)
-        # 课件续页（2026-11-08）：按课件文件记住上次讲到第几页。与缩略图缓存
+        # 续播（2026-11-08）：按课件文件记住上次讲到第几页。与缩略图缓存
         # 同一个装配位 —— 一头是 PptController 的消费者（stateChanged 给页码、
         # deckReady 给课件身份），一头是桥的数据源（``Backend.pageMemory``）。
         # 见 app/page_memory.py。
@@ -452,6 +458,17 @@ class LuminaliumApplication:
             rinui=self.rinui,
         )
         self.windows.attach_panel(self.rinui.root_window)
+
+        # ---- 多实例检测（2026-11-22，照 Luminalium 1）----
+        # ⚠️ 必须排在 ``WindowManager`` 之后：询问窗建完要立刻
+        # ``_attach_to_rinui``，RinUI 不接管的话 ``WS_CAPTION`` 会变成真的
+        # 原生标题栏压在自绘标题栏上（2026-11-22 用户反馈「你这也不是 RinUI
+        # 窗口啊」就是这个）。仍然排在控制条 / 插件之前 —— 取消启动时那些
+        # 都还没建。
+        self._guard_multi_instance()
+        if self._startup_cancelled:
+            return
+
         # 2026-10-13 修复「软件内自带插件有时候不显示在胶囊上」：
         # 先登记内建编辑器组、内建窗口句柄与内建动作动词（三者均幂等，且必须在
         # load_plugins 末尾 registry.freeze() 之前入表），随后立即跑 load_plugins，
@@ -490,6 +507,109 @@ class LuminaliumApplication:
         self.windows.load_windows()
 
         self._wire()
+
+    # ============================================================ 多实例检测
+
+    def _guard_multi_instance(self) -> None:
+        """检测同入口的其它实例，按 Luminalium 1 的规则处理。
+
+        三种走向（与 L1 一致）：
+
+        * **重启拉起的本进程** —— 不弹框，等旧实例自己退（最多 3s），超时才
+          kill。重启是排班交接，不是用户主动多开；
+        * **用户再点一次程序** —— 弹 ``ui/MultiInstanceDialog.qml`` 询问：
+          重启旧实例 / 仍然启动 / 取消；
+        * **取消** —— 置 ``_startup_cancelled``，``__init__`` 提前收尾。
+
+        检测本身（``app/multi_instance.py``）失败一律静默放行：多实例检测是
+        防呆，不是启动的前置条件。
+        """
+        if multi_instance.is_disabled():
+            log.info("多实例检测已禁用（%s）", multi_instance.DISABLE_ENV)
+            return
+
+        # 重启标记必须先读：旧实例通常就是本进程的父进程，``find_existing_instances``
+        # 会主动跳过父进程，光看扫描结果会误判成「没有冲突」然后把对话框弹出来。
+        restart, restart_pid = multi_instance.consume_restart_request()
+
+        try:
+            pids = multi_instance.find_existing_instances()
+        except Exception:
+            log.exception("多实例检测失败，按无冲突继续启动")
+            return
+
+        if restart:
+            wait_pids = list(pids)
+            if restart_pid and restart_pid not in wait_pids:
+                wait_pids.append(restart_pid)
+            if wait_pids:
+                log.info("检测到重启交接，等待旧实例退出: %s", wait_pids)
+                alive = multi_instance.wait_for_exit(wait_pids)
+                if alive:
+                    log.warning("旧实例未在限时内退出，强制结束: %s", alive)
+                    multi_instance.terminate_instances(alive)
+            return
+
+        if not pids:
+            return
+
+        log.warning("检测到已有实例: %s", pids)
+        self._ask_multi_instance(pids)
+
+    def _ask_multi_instance(self, pids: list[int]) -> None:
+        """弹询问窗并等用户决定；窗口只发信号，不直接引用 ``multi_instance``。"""
+        component = QQmlComponent(
+            self.rinui.engine,
+            QUrl.fromLocalFile(str(UI_DIR / "MultiInstanceDialog.qml")),
+        )
+        if component.isError():
+            for error in component.errors():
+                log.error("多实例窗口加载失败: %s", error.toString())
+            return
+
+        window = component.create()
+        if window is None:
+            for error in component.errors():
+                log.error("多实例窗口创建失败: %s", error.toString())
+            return
+
+        # 持有引用，防止引擎把组件 / 窗口当垃圾回收；局部 QEventLoop 让启动流程
+        # 停在用户决定之前 —— 此时控制条 / 插件都还没建。
+        self._multi_instance_component = component
+        self._multi_instance_window = window
+
+        # RinUI 接管：不接管的话 FramelessWindowHint 被摘掉后 WS_CAPTION 会
+        # 露出原生标题栏，叠在 QML 自绘的 Fluent 标题栏上（用户 2026-11-22
+        # 反馈的「不是 RinUI 窗口」）。
+        if not self.windows._attach_to_rinui(window):
+            self.windows._keep_frameless(window)
+
+        decision = {"value": "cancel"}
+        loop = QEventLoop()
+
+        def finish(value: str) -> None:
+            if loop.isRunning():
+                loop.quit()
+            decision["value"] = value
+            window.hide()
+
+        window.restartRequested.connect(lambda: finish("restart"))
+        window.continueRequested.connect(lambda: finish("continue"))
+        window.cancelRequested.connect(lambda: finish("cancel"))
+
+        window.show()
+        window.requestActivate()
+        loop.exec()
+
+        # 按仓库约定「窗口只藏不销毁」：这次决定之后不会再弹，但也不主动
+        # deleteLater —— QML 窗口在解释器收尾阶段销毁更容易踩 Qt 的收尾时序。
+        window.hide()
+
+        if decision["value"] == "restart":
+            multi_instance.terminate_instances(pids)
+        elif decision["value"] == "cancel":
+            log.info("用户取消：保留已有实例，本次启动退出")
+            self._startup_cancelled = True
 
     # ================================================================ 连接
 
@@ -541,6 +661,13 @@ class LuminaliumApplication:
         用户只会看到一个已经 100% 的窗口一闪而过。串起来之后每个 ``_boot_*``
         之间都会回一次事件循环，启动画面才真的画得出来。
         """
+        if self._startup_cancelled:
+            # 询问窗点了「取消」：装配段已经提前收尾（控制条 / 插件 / 启动画面
+            # 都还没建；托盘与 WindowManager 已存在，但不弹任何窗口）。
+            # 仍然让 Qt 跑一圈再退 —— 直接 return 会让 QML 窗口和 RinUI 的监听器
+            # 在解释器退出时才销毁，实测会在收尾阶段崩一次（0xC0000409）。
+            QTimer.singleShot(0, self.qt_app.quit)
+            return self.qt_app.exec()
         self.windows.show_splash()
         self._splash(0.15, i18n.tr("Splash", "初始化"))
         # 第一步也要占满一个节拍 —— 否则 ``singleShot(0)`` 会在同一帧就把进度推到
@@ -712,12 +839,18 @@ class LuminaliumApplication:
         creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
         )
+        # 告诉新进程「你是重启拉起来的」：多实例检测看到这两个环境变量就只做
+        # 交接等待，不弹「你多开了」的询问框（见 app/multi_instance.py）。
+        env = os.environ.copy()
+        env[multi_instance.RESTART_ENV] = "1"
+        env[multi_instance.RESTART_PID_ENV] = str(os.getpid())
         try:
             subprocess.Popen(
                 cmd,
                 cwd=cwd,
                 close_fds=True,
                 creationflags=creationflags,
+                env=env,
             )
         except OSError:
             # 拉不起来就别退了 —— 退了用户手里就什么都不剩了。
@@ -1079,7 +1212,7 @@ class LuminaliumApplication:
         # 缩略图缓存是纯临时物（下一次放映会重新导），退出时顺手清掉，
         # 别在数据目录里留一堆没人认领的 PNG。
         self.slide_thumbs.clear()
-        # 课件续页的记忆**不能清**（它要跨会话保留），只把还没落盘的尾巴写掉。
+        # 续播的记忆**不能清**（它要跨会话保留），只把还没落盘的尾巴写掉。
         # 退出放映时 ``PageMemory.observe`` 已经会强制落一次，这里是兜底
         # （比如放映中途直接退出程序）。
         self.page_memory.flush()

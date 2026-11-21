@@ -15,16 +15,17 @@ import Luminalium
     * 两个分页各自是**圆形**（见 ``ToolSegmentItem``），选中的那页浮现一枚
       与容器同高的圆钮 —— 所以容器高 = 分页高 = 内容高，上下不留 padding。
 
-    2026-10-09 用户指令「把小黑板的胶囊照搬 PPT 叠加层内的胶囊」：
-    容器底色从 ``Lumi.dockSegmentBg``（主题令牌，浅色档是黑 6%）换成
-    **固定深色壳**，数值取自当时的小黑板胶囊（黑 55% + 白 18% 细边；黑板
-    那版胶囊后来重做过，2026-11-01 起小黑板反过来直接复用本组件，这两个值
-    以这里为准）。理由与黑板同源：控制条浮在
-    **任意幻灯片内容**之上，主题自适应的浅底压在亮幻灯片上会失去对比，
-    固定深壳在亮暗幻灯片上都立得住（小黑板头注释 2026-10-09 条目的
-    「黑板就是深色物件」类推到「放映画面颜色不可预知」）。⚠️ 描边同样
-    **不能用** ``Lumi.hairline``（浅色档黑 8%，压在深壳上等于没有），
-    用固定的白 hairline。
+    2026-10-09 用户指令「把小黑板的胶囊照搬 PPT 叠加层内的胶囊」曾把容器
+    底色换成**固定深色壳**（黑 55% + 白 18% 细边）。2026-11-22 用户指令又把
+    它拆成可选项：放映控制条的底色回到主题令牌 ``Lumi.dockSegmentBg``
+    （深色主题白 6% / 浅色主题黑 6%，与底板同族）—— 固定深壳在深色主题下
+    是一块近黑的「洞」，浅色主题下更是一整块深灰胶囊，和底板以及其余按钮
+    （浅色下是黑色图标）明显不协调。
+
+    固定深壳没有删掉，收进 ``fixedDarkShell`` 给**恒深的小黑板**
+    （2026-11-01 起小黑板直接复用本组件；它的板面永远深，所以仍要那套
+    固定值）。⚠️ 那一档的描边同样**不能用** ``Lumi.hairline``（浅色档黑 8%，
+    压在深壳上等于没有），用固定的白 hairline。
 
     只重写 ``background``：``TabBar`` 基类没有任何 id 或 ``states`` 引用
     background（不像 ``SegmentedItem`` 那样一旦替换就在构造期抛 null），
@@ -50,6 +51,13 @@ Rin.Segmented {
 
     /*! 竖排（两侧合并布局）—— 见下面 ``implicitWidth`` 与 ``Component.onCompleted``。 */
     property bool vertical: false
+    /*! 固定深色壳（2026-10-09 那套黑 55% + 白 18% 细边）。
+
+        只给**恒深的宿主**用（小黑板）；放映控制条保持 ``false``，让底色跟
+        主题令牌 ``Lumi.dockSegmentBg`` 走。分页的图标 / 选中钮也要一起切：
+        ``ToolSegmentItem`` 有同名属性，显式绑过来（两个组件的父链不相通，
+        没法自动继承）。 */
+    property bool fixedDarkShell: false
     /*! 子项个数（竖版自己算高要用）。 */
     readonly property int itemCount: contentChildren.length
 
@@ -97,10 +105,14 @@ Rin.Segmented {
             Lumi.dockSegmentRadius,
             Math.round(Math.min(root.width, root.height) / 2)
         )
-        // 固定深色壳（2026-10-09，见文件头）：不读主题令牌；小黑板胶囊
-        // 复用本组件（2026-11-01），改这里两边一起变
-        color: Qt.rgba(0, 0, 0, 0.55)
+        // 底色跟主题走（2026-11-22，见文件头）：深色白 6% / 浅色黑 6%，
+        // 与底板同族；``fixedDarkShell`` 才退回固定深壳（小黑板）
+        color: root.fixedDarkShell
+            ? Qt.rgba(0, 0, 0, 0.55)
+            : Lumi.dockSegmentBg
         border.width: 1
-        border.color: Qt.rgba(1, 1, 1, 0.18)
+        border.color: root.fixedDarkShell
+            ? Qt.rgba(1, 1, 1, 0.18)
+            : Lumi.hairline
     }
 }

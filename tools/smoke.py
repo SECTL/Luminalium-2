@@ -152,6 +152,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 os.chdir(ROOT)
 
+# 多实例检测在装配段就会弹询问窗（``LuminaliumApplication.__init__``）。smoke
+# 在本机已经有真实 Luminalium 在跑时也必须能跑，所以整段关掉 —— 顺带也让
+# 插件场景子进程继承同一开关，免得测试互相当成「多开」。
+os.environ["LUMINALIUM_DISABLE_MULTI_INSTANCE"] = "1"
+
 from PySide6.QtCore import (  # noqa: E402
     Q_ARG,
     QMetaObject,
@@ -4370,8 +4375,11 @@ def main() -> int:
                     _card_h = float(_pm_card.height())
                     _win_w = float(_pm_overlay.width())
                     _win_h = float(_pm_overlay.height())
-                    # 卡片尺寸不能被 anchors 改（撑满整屏就是这一条挂了）
-                    size_ok = (abs(_card_w - 272) <= 2 and abs(_card_h - 233) <= 2)
+                    # 卡片尺寸不能被 anchors 改（撑满整屏就是这一条挂了）。
+                    # 宽度锁死 272（232 + 两侧投影余量）；高度给区间即可 ——
+                    # 2026-11-22 重做版式后内容高度会随译文换行浮动，锁死数值
+                    # 只会变成一次性快照。
+                    size_ok = (abs(_card_w - 272) <= 2 and 110 <= _card_h <= 340)
                     if _h == "left":
                         horiz_ok = abs(_card_x - (-4)) <= 2
                     else:
@@ -4424,11 +4432,11 @@ def main() -> int:
             finally:
                 app.backend.actionTriggered.disconnect(_pm_conn)
             check(
-                "续页：「点这里跳过去」发出 pager:goto:7",
+                "续页：「继续放映」发出 pager:goto:7",
                 "pager:goto:7" in _pm_actions, str(_pm_actions),
             )
             check(
-                "续页：跳转后卡片仍在，文案切到「已从第 7 页开始放映」",
+                "续页：跳转后卡片仍在，按钮原地换成「已继续放映」",
                 app.backend.pageMemory.get("resumed") is True
                 and app.backend.pageMemory.get("visible") is True,
                 f"pageMemory={app.backend.pageMemory}",

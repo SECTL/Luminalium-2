@@ -1,5 +1,7 @@
 # Luminalium 2 runtime dependencies
 PySide6>=6.9
 RinUI>=0.4.4
+# 多实例检测（扫描同入口进程 / 结束旧实例）
+psutil>=5.9
 # PowerPoint automation + Win32 helpers (Windows only)
 pywin32>=308; sys_platform == "win32"

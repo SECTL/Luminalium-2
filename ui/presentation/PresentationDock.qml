@@ -121,6 +121,13 @@ Item {
     readonly property var actionsCfg: cfg.actions !== undefined ? cfg.actions : []
     readonly property var penCfg: cfg.pen !== undefined ? cfg.pen : ({})
     readonly property var inkCfg: cfg.ink !== undefined ? cfg.ink : ({})
+    /*! 墨迹引擎是不是 COM 画笔（``presentation.ink.engine``）。
+
+        2026-11-22 用户指令：COM 画笔下禁用笔选单的「粗细」段与橡皮卡的
+        「像素擦除」行 —— 那套放映笔 / 橡皮没有对应接口，原先「显示但点了
+        不生效」看起来像坏了。只影响这两处交互，配置值一概不动。 */
+    readonly property bool comInkEngine:
+        Backend.settings.presentation_ink_engine === "com"
     readonly property var zoomCfg: cfg.zoom !== undefined ? cfg.zoom : ({})
 
     // ---- 尺寸（默认值就是 Lumi 里按实测比例定的那一档）----
@@ -407,8 +414,8 @@ Item {
     readonly property real penDefaultWidth: penCfg.default_width !== undefined
         ? Number(penCfg.default_width) : 0
     /*! 选单该点亮哪一档：后端记着的粗细；没选过时用配置的默认档。
-        com 引擎下这一行照样显示，但点了应用层忽略（PowerPoint 的放映笔
-        没有粗细接口 —— 见 ``application.py::_on_action`` 的 ``pen_width:`` 分支）。 */
+        COM 画笔下整段禁用、点了不生效（见 ``comInkEngine`` /
+        ``PenPaletteCard.widthsEnabled``）。 */
     readonly property real penSelectedWidth: Backend.penWidth > 0
         ? Backend.penWidth : penDefaultWidth
 
@@ -434,8 +441,8 @@ Item {
     readonly property real eraserDefaultWidth: inkCfg.eraser_default_width !== undefined
         ? Number(inkCfg.eraser_default_width) : 0
     /*! 卡片该点亮哪一档：后端记着的粗细；没选过时用配置的默认档。
-        com 引擎下这一行照样显示，但点了应用层忽略（见
-        ``application.py::_on_action`` 的 ``eraser_width:`` 分支）。 */
+        COM 画笔下像素擦除整行禁用，这一排档位跟着收（见 ``comInkEngine`` /
+        ``EraserModeCard.pixelEnabled``）。 */
     readonly property real eraserSelectedWidth: Backend.eraserWidth > 0
         ? Backend.eraserWidth : eraserDefaultWidth
 
@@ -452,7 +459,7 @@ Item {
         中途光标飘出去就收起来会很难用。退路是「再点一下放大镜」或切工具。 */
     readonly property bool zoomPanelOpened: zoomPanel.opened
 
-    // ---- 课件续页卡片（2026-11-08 用户指令，见 app/page_memory.py）----
+    // ---- 续播提示卡片（2026-11-08 用户指令，见 app/page_memory.py）----
     // ⚠️ 卡片**不挂在本组件里**：2026-11-08 用户指令「让那个卡片显示在右下角」，
     // 它固定贴窗口右下角、与控制条位置无关 —— 挂在控制条里会把这条的
     // ``interactiveRect`` 撑满半个屏幕（区域塑形之后整个右下角都吃点击，
@@ -602,7 +609,7 @@ Item {
 
     /*! 收起全部浮出层（笔选单 / 橡皮子模式卡片 / 放大镜选单 / 快速切页面板）。
 
-        ⚠️ 续页卡片**不在这里**：它是 Python 侧判出来的（``Backend.pageMemory``），
+        ⚠️ 续播提示卡**不在这里**：它是 Python 侧判出来的（``Backend.pageMemory``），
         切工具 / 点别处不该把它收掉 —— 用户可能正要切完工具再跳页。它的收起
         只有两条路：「点 ×」与退出放映。 */
     function closeFlyouts() {
@@ -739,7 +746,7 @@ Item {
             right = Math.max(right, zoomPanel.x + zoomPanel.width * s)
             top = Math.min(top, zoomPanel.y)
         }
-        // 课件续页卡片**不在这里**并入（2026-11-08）：它固定贴窗口右下角、
+        // 续播提示卡片**不在这里**并入（2026-11-08）：它固定贴窗口右下角、
         // 离控制条很远，硬并进来会把这条交互矩形撑满半个屏幕 —— 区域塑形之后
         // 整个右下角都吃点击、放映时点画面翻不了页。它现在由 Python 侧
         // ``windows.py::_resume_card_rect_local`` 单独并进窗口区域。
@@ -937,17 +944,17 @@ Item {
             height: dock.toolsCfg.length * dock.contentHeight
                     + Math.max(0, dock.toolsCfg.length - 1) * dock.segmentSpacing
 
-            // 底槽：与横版 ToolSegment 的 background 同参数（固定深壳 + 全圆胶囊，
-            // 按短边/2 钳）。⚠️ 必须跟着横版一起改：分页图标已经是固定白 92%
-            // （ToolSegmentItem 的固定胶囊档），底槽若继续读主题令牌，浅色档就是
-            // 白图标压在 6% 黑浅底上 —— 竖版整组分页看不见。
+            // 底槽：与横版 ToolSegment 的 background 同参数（主题凹槽底色 +
+            // 全圆胶囊，按短边/2 钳）。2026-11-22 两边一起从「固定深壳」回到
+            // 主题令牌 —— 深壳在浅色主题下是一块深灰胶囊，与底板 / 黑色图标
+            // 不协调；分页图标也跟着 ToolSegmentItem 默认走 textPrimary。
             Rectangle {
                 anchors.fill: parent
                 radius: Math.min(Lumi.dockSegmentRadius,
                                  Math.round(Math.min(parent.width, parent.height) / 2))
-                color: Qt.rgba(0, 0, 0, 0.55)
+                color: Lumi.dockSegmentBg
                 border.width: 1
-                border.color: Qt.rgba(1, 1, 1, 0.18)
+                border.color: Lumi.hairline
             }
 
             Column {
@@ -1181,6 +1188,8 @@ Item {
         // 粗细档（2026-10-07 自建批注）：空数组时卡片里整段不出（翻页 pill 那档）。
         widths: dock.penPaletteWidths
         selectedWidth: dock.penSelectedWidth
+        // COM 画笔下整段禁用（灰显、不吃点击）—— 2026-11-22 用户指令。
+        widthsEnabled: !dock.comInkEngine
 
         // 与底板同倍率缩放 —— 整块选单跟着组件一起放大 / 缩小。
         // ``transformOrigin: TopLeft``：下面算的 x/y 是**根 Item 坐标**（未缩放
@@ -1229,6 +1238,8 @@ Item {
         // （翻页 pill 那档）；整笔擦除模式下卡片自己把这段藏起来。
         widths: dock.eraserPaletteWidths
         selectedWidth: dock.eraserSelectedWidth
+        // COM 画笔下「像素擦除」那一行禁用（灰显、不吃点击）—— 2026-11-22 用户指令。
+        pixelEnabled: !dock.comInkEngine
 
         // 与底板同倍率缩放（同笔选单：x/y 是根 Item 坐标，缩放围绕左上角）。
         scale: dock.scaleFactor
@@ -1393,7 +1404,7 @@ Item {
         }
     }
 
-    // ======================================== 课件续页卡片（2026-11-08）
+    // ======================================== 续播提示卡片（2026-11-08）
     // ⚠️ 卡片**不在这里**：2026-11-08 用户指令「让那个卡片显示在右下角」——
     // 它固定贴窗口右下角、与控制条位置无关，挂在控制条里会把那条的
     // ``interactiveRect`` 撑满半个屏幕（区域塑形后整个右下角吃点击、翻不了页）。

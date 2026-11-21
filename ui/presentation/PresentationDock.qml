@@ -452,6 +452,13 @@ Item {
         中途光标飘出去就收起来会很难用。退路是「再点一下放大镜」或切工具。 */
     readonly property bool zoomPanelOpened: zoomPanel.opened
 
+    // ---- 课件续页卡片（2026-11-08 用户指令，见 app/page_memory.py）----
+    // ⚠️ 卡片**不挂在本组件里**：2026-11-08 用户指令「让那个卡片显示在右下角」，
+    // 它固定贴窗口右下角、与控制条位置无关 —— 挂在控制条里会把这条的
+    // ``interactiveRect`` 撑满半个屏幕（区域塑形之后整个右下角都吃点击，
+    // 放映时点画面翻不了页）。现在它在 ``TopWindow.qml`` 的根上，
+    // 与开发水印同一套机制（``TopWindow.resumeCardItem`` + Python 侧单独并区域）。
+
     /*! 可用宽度（**屏幕逻辑像素**）= 所在**窗口**的宽 —— 遮罩层是铺满放映窗口的
         整屏窗口，所以窗口尺寸就是面板能横着占的地方。
 
@@ -593,7 +600,11 @@ Item {
         toolBeforePress = Backend.activeTool
     }
 
-    /*! 收起全部浮出层（笔选单 / 橡皮子模式卡片 / 放大镜选单 / 快速切页面板）。 */
+    /*! 收起全部浮出层（笔选单 / 橡皮子模式卡片 / 放大镜选单 / 快速切页面板）。
+
+        ⚠️ 续页卡片**不在这里**：它是 Python 侧判出来的（``Backend.pageMemory``），
+        切工具 / 点别处不该把它收掉 —— 用户可能正要切完工具再跳页。它的收起
+        只有两条路：「点 ×」与退出放映。 */
     function closeFlyouts() {
         penPalette.opened = false
         eraserPalette.opened = false
@@ -728,6 +739,10 @@ Item {
             right = Math.max(right, zoomPanel.x + zoomPanel.width * s)
             top = Math.min(top, zoomPanel.y)
         }
+        // 课件续页卡片**不在这里**并入（2026-11-08）：它固定贴窗口右下角、
+        // 离控制条很远，硬并进来会把这条交互矩形撑满半个屏幕 —— 区域塑形之后
+        // 整个右下角都吃点击、放映时点画面翻不了页。它现在由 Python 侧
+        // ``windows.py::_resume_card_rect_local`` 单独并进窗口区域。
         // tooltip 是同一回事（2026-10-28，根因见 ``registerTooltipRect`` 处的
         // 注释）：气泡浮在按钮上方约 40px，超出 region_padding 的 20px 余量，
         // ``SetWindowRgn`` 会把上半截裁掉。矩形由按钮显示 / 隐藏时经
@@ -1377,6 +1392,13 @@ Item {
             jumpPanel.opened = false
         }
     }
+
+    // ======================================== 课件续页卡片（2026-11-08）
+    // ⚠️ 卡片**不在这里**：2026-11-08 用户指令「让那个卡片显示在右下角」——
+    // 它固定贴窗口右下角、与控制条位置无关，挂在控制条里会把那条的
+    // ``interactiveRect`` 撑满半个屏幕（区域塑形后整个右下角吃点击、翻不了页）。
+    // 现在它在 ``TopWindow.qml`` 的根上，由 Python 侧单独并进区域 —— 与开发
+    // 水印同一套机制（见 ``TopWindow.resumeCardItem``）。
 
     // 用户点击后 currentIndex 的绑定被打断；后端发起的工具切换
     // （快捷键 / 托盘菜单）由这里继续同步到选中页。

@@ -68,6 +68,7 @@ from .config import Config
 from .error_handler import ErrorHandler
 from .paths import APP_NAME, LOG_DIR, UI_DIR, ensure_runtime_dirs
 from .ppt_controller import COM_PROG_IDS, PptController
+from .page_memory import PageMemory
 from .slide_thumbs import SlideThumbCache
 from .tray import TrayIcon, build_app_icon
 from .windows import WindowManager
@@ -368,6 +369,15 @@ class LuminaliumApplication:
         # 见 app/slide_thumbs.py。
         self.slide_thumbs = SlideThumbCache(self.ppt, self.backend)
         self.backend.attach_slide_thumbs(self.slide_thumbs)
+        # 课件续页（2026-11-08）：按课件文件记住上次讲到第几页。与缩略图缓存
+        # 同一个装配位 —— 一头是 PptController 的消费者（stateChanged 给页码、
+        # deckReady 给课件身份），一头是桥的数据源（``Backend.pageMemory``）。
+        # 见 app/page_memory.py。
+        # ⚠️ 不传 parent：``LuminaliumApplication`` 是纯 Python 装配类，
+        # **不是 QObject**（传进去 Qt 会抛 TypeError）。生命周期由本实例持有，
+        # 与 ``slide_thumbs`` 同一条（那个的 parent 是 Backend）。
+        self.page_memory = PageMemory(self.config, self.ppt)
+        self.backend.attach_page_memory(self.page_memory)
         # 「⋯」溢出菜单。必须持有引用，否则局部变量回收后菜单立即消失。
         self._overflow_menu: Optional[QMenu] = None
         # 墨迹引擎改道的两份运行期状态（引擎本身**不**缓存，每次现读 config，
@@ -1056,6 +1066,10 @@ class LuminaliumApplication:
         # 缩略图缓存是纯临时物（下一次放映会重新导），退出时顺手清掉，
         # 别在数据目录里留一堆没人认领的 PNG。
         self.slide_thumbs.clear()
+        # 课件续页的记忆**不能清**（它要跨会话保留），只把还没落盘的尾巴写掉。
+        # 退出放映时 ``PageMemory.observe`` 已经会强制落一次，这里是兜底
+        # （比如放映中途直接退出程序）。
+        self.page_memory.flush()
         self.windows.shutdown()
         self.tray.hide()
         self.config.save()

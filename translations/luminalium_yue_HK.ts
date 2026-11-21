@@ -666,6 +666,76 @@
         <source>底板下方的柔和投影；纯色背景下关掉更清爽</source>
         <translation>底板底下嗰浸柔和投影；純色背景閂咗會清爽啲</translation>
     </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="351"/>
+        <source>课件续页</source>
+        <translation>課件續頁</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="358"/>
+        <source>记住上次讲到哪一页</source>
+        <translation>記住上次講到邊一頁</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="359"/>
+        <source>放映时在右下角提示「上次停在第 N 页」，点一下跳过去；只读不改课件，不联网，记录只存本机</source>
+        <translation>放映時喺右下角提示「上次停喺第 N 頁」，撳一下跳過去；淨係讀唔改課件，唔連網，記錄淨係存喺本機</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="378"/>
+        <source>记录保留天数</source>
+        <translation>記錄保留幾多日</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="379"/>
+        <source>超过这个天数的记录会被自动清掉；0 表示永不清理</source>
+        <translation>超過呢個日數嘅記錄會自動清走；0 代表永遠唔清</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="397"/>
+        <source>清除全部记录</source>
+        <translation>清走全部記錄</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="409"/>
+        <source>卡片位置</source>
+        <translation>卡片位置</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="410"/>
+        <source>续页提示卡贴在屏幕的哪一处；也可以在主界面编辑器里点中卡片来改</source>
+        <translation>續頁提示卡貼喺螢幕邊一忽；亦都可以喺主介面編輯器度撳中張卡嚟改</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="427"/>
+        <source>左上</source>
+        <translation>左上</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="427"/>
+        <source>右上</source>
+        <translation>右上</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="427"/>
+        <source>左侧居中</source>
+        <translation>左邊中間</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="428"/>
+        <source>右侧居中</source>
+        <translation>右邊中間</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="428"/>
+        <source>左下</source>
+        <translation>左下</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings/MainInterface.qml" line="428"/>
+        <source>右下</source>
+        <translation>右下</translation>
+    </message>
 </context>
 <context>
     <name>MainInterfaceEditor</name>
@@ -743,6 +813,16 @@
         <location filename="../ui/MainInterfaceEditor.qml" line="1563"/>
         <source>关</source>
         <translation>閂</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="531"/>
+        <source>课件续页卡片</source>
+        <translation>課件續頁卡片</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="545"/>
+        <source>屏幕边缘（位置可选）</source>
+        <translation>螢幕邊（位置可以揀）</translation>
     </message>
 </context>
 <context>
@@ -1070,6 +1150,49 @@
         <location filename="../ui/QuickPanel.qml" line="260"/>
         <source>添加</source>
         <translation>加</translation>
+    </message>
+</context>
+<context>
+    <name>ResumeCard</name>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="132"/>
+        <source>上次停在第 %1 页</source>
+        <translation>上次停喺第 %1 頁</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="135"/>
+        <source>已从第 %1 页开始放映</source>
+        <translation>已經由第 %1 頁開始放映</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="136"/>
+        <source>点击从第 %1 页开始放映</source>
+        <translation>撳一下由第 %1 頁開始放映</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="142"/>
+        <source>记录于 刚刚</source>
+        <translation>記錄於 啱啱</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="145"/>
+        <source>记录于 %1 分钟前</source>
+        <translation>記錄於 %1 分鐘前</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="148"/>
+        <source>记录于 %1 小时前</source>
+        <translation>記錄於 %1 個鐘前</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="150"/>
+        <source>记录于 %1 天前</source>
+        <translation>記錄於 %1 日前</translation>
+    </message>
+    <message>
+        <location filename="../ui/presentation/ResumeCard.qml" line="206"/>
+        <source>课件续页</source>
+        <translation>課件續頁</translation>
     </message>
 </context>
 <context>

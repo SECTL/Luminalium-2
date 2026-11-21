@@ -475,6 +475,21 @@ QtObject {
     readonly property int dockJumpEnterDuration: 400
     readonly property int dockJumpFadeDuration: durationFast
 
+    // ============================================================ 课件续页卡片
+    //
+    // 2026-11-08 用户指令（参照 ClassIsland 的「课件续页」插件）：按课件文件
+    // 记住上次讲到第几页，控制条旁浮一张提示卡。组件是
+    // ``ui/presentation/ResumeCard.qml``，数据与持久化在 ``app/page_memory.py``。
+    //
+    // 它是**浮出层家族**的第四个成员（笔选单 / 放大镜选单 / 快速切页面板），
+    // 所以圆角、底色、描边、投影全部复用 ``dockPalette*`` 那一档 —— 不另开一套
+    // 「卡片语言」（``dockJumpItemRadius`` 也是同一个 8）。
+    /*! 卡片宽度（设计单位）。比笔选单窄：这里只有几行字 + 一个可点行。 */
+    readonly property int dockResumeWidth: 232
+    /*! 卡片内各行之间的间距。比笔选单的 ``dockPaletteSectionGap``(16) 紧一档 ——
+        那是「两段内容」，这里是「一段话的几行」。 */
+    readonly property int dockResumeGap: 8
+
     // ================================================================== 快捷面板
     //
     // 版式对齐 **Class Widgets 2** 的托盘面板（`Windows/TrayPanel.qml` +

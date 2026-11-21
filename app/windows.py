@@ -301,6 +301,38 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
             "orientation": "vertical",
         },
     },
+    # 课件续页卡片（2026-11-08 用户指令：「把卡片放进主界面编辑器吧，点击卡片时
+    # 弄几个位置预设：左上左下右上右下还有中间」）。
+    #
+    # 它不是控制条的一个区块、不参与 ``corners`` 编排 —— 登记成组纯粹是为了
+    # **复用描述符驱动那条链路**：编辑器右侧面板取「选中对象各组的
+    # ``inspector_items`` 并集」，卡片只要有一个组名，设置项就自动出现在面板里，
+    # 不用在 QML 里另写一套硬编码。编辑器给它用的虚拟角落名是 ``resume_card``
+    # （见 ``MainInterfaceEditor.qml::resumeCardCorner``）。
+    #
+    # ⚠️ ``traits`` 刻意**全空**：``toolbar`` / ``pager`` 会被编辑器当成「这是一条
+    # 控制条」的语义判据（组件名、预览组件解析都读它）。卡片两样都不是，
+    # 给了就会把它错认成控制条。
+    "resume_card": {
+        "display_name": "课件续页卡片",
+        "icon": "ic_fluent_history_20_regular",
+        "inspector_items": [
+            {
+                "key": "presentation_page_memory_position",
+                "kind": "radio",
+                "title": "卡片位置",
+                "options": [
+                    {"value": "top_left", "label": "左上"},
+                    {"value": "top_right", "label": "右上"},
+                    {"value": "middle_left", "label": "左侧居中"},
+                    {"value": "middle_right", "label": "右侧居中"},
+                    {"value": "bottom_left", "label": "左下"},
+                    {"value": "bottom_right", "label": "右下"},
+                ],
+            },
+        ],
+        "traits": {},
+    },
 }
 
 #: 检查器描述符支持的控件类型（能力上限 = 内建三项既有设置，刻意不加新类型）。
@@ -1741,6 +1773,10 @@ class WindowManager(QObject):
             log.error("顶层窗口加载失败（缺 container 容器属性）")
             return
         self.overlay = overlay
+        # 根级浮出物（续页卡片）的矩形变化也要立刻重算区域 —— 与各控制条的
+        # ``hitRectChanged`` 走同一个槽（2026-11-08）。它不在任何控制条的
+        # ``interactiveRect`` 里，没有这条接线就只剩 800ms 一拍的兜底。
+        self._connect_hit_rect(overlay)
         self._create_docks(container)
         log.info(
             "顶层窗口已创建，控制条 x%d: %s", len(self._docks), list(self._docks)
@@ -1827,6 +1863,12 @@ class WindowManager(QObject):
             # 上方 —— 那是 dock Item 的包围盒之外，尺寸一点没变，但区域塑形必须
             # 把这块补进去（否则卡片既画不出来也点不动，点击会穿透到 PowerPoint
             # 在幻灯片上乱画）。控制条为此发 ``hitRectChanged``。
+            #
+            # 课件续页卡片**不在这里挂**（2026-11-08 用户指令「让那个卡片显示在
+            # 右下角」）：它固定贴窗口右下角、与控制条位置无关，挂在控制条里会把
+            # 那条的 ``interactiveRect`` 撑满半个屏幕（区域塑形后整个右下角都吃
+            # 点击、放映时点画面翻不了页）。它在 ``TopWindow.qml`` 根上，由
+            # :meth:`_resume_card_rect_local` 单独并进区域 —— 与开发水印同一套。
             self._connect_hit_rect(root)
             self._docks[name] = root
 
@@ -3141,6 +3183,15 @@ class WindowManager(QObject):
                     return True
             except RuntimeError:  # pragma: no cover - 组件已释放
                 continue
+        # 课件续页卡片（2026-11-08）：它挂在窗口根上、不在 ``_docks`` 里 ——
+        # 不在这里认账的话，触屏上点它会被当成「点画布」，那一按要么落墨、
+        # 要么穿透到幻灯片。与开发水印同一个处理位置。
+        card = self._resume_card_rect_local()
+        if card is not None:
+            card_rect = QRect(card[0], card[1], card[2], card[3])
+            card_rect.translate(window.position())
+            if card_rect.contains(gpos):
+                return True
         for handle in self._registered_windows.values():
             w = handle.window
             if w is None or not handle.is_visible():
@@ -3985,6 +4036,13 @@ class WindowManager(QObject):
                 origin = self.overlay.position()
                 wm_rect.translate(origin)
                 hit = wm_rect.contains(cursor)
+        if not hit:
+            # 课件续页卡片同理（2026-11-08）：兜底模式下它也得点得动
+            card = self._resume_card_rect_local()
+            if card is not None:
+                card_rect = QRect(card[0], card[1], card[2], card[3])
+                card_rect.translate(self.overlay.position())
+                hit = card_rect.contains(cursor)
         self._set_overlay_click_through(not hit)
 
     # ---------------------------------------------------------- 区域塑形
@@ -4002,6 +4060,33 @@ class WindowManager(QObject):
         if not isinstance(wm, QQuickItem) or not wm.isVisible():
             return None
         scene = wm.mapRectToScene(QRectF(0, 0, wm.width(), wm.height())).toRect()
+        if scene.width() <= 0 or scene.height() <= 0:
+            return None
+        return (scene.x(), scene.y(), scene.width(), scene.height())
+
+    def _resume_card_rect_local(self) -> Optional[tuple[int, int, int, int]]:
+        """右下角**课件续页卡片**的矩形（顶层窗口局部坐标，逻辑像素）。
+
+        2026-11-08 用户指令「让那个卡片显示在右下角」之后，卡片不在控制条里
+        —— 它固定贴窗口右下角，离控制条很远，硬并进 ``interactiveRect`` 会把
+        那条交互矩形撑满半个屏幕（区域塑形后整个右下角都吃点击、翻不了页）。
+        所以它走**开发水印的同一条路**：QML 侧在 ``TopWindow`` 上用
+        ``resumeCardItem`` 暴露这个 Item，Python 侧把它的矩形单独并进
+        ``SetWindowRgn`` 的区域与命中判定。
+
+        ``None`` = 卡片没显示（没命中记忆 / 用户收起了 / 不在放映），
+        与 ``_watermark_rect_local`` 同一个约定。
+
+        ⚠️ 判据是 ``isVisible()`` 而**不是** ``opened``：卡片收起动画期间
+        ``visible`` 还是真（淡出要画着），那几百毫秒里区域留着是对的 ——
+        动画一结束 ``visible`` 归假，下一次区域重算自然把它摘掉。
+        """
+        if self.overlay is None:
+            return None
+        card = self.overlay.property("resumeCardItem")
+        if not isinstance(card, QQuickItem) or not card.isVisible():
+            return None
+        scene = card.mapRectToScene(QRectF(0, 0, card.width(), card.height())).toRect()
         if scene.width() <= 0 or scene.height() <= 0:
             return None
         return (scene.x(), scene.y(), scene.width(), scene.height())
@@ -4037,6 +4122,17 @@ class WindowManager(QObject):
             y = max(0, wm[1] - wm_padding)
             right = min(limit_w, wm[0] + wm[2] + wm_padding)
             bottom = min(limit_h, wm[1] + wm[3] + wm_padding)
+            if right > x and bottom > y:
+                rects.append((x, y, right - x, bottom - y))
+        # 课件续页卡片（2026-11-08）：与开发水印同一套 —— 它挂在窗口根上，
+        # 不算进区域就是「画不出来 + 点不动」。余量给 ``region_padding`` 那份
+        # （与控制条同档）：卡片带投影，边缘那圈淡影需要一点地方画。
+        card = self._resume_card_rect_local()
+        if card is not None:
+            x = max(0, card[0] - padding)
+            y = max(0, card[1] - padding)
+            right = min(limit_w, card[0] + card[2] + padding)
+            bottom = min(limit_h, card[1] + card[3] + padding)
             if right > x and bottom > y:
                 rects.append((x, y, right - x, bottom - y))
         return rects

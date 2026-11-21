@@ -101,6 +101,12 @@
   相交覆盖 / 擦除透明度）。深色常态全量档自动带出 ``ink.png``；
   ``LUMI_PREVIEW_INK=1`` 只出这一张（快速迭代用），配
   ``LUMI_PREVIEW_THEME=light`` 出浅色版 ``ink_light.png``。
+- ``LUMI_PREVIEW_RESUME=1`` —— 把**课件续页卡片**（``ui/presentation/ResumeCard.qml``，
+  2026-11-08）摊开，输出 ``top_window_resume.png``；配 ``LUMI_PREVIEW_THEME=light``
+  出浅色版 ``top_window_resume_light.png``。数据走真链路：内存态 ``PageMemory``
+  （``persist=False``，不碰磁盘）+ 一条「测试课件.pptx 上次停在第 8 页」的假记录，
+  卡片读的还是 ``Backend.pageMemory``。这一档同样会关掉左下角开发水印（它正好
+  画在左条那一侧，出图看着像卡片被裁了一块）。
 
 ⚠️ 历史坑（2026-10-06 修）：浅色档（``ONLY_SPLASH``）曾在抓完启动画面后
 直接 ``return``，既不调 ``qt_app.quit()`` 也不还原主题 —— 进程挂住、
@@ -113,6 +119,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -132,6 +139,7 @@ from RinUI.core.config import RinConfig  # noqa: E402
 from app.bridge import Backend  # noqa: E402
 from app.config import Config  # noqa: E402
 from app.error_handler import ErrorHandler  # noqa: E402
+from app.page_memory import PageMemory, deck_key  # noqa: E402
 from app.paths import UI_DIR  # noqa: E402
 from app.plugins import loader  # noqa: E402
 from app.ppt_controller import PresentationState  # noqa: E402
@@ -271,6 +279,23 @@ PREVIEW_THUMBS = PREVIEW_JUMP and os.environ.get(
 #: 理由同 ``PEN_LIGHT``：当前页那块描边是 accent，浅色下读不读得出来只有这张图能核验。
 JUMP_LIGHT = IS_LIGHT and PREVIEW_JUMP
 if JUMP_LIGHT:
+    ONLY_SPLASH = False  # noqa: F811 - 同上
+
+#: 课件续页卡片（``ui/presentation/ResumeCard.qml``）预览：把卡片摊开，输出
+#: ``top_window_resume.png``（浅色档 ``top_window_resume_light.png``）。
+#:
+#: 2026-11-08。数据是**真链路**：``main()`` 里给 ``Backend`` 接一个内存态
+#: ``PageMemory``（``persist=False``，不碰磁盘），塞一条「这份课件上次停在第 8 页」
+#: 的假记录，再由 ``apply_state`` 走正常的状态流 —— 卡片读的就是
+#: ``Backend.pageMemory``，与真机同一条路。伪造的只有「哪份课件 / 停在哪页」。
+#:
+#: ⚠️ 与 ``PREVIEW_JUMP`` 同一条：展开时把 ``animate`` 关掉 —— 离屏抓帧时
+#: ``Behavior`` 的时间轴推进不可靠，会停在 ``reveal`` 0（整块不显示）。
+PREVIEW_RESUME = os.environ.get("LUMI_PREVIEW_RESUME", "") not in ("", "0")
+#: 浅色主题 **+** 续页卡片 = 只出那一张。理由同 ``PEN_LIGHT``：卡片底色 / 描边 /
+#: 强调色页码都取主题色，浅色下对比度只能靠这张图核验。
+RESUME_LIGHT = IS_LIGHT and PREVIEW_RESUME
+if RESUME_LIGHT:
     ONLY_SPLASH = False  # noqa: F811 - 同上
 
 # ================================================================ 自建批注墨迹场景
@@ -525,6 +550,34 @@ def main() -> int:
         thumbs.request(1, 41, burst=41)
         ready = sum(1 for url in thumbs.urls if url)
         print(f"[THUMBS] 假缩略图 {ready}/{len(thumbs.urls)} -> {thumbs.directory}")
+    # ---- 课件续页卡片（真 PageMemory + 假记录，见 PREVIEW_RESUME）----
+    # 2026-11-08。三条与真机一致的要点：
+    # * ``persist=False``：预览跑在用户真实数据根上，为一张假卡片写一条假记录
+    #   不划算（``page_memory.json`` 里留一条「测试课件.pptx」纯属垃圾）；
+    # * 顺序：先接记忆、再喂状态 —— ``apply_state`` 是每一条状态快照的入口，
+    #   接晚了这一条就没人 observe（与缩略图的 ``set_show`` 同一个讲究）；
+    # * 假记录直接写进 ``_entries``：真正的写入口 ``_remember_current`` 要
+    #   「认出课件身份」，而预览进程里没有 COM、``deckReady`` 永远不来。
+    if PREVIEW_RESUME:
+        memory = PageMemory(config, persist=False)
+        backend.attach_page_memory(memory)
+        key = deck_key(r"D:\课件\测试课件.pptx", "测试课件.pptx")
+        memory._entries[key] = {
+            "path": r"D:\课件\测试课件.pptx",
+            "name": "测试课件.pptx",
+            "page": 8,
+            "total": 41,
+            # 3 分钟前：让「记录于 N 分钟前」那一行走分钟档，而不是「刚刚」
+            "at": time.time() - 180,
+        }
+        memory.observe(PresentationState(active=True, slide_index=26, slide_total=41))
+        memory._adopt_deck(r"D:\课件\测试课件.pptx", "测试课件.pptx")
+        # 走一遍「真的翻到下一页」：记忆的更新入口就是这条，不伪造它的话
+        # ``_moved`` 还是 False，卡片显示的是 ``_entries`` 里那条（第 8 页）——
+        # 但真机上进场后翻页会把这条刷成本场当前页，抓图要的是**翻过页之后**
+        # 的样子（否则预览掩盖了「卡片页码跟着当前页跳」这类 bug）。
+        memory.observe(PresentationState(active=True, slide_index=27, slide_total=41))
+        print(f"[RESUME] 假记录：测试课件.pptx 上次停在第 8 页 / 共 41 页（本场已翻到 27）")
     backend.setSplashStage(*DESIGN_STAGE)
     # 报告窗的数据源。⚠️ 这里**不**调 ``install()`` —— 预览工具不该去接管
     # ``sys.excepthook``（本进程里没有真实异常要报告，接管只会让真报错被吞）。
@@ -706,6 +759,49 @@ def main() -> int:
             panel_item.setProperty("animate", False)
             panel_item.setProperty("opened", True)
         QGuiApplication.processEvents()
+
+    # 课件续页卡片预览（2026-11-08）。2026-11-08 用户指令「让那个卡片显示在
+    # 右下角」之后，它只有**一份**、挂在 ``TopWindow`` 根上（贴窗口右下角），
+    # 不再随控制条位置走 —— 所以这里直接从窗口根取 ``resumeCardItem``。
+    #
+    # ⚠️ 同 ``PREVIEW_JUMP``：``animate: false`` 是必须的（离屏抓帧时
+    #    ``Behavior`` 推进不可靠，卡片会停在 ``reveal`` 0、整块不显示）。
+    if PREVIEW_RESUME and top_window is not None:
+        # 同 PREVIEW_JUMP：先关掉左下角的开发水印 —— 它正好画在左条那一侧，
+        # 出图时看起来活像「卡片被裁了一块」。
+        watermark = top_window.property("watermarkItem")
+        if watermark is not None:
+            watermark.setVisible(False)
+        # 2026-11-08 用户指令「让那个卡片显示在右下角」之后，卡片**不在控制条里**
+        # 了 —— 它是 ``TopWindow`` 根上的一个直接子项，由 ``resumeCardItem``
+        # 暴露给 Python。所以这里直接从窗口根上取，不再遍历 container。
+        card_item = top_window.property("resumeCardItem")
+        if card_item is None:
+            print("[RESUME] 找不到 TopWindow.resumeCardItem")
+        else:
+            card_item.setProperty("animate", False)
+            # ⚠️ 必须**显式**把 ``reveal`` 设到终态，不能只设 ``opened``：
+            #    离屏抓帧时 ``Behavior`` 推不动，``reveal`` 会停在 0（卡片整块
+            #    不可见）。真机不受影响，抓图要的是稳定终态。
+            card_item.setProperty("opened", True)
+            card_item.setProperty("reveal", 1.0)
+            print("[RESUME] 已展开: TopWindow.resumeCard")
+
+            # 抓图前打一行几何：这张卡的坑全在这几个数字里（落点算错 /
+            # 高度没撑开 / 文案是空串）。
+            def _report_resume(it=card_item) -> None:
+                print(f"[RESUME] resumeCard "
+                      f"win={top_window.width()}x{top_window.height()} "
+                      f"card={it.property('cardWidth'):.0f}x"
+                      f"{it.property('cardHeight'):.0f} "
+                      f"item={it.width():.0f}x{it.height():.0f} "
+                      f"rect=({it.property('x'):.0f},"
+                      f"{it.property('y'):.0f}) "
+                      f"reveal={it.property('reveal')} "
+                      f"page={it.property('lastPage')} "
+                      f"name={it.property('fileName')!r} "
+                      f"text={it.property('recordedText')!r}")
+            QTimer.singleShot(300, _report_resume)
 
     # 快速切页面板预览：点页码展开的那块。横版（``pageJumpPanel``）与竖版
     # （``sidePageJumpPanel``）各有一个实例，**两个都展开** —— 它们的落点不一样
@@ -919,14 +1015,15 @@ def main() -> int:
             # 浅色主题 + 编辑态：只出编辑器的浅色版（见 ``EDITOR_LIGHT``）
             targets = ([] if editor is None
                        else [("main_editor_edit_light.png", editor)])
-        elif PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT or ZOOM_LIGHT:
+        elif PEN_LIGHT or JUMP_LIGHT or ERASER_LIGHT or ZOOM_LIGHT or RESUME_LIGHT:
             # 浅色主题 + 某一个浮出层（笔选单 / 橡皮卡片 / 放大镜选单 / 快速切
-            # 页面板）：只出顶层窗口那一张（见 ``PEN_LIGHT`` / ``ERASER_LIGHT`` /
-            # ``ZOOM_LIGHT`` / ``JUMP_LIGHT``）
+            # 页面板 / 续页卡片）：只出顶层窗口那一张（见 ``PEN_LIGHT`` /
+            # ``ERASER_LIGHT`` / ``ZOOM_LIGHT`` / ``JUMP_LIGHT`` / ``RESUME_LIGHT``）
             targets = ([] if top_window is None else [(
                 "top_window_jump_light.png" if JUMP_LIGHT
                 else "top_window_eraser_light.png" if ERASER_LIGHT
                 else "top_window_zoom_light.png" if ZOOM_LIGHT
+                else "top_window_resume_light.png" if RESUME_LIGHT
                 else "top_window_pen_light.png", top_window)])
         else:
             targets = [("quick_panel.png", panel)]
@@ -936,6 +1033,7 @@ def main() -> int:
                     preview_name("top_window_jump.png" if PREVIEW_JUMP
                                  else "top_window_eraser.png" if PREVIEW_ERASER
                                  else "top_window_zoom.png" if PREVIEW_ZOOM
+                                 else "top_window_resume.png" if PREVIEW_RESUME
                                  else "top_window_pen.png" if PREVIEW_PEN
                                  else "top_window.png"),
                     top_window,
@@ -1299,6 +1397,7 @@ def _should_render_plugin_seams() -> bool:
     return not (
         PAGE_ONLY or PREVIEW_EDIT or PREVIEW_PEN or PREVIEW_ERASER
         or PREVIEW_LABELS or PREVIEW_PAGER or PREVIEW_DETAILS
+        or PREVIEW_RESUME  # 续页卡片单出档（2026-11-08）：与插件接缝无关
         or PREVIEW_INK  # 墨迹场景单出档（2026-10-07 todo 11）：与插件接缝无关
     )
 

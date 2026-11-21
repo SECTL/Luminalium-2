@@ -568,17 +568,7 @@ Rin.FluentPage {
             }
         }
 
-        /*! ⚠️ 底栏用 **RinUI 标准的 ``DialogButtonBox``**，别自绘（2026-11-21
-            用户指令：「怎么不是 RinUI dialog 标准了？」）—— 应用里所有对话框
-            （``Settings.qml`` 重启框、``About.qml`` 诊断框）都是这一套：一条带
-            底色的横条 + 两个**均分整宽**的按钮。自绘右对齐按钮那版虽然更像
-            WinUI 3 原生的 ContentDialog，但跟本应用其它对话框不是一家人。
 
-            ⚠️ 两个坑照旧：
-            ① **不传** ``standardButtons`` —— 那套文案来自 Qt 自带的 ``qtbase_*.qm``，
-               本项目只装 ``luminalium_*.qm``，会显示成英文 OK / Cancel；
-            ② ``highlighted`` 会在 ``DialogButtonBox`` 建子项时按 role 被清掉，
-               所以「完成」身上有个自我纠正的 ``onHighlightedChanged``（见按钮注释）。 */
         footer: Rin.DialogButtonBox {
             id: paletteDialogButtons
 

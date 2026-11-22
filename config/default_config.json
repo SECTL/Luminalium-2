@@ -202,7 +202,11 @@
     "overflow": {
       "enabled": true,
       "icon": "ic_fluent_more_horizontal_20_filled",
-      "tooltip": "更多操作"
+      "tooltip": "更多操作",
+      "//columns": "「更多」面板里被收折按钮的网格列数（2026-11-22 用户指令：更多按钮改为显示「已收折的项目」网格）",
+      "columns": 4,
+      "//collapsed": "要收折到「更多」里的动作 id 列表。null（缺省）= 所有**插件**提供的动作都收折（内建动作如 clear_screen 永远平铺，配置里写了也不生效）；[] = 全部平铺；[id, ...] = 只收折列出的这些。界面入口：主界面编辑器 → 选中工具栏 →「已收折的项目」",
+      "collapsed": null
     },
     "//tools": "分段的分页，**顺序即显示顺序（左 → 右）**。id 后端只认 pen / eraser / arrow（arrow = 鼠标指针，PP_POINTER_ARROW）；arrow 放第一个（2026-09-25 用户指令：指针要在最左，不然没法切回鼠标）。⚠️ **放大镜不在这里** —— 2026-10-06 用户指令「放大镜不应当以 Segmented 内排版」：它不是指针类型，不该和指针 / 笔 / 橡皮并列成分段的一页，而是条上紧跟着分段的一枚独立开关（见 PresentationDock.qml）",
     "tools": [

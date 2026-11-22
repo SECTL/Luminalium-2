@@ -38,6 +38,7 @@ Luminalium 2，纯粹的演示注释工具：托盘 + 快捷面板，检测到 P
 - **配置只有一处来源**：`config/default_config.json` 是默认值，里面可以用 `"//xxx"` 这种键写注释；用户数据在 `config/config.json`（不进包）。QML 一律从 `Backend` 读，Python 侧不要另外再注入一份。
 - **插件贡献绝不落盘用户 `config.json`**。dict 型默认值（`plugins.<id>.*`）走 `Config(extra_defaults=...)` 注入默认层；list 型贡献（磁贴 / 工具 / 动作 / 角落组）只能在读取层拼接，注入默认层会被用户层的旧列表整体顶掉。理由与证据在 `app/plugins/registry.py` 头注释第 3 条。
 - **插件窗口只能走 `WindowManager.register_window`**（全屏叠加遮罩走 `register_overlay`，同属 `app/windows.py` 的封装）。它封装了懒创建、RinUI 接管、失败兜底、定位、显隐这一整套易错清单；插件直接碰 `_attach_to_rinui` 或自建窗口都会漏掉一半。约定全文在 `app/windows.py` 头注释。
+- **维护模式不许依赖正常装配**：`app/maintenance.py` 只能导 `app/startup.py`（日志 / RinUI 外观），**别 `import application`** —— 主路径里任何一个导入错误都会把这条自救通道一起带走，而它存在的意义正是「主路径坏了还能进去修」。同理，维护模式的窗口照样走 `register_window`，只是 `WindowManager` 的 `ppt` 传 `None`。
 - **用户明令删掉的东西别加回来**。托盘设置那一组、"重新加载"按钮（现在是重启）、关于页的开源许可项，都是一条条指令删的，历史理由写在对应文件注释里。你要是觉得该恢复，先问，别自作主张。
 - 翻译：界面文案用 `qsTr`，`translations/` 里有 ts。语言名用各自的母语名（简体中文 / English / 日本語），这是惯例不是bug。
 
@@ -76,6 +77,7 @@ Luminalium 2，纯粹的演示注释工具：托盘 + 快捷面板，检测到 P
 | 改版本号 | `app/__init__.py` 的 `__version__`（唯一一处） |
 | 改设置标题栏「更多」菜单 / 日志窗口 | 菜单在 `ui/Settings.qml`；日志窗口 `ui/LogWindow.qml` + `bridge.readLogEntries`；创建快捷方式 `app/system_actions.py` |
 | 改崩溃 / 错误报告 | `app/error_handler.py` + `ui/ErrorReport/` |
+| 改维护模式（继续 / 清理 / 重置） | 窗口 `ui/MaintenanceWindow.qml`，装配 `app/maintenance.py`，动作与文件操作在 `app/bridge.py` 的「维护模式」一节；启动开关 `app/launch.py` |
 | 改翻译 | `translations/`（QML 侧 lupdate 生成；Python 侧 ts 手工维护，别用 lupdate 碰） |
 | 排查"控制条没出来/按钮没反应" | 按链路逐跳：探测 `ppt_controller` → `windows._on_presentation_state` → `bridge.Backend.apply_state` → QML |
 | 写/改一个插件 | `app/plugins/`（registry/context/loader）+ `ui/plugins/<id>/`，约定见 `docs/plugin-development.md` |

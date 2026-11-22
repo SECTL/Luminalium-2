@@ -131,7 +131,13 @@ for _path in (str(ROOT), str(TOOLS)):
         sys.path.insert(0, _path)
 os.chdir(ROOT)
 
-from PySide6.QtCore import QCoreApplication, QObject, QTimer, QUrl  # noqa: E402
+from PySide6.QtCore import (  # noqa: E402
+    QCoreApplication,
+    QMetaObject,
+    QObject,
+    QTimer,
+    QUrl,
+)
 from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
 from PySide6.QtQml import QQmlComponent, QQmlExpression, qmlContext  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
@@ -1009,6 +1015,28 @@ def main() -> int:
             multi_instance.setPosition(OFFSCREEN_X - 600, OFFSCREEN_Y - 2400)
             multi_instance.show()
 
+    # 维护模式窗口（2026-11-22）：真相是 ``app/maintenance.py`` 走
+    # ``WindowManager.register_window`` 懒创建。预览里照旧用 QQmlComponent 现建、
+    # **不接信号** —— 这张图只核版式，按「继续使用」没有维护模式装配可连
+    #（连了会把预览进程关掉）。
+    maintenance = None
+    maintenance_component = QQmlComponent(
+        rinui.engine,
+        QUrl.fromLocalFile(str(UI_DIR / "MaintenanceWindow.qml")),
+    )
+    if maintenance_component.isError():
+        for error in maintenance_component.errors():
+            print("MAINTENANCE WINDOW ERROR:", error.toString())
+    else:
+        maintenance = maintenance_component.createWithInitialProperties({"visible": True})
+        if maintenance is None:
+            for error in maintenance_component.errors():
+                print("MAINTENANCE WINDOW CREATE ERROR:", error.toString())
+        else:
+            maintenance._maintenance_component = maintenance_component  # 防引擎回收
+            maintenance.setPosition(OFFSCREEN_X - 700, OFFSCREEN_Y - 3000)
+            maintenance.show()
+
     # 各设置页单独渲染：用临时宿主窗口 + Loader 承载，逐页跑一遍
     page_hosts = _build_page_hosts(rinui.engine)
 
@@ -1079,6 +1107,8 @@ def main() -> int:
                 targets.append(("ink.png", ink_scene))
             if multi_instance is not None:
                 targets.append(("multi_instance.png", multi_instance))
+            if maintenance is not None:
+                targets.append(("maintenance.png", maintenance))
 
         if os.environ.get("LUMI_PREVIEW_SIZES"):
             for name, window in targets:
@@ -1104,6 +1134,23 @@ def main() -> int:
                 time.sleep(0.01)
             _grab_pair(multi_instance, "multi_instance_warning.png")
             multi_instance.setProperty("warningVisible", False)
+            QCoreApplication.processEvents()
+
+        # 维护模式窗口的第二档：「重置全部信息」的确认框（要求输入确认文本那档）。
+        # 与上面多实例警告同一条理由 —— ``Rin.Dialog`` 有入场动画，空跑半秒再抓。
+        if (maintenance is not None and not ONLY_SPLASH and not PAGE_ONLY
+                and not EDITOR_LIGHT and not PEN_LIGHT and not JUMP_LIGHT
+                and not ERASER_LIGHT and not ZOOM_LIGHT and not RESUME_LIGHT
+                and not INK_LIGHT and not PREVIEW_INK):
+            QMetaObject.invokeMethod(maintenance, "askResetAll")
+            for _ in range(50):
+                QCoreApplication.processEvents()
+                time.sleep(0.01)
+            _grab_pair(maintenance, "maintenance_reset_confirm.png")
+            # 关掉确认框，别让它留在后续（浅色档不会走到这里）的抓图里
+            dialog = maintenance.findChild(QObject, "maintenanceConfirmDialog")
+            if dialog is not None:
+                dialog.close()
             QCoreApplication.processEvents()
 
         # 报告窗两档对照图。放在最后：它要**改** ``ErrorHandler`` 的状态（切换

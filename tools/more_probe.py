@@ -10,7 +10,7 @@
 * 按钮在版本号**右侧**、三大键**左侧**，且没越出 ``titleBarHost``（越出会被
   ``clip`` 裁成半截）；
 * 点按钮 → 菜单可见，右缘不戳出窗口；
-* 五个条目顺序 / 文案对得上，维护模式那一项**禁用**（实现方案还没给）；
+* 五个条目顺序 / 文案对得上，维护模式那一项**已启用**（2026-11-22 落地）；
 * 子菜单挂在「创建快捷方式」下、**弹在父菜单右侧**（Qt 自己定位）—— 这条是
   最容易坏的：``Rin.Menu`` 自带的进出场动画会改 ``x``/``y``，当子菜单用时
   必须换成空过渡（见 ``Settings.qml`` 那段注释）；
@@ -214,7 +214,7 @@ def main() -> int:
         "desktop": ("settingsMoreDesktopShortcut", "创建桌面快捷方式", True),
         "startMenu": ("settingsMoreStartMenuShortcut", "创建开始菜单快捷方式", True),
         "log": ("settingsMoreLogItem", "日志", True),
-        "maintenance": ("settingsMoreMaintenanceItem", "重新启动并进入维护模式", False),
+        "maintenance": ("settingsMoreMaintenanceItem", "重新启动并进入维护模式", True),
         "openLogDir": ("settingsMoreOpenLogDirItem", "打开日志目录", True),
         "openAppDir": ("settingsMoreOpenAppDirItem", "打开应用目录", True),
     }
@@ -229,7 +229,9 @@ def main() -> int:
                   str(item.property("text") or ""))
 
     if all(found.get(key) is not None for key in items):
-        check("维护模式项是禁用态", not bool(found["maintenance"].property("enabled")))
+        # 2026-11-22：维护模式落地（ui/MaintenanceWindow.qml + app/maintenance.py），
+        # 这一项从占位禁用态改成真入口 —— 断言跟着翻过来。
+        check("维护模式项已启用", bool(found["maintenance"].property("enabled")))
         ys = []
         content = menu.property("contentItem")
         anchor_item = content if content is not None else root

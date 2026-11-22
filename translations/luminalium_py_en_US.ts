@@ -268,4 +268,31 @@ Purpose: check the layout, emoji, and primary button ("Ignore") of the error rep
         <translation>Unknown shortcut type</translation>
     </message>
 </context>
+<context>
+    <name>Maintenance</name>
+    <message>
+        <source>有 {n} 个文件没能删除，详情见日志。</source>
+        <translation>{n} file(s) could not be deleted. See the log for details.</translation>
+    </message>
+    <message>
+        <source>已清除临时文件。</source>
+        <translation>Temporary files cleared.</translation>
+    </message>
+    <message>
+        <source>重置应用设置失败，详情见日志。</source>
+        <translation>Failed to reset app settings. See the log for details.</translation>
+    </message>
+    <message>
+        <source>已重置应用设置，重新启动后生效。</source>
+        <translation>App settings were reset. Restart to apply.</translation>
+    </message>
+    <message>
+        <source>有 {n} 项没能清除，详情见日志。</source>
+        <translation>{n} item(s) could not be cleared. See the log for details.</translation>
+    </message>
+    <message>
+        <source>已重置全部信息，重新启动后生效。</source>
+        <translation>All data was reset. Restart to apply.</translation>
+    </message>
+</context>
 </TS>

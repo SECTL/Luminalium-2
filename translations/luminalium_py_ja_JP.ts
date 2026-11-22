@@ -260,4 +260,31 @@
         <translation>不明なショートカットの種類です</translation>
     </message>
 </context>
+<context>
+    <name>Maintenance</name>
+    <message>
+        <source>有 {n} 个文件没能删除，详情见日志。</source>
+        <translation>{n} 個のファイルを削除できませんでした。詳細はログを参照してください。</translation>
+    </message>
+    <message>
+        <source>已清除临时文件。</source>
+        <translation>一時ファイルを削除しました。</translation>
+    </message>
+    <message>
+        <source>重置应用设置失败，详情见日志。</source>
+        <translation>アプリ設定のリセットに失敗しました。詳細はログを参照してください。</translation>
+    </message>
+    <message>
+        <source>已重置应用设置，重新启动后生效。</source>
+        <translation>アプリ設定をリセットしました。再起動後に反映されます。</translation>
+    </message>
+    <message>
+        <source>有 {n} 项没能清除，详情见日志。</source>
+        <translation>{n} 項目を削除できませんでした。詳細はログを参照してください。</translation>
+    </message>
+    <message>
+        <source>已重置全部信息，重新启动后生效。</source>
+        <translation>すべての情報をリセットしました。再起動後に反映されます。</translation>
+    </message>
+</context>
 </TS>

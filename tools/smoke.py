@@ -6661,16 +6661,47 @@ def main() -> int:
             f"restart 分发={'actionId === \"restart\"' in qml_src} "
             f"requestRestart={'requestRestart()' in qml_src}",
         )
+        # 2026-11-22：命令行拼装与 Popen 搬到了 ``app/launch.py``（维护模式要从
+        # 另一套装配里做同一件事），所以这条断言跨两个文件 —— 链路上任何一环
+        # 缺了都等于「点了没反应」。
         app_src = (ROOT / "app" / "application.py").read_text(encoding="utf-8")
+        launch_src = (ROOT / "app" / "launch.py").read_text(encoding="utf-8")
         restart_body = app_src.split("def _restart", 1)[-1].split("\n    def ", 1)[0]
+        relaunch_body = launch_src.split("def relaunch", 1)[-1]
         check(
-            "application._restart 真拉起新进程（Popen）再退出，失败不退出",
-            "subprocess.Popen(" in restart_body
+            "重启链路：_restart → launch.relaunch → Popen，且失败不退出",
+            "launch.relaunch(" in restart_body
             and "self.quit()" in restart_body
-            and "log.exception" in restart_body,
-            f"Popen={'subprocess.Popen(' in restart_body} "
+            and "subprocess.Popen(" in relaunch_body
+            and "log.exception" in relaunch_body
+            and "return False" in relaunch_body,
+            f"relaunch 调用={'launch.relaunch(' in restart_body} "
             f"quit={'self.quit()' in restart_body} "
-            f"失败兜底={'log.exception' in restart_body}",
+            f"Popen={'subprocess.Popen(' in relaunch_body} "
+            f"失败兜底={'log.exception' in relaunch_body}",
+        )
+
+        # 维护模式（2026-11-22）：三层缺一层就是「菜单点了没反应」或「窗口起不来」。
+        # ① 应用层分叉；② 窗口装配；③ 桥上的动作槽。
+        maintenance_src = (ROOT / "app" / "maintenance.py").read_text(encoding="utf-8")
+        bridge_src = (ROOT / "app" / "bridge.py").read_text(encoding="utf-8")
+        check(
+            "维护模式链路齐全：main() 分叉 + 窗口装配 + 桥接槽",
+            "launch.maintenance_requested(arguments)" in app_src
+            and "run_maintenance" in app_src
+            and 'register_window(' in maintenance_src
+            and 'UI_DIR / "MaintenanceWindow.qml"' in maintenance_src
+            and all(name in bridge_src for name in (
+                "def enterMaintenanceMode",
+                "def maintenanceRestart",
+                "def quitMaintenance",
+                "def maintenanceClearTemp",
+                "def maintenanceResetSettings",
+                "def maintenanceResetAll",
+            )),
+            f"分叉={'launch.maintenance_requested(arguments)' in app_src} "
+            f"装配={'register_window(' in maintenance_src} "
+            f"桥槽={all(n in bridge_src for n in ('def enterMaintenanceMode', 'def maintenanceResetAll'))}",
         )
 
         # 已删「放映」设置页的残留引用（2026-10-01 第四轮）。

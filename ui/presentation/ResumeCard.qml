@@ -60,8 +60,8 @@ import Luminalium
 
     ## 为什么它自己收 / 不收
 
-    * **不参与**「光标移出控制条就收」（``windows.py::_dismiss_jump_panels`` 只认
-      ``jumpPanelOpened``）—— 与放大镜选单同一个理由：这张卡是**要人读一下再点**
+    * **不参与**「光标移出控制条就收」（``windows.py::_dismiss_popup_panels`` 只认
+      ``jumpPanelOpened`` / ``overflowPanelOpened``）—— 与放大镜选单同一个理由：这张卡是**要人读一下再点**
       的，光标飘出去就消失会很难用（翻页时手根本不在控制条上）。退路是「点 ×」
       与「退出放映」，两者都由调用方处理。
     * 点「继续放映」之后**不收**，按钮原地换成「已继续放映」——

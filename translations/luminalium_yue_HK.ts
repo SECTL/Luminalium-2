@@ -964,6 +964,19 @@
         <source>屏幕边缘（位置可选）</source>
         <translation>螢幕邊（位置可以揀）</translation>
     </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1940"/>
+        <source>没有可收折的插件按钮</source>
+        <translation>冇可以收折嘅 plugin 按鈕</translation>
+    </message>
+</context>
+<context>
+    <name>OverflowPanel</name>
+    <message>
+        <location filename="../ui/presentation/OverflowPanel.qml" line="51"/>
+        <source>已收折的项目</source>
+        <translation>已收折嘅項目</translation>
+    </message>
 </context>
 <context>
     <name>PenPaletteCard</name>

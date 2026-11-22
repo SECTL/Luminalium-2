@@ -268,4 +268,31 @@
         <translation>알 수 없는 바로 가기 종류입니다</translation>
     </message>
 </context>
+<context>
+    <name>Maintenance</name>
+    <message>
+        <source>有 {n} 个文件没能删除，详情见日志。</source>
+        <translation>{n}개 파일을 삭제하지 못했습니다. 자세한 내용은 로그를 확인하세요.</translation>
+    </message>
+    <message>
+        <source>已清除临时文件。</source>
+        <translation>임시 파일을 정리했습니다.</translation>
+    </message>
+    <message>
+        <source>重置应用设置失败，详情见日志。</source>
+        <translation>앱 설정을 초기화하지 못했습니다. 자세한 내용은 로그를 확인하세요.</translation>
+    </message>
+    <message>
+        <source>已重置应用设置，重新启动后生效。</source>
+        <translation>앱 설정을 초기화했습니다. 다시 시작하면 적용됩니다.</translation>
+    </message>
+    <message>
+        <source>有 {n} 项没能清除，详情见日志。</source>
+        <translation>{n}개 항목을 정리하지 못했습니다. 자세한 내용은 로그를 확인하세요.</translation>
+    </message>
+    <message>
+        <source>已重置全部信息，重新启动后生效。</source>
+        <translation>모든 정보를 초기화했습니다. 다시 시작하면 적용됩니다.</translation>
+    </message>
+</context>
 </TS>

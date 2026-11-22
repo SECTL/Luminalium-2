@@ -716,6 +716,52 @@ Rin.FluentWindowBase {
         return Backend.settings[key]
     }
 
+    /*! 可收折到「更多」里的动作 —— 只有**插件动作**。
+
+        2026-11-22 用户指令：编辑器里自定义「将非自带放映控制按钮之外的内容
+        全部加入到被收折的按钮中」。``presentationConfig.actions`` 里内建条目
+        带 ``_builtin === true``（来自 ``config.json``），插件贡献的不带；这里
+        只列后者 —— 内建动作永远平铺，不给收折选项（后端也强制忽略它们）。
+
+        值随 ``presentationConfigChanged`` 自动重建。 */
+    readonly property var overflowActionCandidates: {
+        var result = []
+        var cfg = Backend.presentationConfig
+        var actions = (cfg && cfg.actions !== undefined) ? cfg.actions : []
+        for (var i = 0; i < actions.length; ++i) {
+            if (actions[i]._builtin !== true)
+                result.push(actions[i])
+        }
+        return result
+    }
+
+    /*! 某枚动作当前是否收折（勾选框的选中态；``_collapsed`` 由后端按配置算好）。 */
+    function isOverflowActionCollapsed(actionId) {
+        for (var i = 0; i < overflowActionCandidates.length; ++i) {
+            if (String(overflowActionCandidates[i].id) === String(actionId))
+                return overflowActionCandidates[i]._collapsed === true
+        }
+        return false
+    }
+
+    /*! 改写 ``presentation.overflow.collapsed``：按**动作原顺序**重建整张列表。
+
+        不能只 push / splice 当前值：配置为 ``null``（= 自动收折全部插件动作）时
+        当前值不是数组；而且顺序按动作表走，下次读回来不会跳来跳去。
+        内建动作天然不在候选里，所以这里也不可能把内建 id 写进去。 */
+    function setOverflowActionCollapsed(actionId, collapsed) {
+        var ids = []
+        for (var i = 0; i < overflowActionCandidates.length; ++i) {
+            var action = overflowActionCandidates[i]
+            var want = action._collapsed === true
+            if (String(action.id) === String(actionId))
+                want = collapsed === true
+            if (want)
+                ids.push(String(action.id))
+        }
+        Backend.setSetting("presentation_overflow_collapsed", ids)
+    }
+
     /*! 描述符可不可用：带 ``enabled_when`` 时，仅当条件全部满足才可用（否则
         变灰且点不动）。``enabled_when`` 可以是单个 ``{key, value}``，也可以是
         ``[{key, value}, ...]`` 的列表（全部满足）。
@@ -1719,11 +1765,14 @@ Rin.FluentWindowBase {
                 /*! 检查器项：**描述符驱动**（2026-10-05 插件系统 Wave 2 任务 10，
                     取代原先三个硬编码 InspectorSetting）。模型 = 选中角各组
                     ``inspector_items`` 的并集（``selectedInspectorItems``），
-                    ``kind`` 分发到三种控件 —— 与原三项的能力上限严格对齐：
+                    ``kind`` 分发到四种控件 —— 与原三项的能力上限严格对齐，
+                    第四种是 2026-11-22 用户指令新增的收折列表：
 
                       ``switch`` —— 布尔开关（原「显示按钮文本」）；
                       ``combo``  —— 下拉（原「退出键样式」）；
-                      ``radio``  —— 单选组（原「翻页组件位置」）。
+                      ``radio``  —— 单选组（原「翻页组件位置」）；
+                      ``collapsed_actions`` —— 「更多」收折列表的勾选组
+                                                 （2026-11-22 用户指令，只列插件动作）。
 
                     值读写统一走 ``Backend.settings.<key>`` /
                     ``Backend.setSetting(...)``（读入口 ``inspectorCurrentValue``
@@ -1845,6 +1894,54 @@ Rin.FluentWindowBase {
                                         })
                                     }
                                 }
+                            }
+                        }
+                        // kind == "collapsed_actions"：勾选哪些插件动作收进
+                        // 控制条「更多」的网格（2026-11-22 用户指令）。列表
+                        // 只含插件动作，内建动作永远平铺、不出现在这里。
+                        Column {
+                            visible: inspectorItem.descriptor.kind === "collapsed_actions"
+                            spacing: 6
+
+                            Repeater {
+                                model: inspectorItem.descriptor.kind === "collapsed_actions"
+                                       ? editorWindow.overflowActionCandidates : []
+
+                                delegate: Rin.CheckBox {
+                                    id: overflowActionCheck
+                                    objectName: "editorOverflowAction_"
+                                                + String(modelData.id)
+
+                                    required property var modelData
+
+                                    primaryColor: Lumi.accent
+                                    text: modelData.label !== undefined
+                                          ? String(modelData.label)
+                                          : String(modelData.id)
+                                    checked: editorWindow.isOverflowActionCollapsed(
+                                                 modelData.id)
+                                    onToggled: {
+                                        editorWindow.setOverflowActionCollapsed(
+                                            modelData.id, checked)
+                                        checked = Qt.binding(function () {
+                                            return editorWindow.isOverflowActionCollapsed(
+                                                overflowActionCheck.modelData.id)
+                                        })
+                                    }
+                                }
+                            }
+
+                            // 没有插件动作时给一句说明 —— 否则检查器里只剩
+                            // 标题和描述，看起来像加载失败。
+                            Rin.Text {
+                                visible: editorWindow.overflowActionCandidates.length === 0
+                                // ⚠️ 显式宽度：``Rin.Text`` 带 ``WordWrap``，放进
+                                // ``Column`` 不给 width 时实测渲染为 0 宽（见
+                                // ``OverflowPanel.qml`` 标题处的同款注释）。
+                                width: inspectorItem.width
+                                typography: Rin.Typography.Caption
+                                color: Lumi.textSecondary
+                                text: qsTr("没有可收折的插件按钮")
                             }
                         }
                     }

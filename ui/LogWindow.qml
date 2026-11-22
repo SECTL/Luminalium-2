@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt.labs.qmlmodels
 import RinUI as Rin
 import Luminalium
 
@@ -30,13 +31,16 @@ import Luminalium
     2026-11-22 用户指令「排版你可以学，组件你要用 RinUI 的啊」：所有能对上的
     控件一律换成 RinUI 的 —— 筛选胶囊用 ``Rin.PillButton``（可勾选、自动处理
     底色与悬停；勾选态用 ``primaryColor`` 换成各等级的实底色，见
-    :func:`levelFill`），搜索框 ``Rin.TextField``，表格外框 ``Rin.Frame``，行内
-    文字 / 图标 ``Rin.Text`` / ``Rin.Icon``，底栏 ``Rin.Button``，滚动条
-    ``Rin.ScrollBar``。只保留 Rectangle 画行底色与 1px 分隔线这类纯装饰。
+    :func:`levelFill`），搜索框 ``Rin.TextField``，表格外框 ``Rin.Frame``、表格
+    本体 ``Rin.TableView``（自带滚动条），行内文字 / 图标 ``Rin.Text`` /
+    ``Rin.Icon``，底栏 ``Rin.Button``。只保留 Rectangle 画行底色与 1px 分隔线
+    这类纯装饰。
 
-    ⚠️ 列表没用 ``Rin.ListView``：它的 delegate 是写死的单行 ``ListViewDelegate``，
-    装不下会换行的异常堆栈和四列内容。这里用原生 ``ListView`` 自己画行，行内
-    仍全部用 RinUI 组件。
+    ⚠️ 表格用 ``Rin.TableView``（2026-11-22 用户指令），而不是 ``Rin.ListView``：
+    后者 delegate 写死成单行 ``ListViewDelegate``，装不下四列和会换行的堆栈。
+    TableView 的列数由模型决定，所以配 ``Qt.labs.qmlmodels.TableModel`` 四列
+    （时间 / 等级 / 区域 / 内容）；行高不固定，用 ``rowHeightProvider`` 按
+    「内容列宽下消息文本的换行高度」现算（缓存见 :func:`rowHeightFor`）。
 */
 
 Rin.FluentWindowBase {
@@ -52,16 +56,27 @@ Rin.FluentWindowBase {
 
     // ------------------------------------------------------------ 列宽
     // 表头与行共用同一组值，改一处两边一起动。
+    // 内容列吃掉剩余宽度；末尾 18px 给 TableView 的滚动条留位，
+    // 单元格再各留 12px 左内边距、内容列额外留 18px 右内边距。
     readonly property int timeColumnWidth: 168
     readonly property int levelColumnWidth: 96
     readonly property int categoryColumnWidth: 200
-    readonly property int rowSpacing: 12
+    readonly property int messageColumnWidth: Math.max(160,
+        logTable.width - timeColumnWidth - levelColumnWidth - categoryColumnWidth - 18)
+    readonly property int messageTextWidth: Math.max(100, messageColumnWidth - 30)
 
     // ------------------------------------------------------------ 数据
     property var entries: []
     property string searchText: ""
     property bool followTail: true
     property string copyHint: ""
+
+    // 行高缓存（行号 -> 高度）。过滤 / 搜索 / 窗口宽度一变就整体作废，
+    // 详见 :func:`syncTableModel` 与 :func:`rowHeightFor`。
+    property var rowHeights: ({})
+    // 上一轮写进 TableModel 的过滤结果，用来做增量同步（只比 key）。
+    property var syncedEntries: []
+    property int hoveredRow: -1
 
     // 与 ClassIsland 的默认值一致：只显示警告及以上。
     property bool filterCritical: true
@@ -91,6 +106,17 @@ Rin.FluentWindowBase {
         }
         return result
     }
+
+    // 过滤结果一变（追加 / 筛选 / 搜索）就同步 TableModel。
+    onFilteredEntriesChanged: syncTableModel()
+
+    // 列宽变了，消息的换行高度全部重算。
+    onMessageTextWidthChanged: {
+        logWindow.rowHeights = ({})
+        logTable.forceLayout()
+    }
+
+    Component.onCompleted: syncTableModel()
 
     // 深色档的 SystemFillColorCritical / Caution 是提亮过的，和浅色档不能共用。
     readonly property color criticalColor: Lumi.isDark ? "#FF99A4" : "#C42B1C"
@@ -242,13 +268,92 @@ Rin.FluentWindowBase {
         Qt.callLater(scrollToBottom)
     }
 
+    function entryKey(row) {
+        return row >= 0 && row < filteredEntries.length
+               ? filteredEntries[row].key : -1
+    }
+
+    function entryLevel(row) {
+        return row >= 0 && row < filteredEntries.length
+               ? filteredEntries[row].level : ""
+    }
+
+    /*!
+        行高 = 内容列在**当前列宽**下换行后的高度 + 上下留白。
+
+        测量借用一个不可见的 ``Rin.Text``（``rowMeasure``），排版参数与真正
+        渲染消息的单元格完全一致，所以量出来的高度就是实际需要的高度。
+        结果按行号缓存，TableView 一次布局会反复问同一行，不能每次都排一遍
+        文本；缓存作废时机见上面 ``rowHeights`` 的注释。
+    */
+    function rowHeightFor(row) {
+        var heights = logWindow.rowHeights
+        if (heights[row] !== undefined)
+            return heights[row]
+        rowMeasure.text = row >= 0 && row < filteredEntries.length
+                          ? filteredEntries[row].message : ""
+        var height = Math.max(30, Math.ceil(rowMeasure.implicitHeight) + 12)
+        heights[row] = height
+        return height
+    }
+
+    /*!
+        把过滤结果增量写进 TableModel。
+
+        日志每秒追加一条，尾部窗口（最多 1000 条）再挤掉一条 —— 全量重建会
+        每秒发上千个行信号。这里按 key 找公共前缀，只删尾巴、只追加新行；
+        筛选 / 搜索变化时前缀通常为 0，退化成全量重建，反正是用户操作。
+    */
+    function syncTableModel() {
+        var wanted = filteredEntries
+        var previous = syncedEntries
+        var common = 0
+        var limit = Math.min(previous.length, wanted.length)
+        while (common < limit && previous[common].key === wanted[common].key)
+            common++
+
+        if (common === 0)
+            logModel.clear()
+        else
+            while (logModel.rowCount > common)
+                logModel.removeRow(logModel.rowCount - 1)
+
+        for (var i = common; i < wanted.length; i++) {
+            var entry = wanted[i]
+            logModel.appendRow({
+                time: entry.time,
+                level: entry.level,
+                category: entry.category,
+                message: entry.message
+            })
+        }
+
+        syncedEntries = wanted
+
+        // 前缀之后的行高全部作废：行号对应的内容变了，或列宽变了。
+        var heights = logWindow.rowHeights
+        var changed = common !== wanted.length || common !== previous.length
+        if (changed) {
+            for (var index in heights) {
+                if (Number(index) >= common)
+                    delete heights[index]
+            }
+            logWindow.rowHeights = heights
+            logTable.forceLayout()
+        }
+
+        if (followTail)
+            Qt.callLater(scrollToBottom)
+    }
+
     function scrollToBottom() {
-        if (logList.count === 0)
+        if (logModel.rowCount === 0)
             return
-        logList.positionViewAtEnd()
-        // positionViewAtEnd 对还没实例化的行只能按估算高度定位，最后一行换行后
-        // 会差几个像素；直接贴住当前 contentHeight 的底，再等一拍让真实行高落定。
-        logList.contentY = Math.max(0, logList.contentHeight - logList.height)
+        // 不调 positionViewAtRow：这个 Qt 版本里它的 mode 枚举（TableView.End）
+        // 是 undefined，传进去会被当成默认值先跳回顶部。contentHeight 由
+        // rowHeightProvider 逐行算出，直接按它贴底就是准的。
+        logTable.contentY = Math.max(0, logTable.contentHeight - logTable.height)
+        // 委托真正加载后 contentHeight 可能再微调一点，bottomSettle 补一次。
         bottomSettle.restart()
     }
 
@@ -390,15 +495,13 @@ Rin.FluentWindowBase {
                     Layout.preferredHeight: 36
 
                     RowLayout {
-                        x: 12
-                        y: 0
-                        width: parent.width - 30
-                        height: parent.height
-                        spacing: logWindow.rowSpacing
+                        anchors.fill: parent
+                        spacing: 0
 
                         Rin.Text {
                             Layout.preferredWidth: logWindow.timeColumnWidth
                             Layout.alignment: Qt.AlignVCenter
+                            leftPadding: 12
                             text: qsTr("时间")
                             typography: Rin.Typography.BodyStrong
                             color: Lumi.textSecondary
@@ -406,6 +509,7 @@ Rin.FluentWindowBase {
                         Rin.Text {
                             Layout.preferredWidth: logWindow.levelColumnWidth
                             Layout.alignment: Qt.AlignVCenter
+                            leftPadding: 12
                             text: qsTr("等级")
                             typography: Rin.Typography.BodyStrong
                             color: Lumi.textSecondary
@@ -413,6 +517,7 @@ Rin.FluentWindowBase {
                         Rin.Text {
                             Layout.preferredWidth: logWindow.categoryColumnWidth
                             Layout.alignment: Qt.AlignVCenter
+                            leftPadding: 12
                             text: qsTr("区域")
                             typography: Rin.Typography.BodyStrong
                             color: Lumi.textSecondary
@@ -420,6 +525,7 @@ Rin.FluentWindowBase {
                         Rin.Text {
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignVCenter
+                            leftPadding: 12
                             text: qsTr("内容")
                             typography: Rin.Typography.BodyStrong
                             color: Lumi.textSecondary
@@ -435,17 +541,34 @@ Rin.FluentWindowBase {
                     }
                 }
 
-                ListView {
-                    id: logList
+                // 表格本体：RinUI 的 TableView（Qt Quick TableView 的封装）。
+                // 列数由 TableModel 决定（四列），不再手拼 RowLayout。
+                Rin.TableView {
+                    id: logTable
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
-                    reuseItems: true
                     boundsBehavior: Flickable.StopAtBounds
-                    model: logWindow.filteredEntries
+                    columnSpacing: 0
+                    rowSpacing: 0
+                    model: logModel
 
-                    ScrollBar.vertical: Rin.ScrollBar {
-                        policy: ScrollBar.AsNeeded
+                    // RinUI 的 TableView 自带一段「contentY 归零 + 淡入」的入场
+                    // 动画，每次 rowsInserted 都会重播。日志每秒追加一条，
+                    // 留着它用户往下翻一屏就会被弹回顶部，贴底也永远贴不住。
+                    // 换成空动画后 restart() 无害。
+                    updateAnimation: ParallelAnimation {}
+
+                    columnWidthProvider: function (column) {
+                        switch (column) {
+                        case 0: return logWindow.timeColumnWidth
+                        case 1: return logWindow.levelColumnWidth
+                        case 2: return logWindow.categoryColumnWidth
+                        default: return logWindow.messageColumnWidth
+                        }
+                    }
+                    rowHeightProvider: function (row) {
+                        return logWindow.rowHeightFor(row)
                     }
 
                     onMovementEnded: {
@@ -459,77 +582,23 @@ Rin.FluentWindowBase {
                             Qt.callLater(logWindow.scrollToBottom)
                     }
 
-                    delegate: Rectangle {
-                        id: entryRow
-                        required property int index
-                        required property var modelData
+                    delegate: Item {
+                        id: logCell
 
-                        width: logList.width
-                        height: rowLayout.implicitHeight + 12
-                        color: {
-                            if (logWindow.selectedKeys[modelData.key] === true)
-                                return Lumi.fade(Lumi.accent,
-                                                 rowHover.containsMouse ? 0.20 : 0.12)
-                            return rowHover.containsMouse ? Lumi.tileHover : "transparent"
-                        }
+                        required property int row
+                        required property int column
+                        required property string display
 
-                        RowLayout {
-                            id: rowLayout
-                            x: 12
-                            y: 6
-                            width: entryRow.width - 30
-                            spacing: logWindow.rowSpacing
+                        readonly property bool isSelected:
+                            logWindow.selectedKeys[logWindow.entryKey(row)] === true
+                        readonly property bool isHovered: logWindow.hoveredRow === row
 
-                            Rin.Text {
-                                Layout.preferredWidth: logWindow.timeColumnWidth
-                                Layout.alignment: Qt.AlignTop
-                                text: entryRow.modelData.time
-                                textFormat: Text.PlainText
-                                typography: Rin.Typography.Body
-                                color: Lumi.textSecondary
-                            }
-
-                            RowLayout {
-                                Layout.preferredWidth: logWindow.levelColumnWidth
-                                Layout.alignment: Qt.AlignTop
-                                spacing: 4
-
-                                Rin.Icon {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    name: logWindow.levelIcon(entryRow.modelData.level)
-                                    size: 14
-                                    color: logWindow.levelColor(entryRow.modelData.level)
-                                }
-                                Rin.Text {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: logWindow.levelName(entryRow.modelData.level)
-                                    typography: Rin.Typography.Body
-                                    color: logWindow.levelColor(entryRow.modelData.level)
-                                }
-                            }
-
-                            Rin.Text {
-                                Layout.preferredWidth: logWindow.categoryColumnWidth
-                                Layout.alignment: Qt.AlignTop
-                                text: entryRow.modelData.category
-                                textFormat: Text.PlainText
-                                typography: Rin.Typography.Body
-                                elide: Text.ElideRight
-                                maximumLineCount: 1
-                                color: Lumi.textSecondary
-                            }
-
-                            Rin.Text {
-                                Layout.fillWidth: true
-                                Layout.alignment: Qt.AlignTop
-                                text: entryRow.modelData.message
-                                textFormat: Text.PlainText
-                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                                typography: Rin.Typography.Body
-                                color: Lumi.textPrimary
-                                opacity: entryRow.modelData.level === "DEBUG" ? 0.85
-                                         : entryRow.modelData.level === "TRACE" ? 0.7 : 1
-                            }
+                        // 行底色铺满单元格；四列拼起来就是一整条选中带。
+                        Rectangle {
+                            anchors.fill: parent
+                            color: logCell.isSelected
+                                   ? Lumi.fade(Lumi.accent, logCell.isHovered ? 0.20 : 0.12)
+                                   : logCell.isHovered ? Lumi.tileHover : "transparent"
                         }
 
                         Rectangle {
@@ -540,16 +609,94 @@ Rin.FluentWindowBase {
                             color: Lumi.hairline
                         }
 
+                        // 时间列
+                        Rin.Text {
+                            visible: logCell.column === 0
+                            x: 12
+                            y: 6
+                            width: logCell.width - 12
+                            text: logCell.display
+                            textFormat: Text.PlainText
+                            typography: Rin.Typography.Body
+                            color: Lumi.textSecondary
+                        }
+
+                        // 等级列：图标 + 文字，颜色按等级
+                        RowLayout {
+                            visible: logCell.column === 1
+                            x: 12
+                            y: 6
+                            spacing: 4
+
+                            Rin.Icon {
+                                Layout.alignment: Qt.AlignVCenter
+                                name: logWindow.levelIcon(logWindow.entryLevel(logCell.row))
+                                size: 14
+                                color: logWindow.levelColor(logWindow.entryLevel(logCell.row))
+                            }
+                            Rin.Text {
+                                Layout.alignment: Qt.AlignVCenter
+                                text: logWindow.levelName(logWindow.entryLevel(logCell.row))
+                                typography: Rin.Typography.Body
+                                color: logWindow.levelColor(logWindow.entryLevel(logCell.row))
+                            }
+                        }
+
+                        // 区域列
+                        Rin.Text {
+                            visible: logCell.column === 2
+                            x: 12
+                            y: 6
+                            width: logCell.width - 12
+                            text: logCell.display
+                            textFormat: Text.PlainText
+                            typography: Rin.Typography.Body
+                            elide: Text.ElideRight
+                            maximumLineCount: 1
+                            color: Lumi.textSecondary
+                        }
+
+                        // 内容列：允许换行，行高由 rowHeightProvider 量出来
+                        Rin.Text {
+                            visible: logCell.column === 3
+                            x: 12
+                            y: 6
+                            width: logCell.width - 30
+                            text: logCell.display
+                            textFormat: Text.PlainText
+                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                            typography: Rin.Typography.Body
+                            color: Lumi.textPrimary
+                            opacity: logWindow.entryLevel(logCell.row) === "DEBUG" ? 0.85
+                                     : logWindow.entryLevel(logCell.row) === "TRACE" ? 0.7 : 1
+                        }
+
                         MouseArea {
-                            id: rowHover
                             anchors.fill: parent
                             hoverEnabled: true
                             acceptedButtons: Qt.LeftButton
+                            onEntered: logWindow.hoveredRow = logCell.row
+                            onExited: {
+                                if (logWindow.hoveredRow === logCell.row)
+                                    logWindow.hoveredRow = -1
+                            }
                             onClicked: (mouse) =>
-                                logWindow.handleRowClick(entryRow.index, mouse.modifiers)
+                                logWindow.handleRowClick(logCell.row, mouse.modifiers)
                         }
                     }
                 }
+            }
+
+            // 隐藏的测量文本：排版参数与内容列的实际单元格保持一致，
+            // rowHeightFor 靠它的 implicitHeight 算换行后的真实行高。
+            // 必须放在布局器外面，否则 ColumnLayout 会接管它的位置和宽度。
+            Rin.Text {
+                id: rowMeasure
+                visible: false
+                width: logWindow.messageTextWidth
+                textFormat: Text.PlainText
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                typography: Rin.Typography.Body
             }
 
             Rin.Text {
@@ -598,6 +745,16 @@ Rin.FluentWindowBase {
         // 非可视对象挂在 ColumnLayout 下而不是窗口根节点：FluentWindowBase 的
         // 默认属性只收 Item，Timer/Shortcut 直接写在根上会编译失败。布局器会
         // 忽略非 Item 子节点，不影响排版。
+        // 四列表格的数据源：TableView 的列数由模型决定，所以用 TableModel
+        // 声明四列；内容由 syncTableModel 增量写入。
+        TableModel {
+            id: logModel
+            TableModelColumn { display: "time" }
+            TableModelColumn { display: "level" }
+            TableModelColumn { display: "category" }
+            TableModelColumn { display: "message" }
+        }
+
         // 窗口露出时每秒看一次日志文件；隐藏时停掉，别让常驻应用白轮询。
         Timer {
             interval: 1000
@@ -617,10 +774,9 @@ Rin.FluentWindowBase {
             id: bottomSettle
             interval: 60
             onTriggered: {
-                if (!logWindow.followTail || logList.count === 0)
+                if (!logWindow.followTail || logModel.rowCount === 0)
                     return
-                logList.positionViewAtEnd()
-                logList.contentY = Math.max(0, logList.contentHeight - logList.height)
+                logTable.contentY = Math.max(0, logTable.contentHeight - logTable.height)
             }
         }
 

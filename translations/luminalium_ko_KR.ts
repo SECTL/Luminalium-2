@@ -770,89 +770,89 @@
 <context>
     <name>LogWindow</name>
     <message>
-        <location filename="../ui/LogWindow.qml" line="46"/>
+        <location filename="../ui/LogWindow.qml" line="50"/>
         <source>日志</source>
         <translation>로그</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="101"/>
-        <location filename="../ui/LogWindow.qml" line="152"/>
+        <location filename="../ui/LogWindow.qml" line="127"/>
+        <location filename="../ui/LogWindow.qml" line="178"/>
         <source>灾难</source>
         <extracomment>顶栏胶囊的数据源：顺序照 ClassIsland（严重 → 追踪）。</extracomment>
         <translation>치명적</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="103"/>
-        <location filename="../ui/LogWindow.qml" line="153"/>
+        <location filename="../ui/LogWindow.qml" line="129"/>
+        <location filename="../ui/LogWindow.qml" line="179"/>
         <source>错误</source>
         <translation>오류</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="105"/>
-        <location filename="../ui/LogWindow.qml" line="154"/>
+        <location filename="../ui/LogWindow.qml" line="131"/>
+        <location filename="../ui/LogWindow.qml" line="180"/>
         <source>警告</source>
         <translation>경고</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="107"/>
-        <location filename="../ui/LogWindow.qml" line="155"/>
+        <location filename="../ui/LogWindow.qml" line="133"/>
+        <location filename="../ui/LogWindow.qml" line="181"/>
         <source>信息</source>
         <translation>정보</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="109"/>
-        <location filename="../ui/LogWindow.qml" line="156"/>
+        <location filename="../ui/LogWindow.qml" line="135"/>
+        <location filename="../ui/LogWindow.qml" line="182"/>
         <source>调试</source>
         <translation>디버그</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="111"/>
-        <location filename="../ui/LogWindow.qml" line="157"/>
+        <location filename="../ui/LogWindow.qml" line="137"/>
+        <location filename="../ui/LogWindow.qml" line="183"/>
         <source>追踪</source>
         <translation>추적</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="297"/>
+        <location filename="../ui/LogWindow.qml" line="402"/>
         <source>已复制 %1 条日志</source>
         <translation>로그 %1개를 복사했습니다</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="358"/>
+        <location filename="../ui/LogWindow.qml" line="463"/>
         <source>筛选日志…</source>
         <translation>로그 필터…</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="402"/>
+        <location filename="../ui/LogWindow.qml" line="505"/>
         <source>时间</source>
         <translation>시간</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="409"/>
+        <location filename="../ui/LogWindow.qml" line="513"/>
         <source>等级</source>
         <translation>등급</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="416"/>
+        <location filename="../ui/LogWindow.qml" line="521"/>
         <source>区域</source>
         <translation>범주</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="423"/>
+        <location filename="../ui/LogWindow.qml" line="529"/>
         <source>内容</source>
         <translation>내용</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="562"/>
+        <location filename="../ui/LogWindow.qml" line="709"/>
         <source>没有符合筛选条件的日志</source>
         <translation>필터와 일치하는 로그가 없습니다</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="584"/>
+        <location filename="../ui/LogWindow.qml" line="731"/>
         <source>清空日志</source>
         <translation>로그 지우기</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="591"/>
+        <location filename="../ui/LogWindow.qml" line="738"/>
         <source>复制选中</source>
         <translation>선택 항목 복사</translation>
     </message>
@@ -869,7 +869,7 @@
         <translation type="vanished">로그 폴더 열기</translation>
     </message>
     <message>
-        <location filename="../ui/LogWindow.qml" line="561"/>
+        <location filename="../ui/LogWindow.qml" line="708"/>
         <source>暂无日志内容</source>
         <translation>아직 로그가 없습니다</translation>
     </message>
@@ -1136,9 +1136,14 @@
         <translation>이어보기 카드</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1347"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1393"/>
         <source>演示文稿.pptx</source>
         <translation>프레젠테이션.pptx</translation>
+    </message>
+    <message>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1944"/>
+        <source>没有可收折的插件按钮</source>
+        <translation>접을 수 있는 플러그인 버튼이 없습니다</translation>
     </message>
     <message>
         <source>课件续页卡片</source>
@@ -1170,35 +1175,191 @@
         <translation>화면 가장자리 (위치 변경 가능)</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1772"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1821"/>
         <source>开</source>
         <translation>켬</translation>
     </message>
     <message>
-        <location filename="../ui/MainInterfaceEditor.qml" line="1773"/>
+        <location filename="../ui/MainInterfaceEditor.qml" line="1822"/>
         <source>关</source>
         <translation>끔</translation>
     </message>
 </context>
 <context>
+    <name>MaintenanceWindow</name>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="60"/>
+        <source>维护模式</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="104"/>
+        <location filename="../ui/MaintenanceWindow.qml" line="348"/>
+        <source>清除临时文件</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="105"/>
+        <source>此操作将删除所有缓存和临时文件，例如放映页缩略图，并且无法恢复。
+
+临时文件会在下次放映时重新生成，不影响任何设置。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="107"/>
+        <source>清除</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="113"/>
+        <location filename="../ui/MaintenanceWindow.qml" line="364"/>
+        <source>重置应用设置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="114"/>
+        <source>我确认重置应用设置</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="115"/>
+        <source>此操作将把应用设置恢复为默认值，并且无法恢复。不影响已安装的插件与续播记忆。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="117"/>
+        <location filename="../ui/MaintenanceWindow.qml" line="129"/>
+        <source>如果你确实希望继续，请在下方输入「%1」。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="119"/>
+        <location filename="../ui/MaintenanceWindow.qml" line="131"/>
+        <source>重置</source>
+        <translation type="unfinished">초기화</translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="125"/>
+        <location filename="../ui/MaintenanceWindow.qml" line="380"/>
+        <source>重置全部信息</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="126"/>
+        <source>我确认重置全部信息</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="127"/>
+        <source>此操作将删除应用设置、续播记忆与已安装的外部插件，并清除临时文件，恢复到首次运行的状态，并且无法恢复。
+
+日志不会被删除。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="229"/>
+        <source>选择一个选项</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="240"/>
+        <source>选择一个操作以继续。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="260"/>
+        <source>继续使用 Luminalium 2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="261"/>
+        <source>退出维护模式，正常启动应用。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="276"/>
+        <source>以安全模式继续使用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="277"/>
+        <source>禁用所有插件。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="292"/>
+        <source>以诊断模式继续使用</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="293"/>
+        <source>把日志级别提升到 DEBUG。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="308"/>
+        <source>打开日志目录</source>
+        <translation type="unfinished">로그 폴더 열기</translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="309"/>
+        <source>日志文件在 logs 目录下。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="324"/>
+        <source>打开应用目录</source>
+        <translation type="unfinished">앱 폴더 열기</translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="325"/>
+        <source>配置与数据所在的位置。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="349"/>
+        <source>删除所有缓存和临时文件。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="365"/>
+        <source>恢复默认设置，不影响插件与记忆。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="381"/>
+        <source>恢复到首次运行的状态。</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="434"/>
+        <source>在此输入确认文本</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/MaintenanceWindow.qml" line="446"/>
+        <source>取消</source>
+        <translation type="unfinished">취소</translation>
+    </message>
+</context>
+<context>
     <name>MultiInstanceDialog</name>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="46"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="108"/>
         <source>Luminalium 2 已在运行</source>
         <translation>Luminalium 2가 이미 실행 중입니다</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="194"/>
         <source>检测到程序已在运行</source>
-        <translation>프로그램이 이미 실행 중입니다</translation>
+        <translation type="vanished">프로그램이 이미 실행 중입니다</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="201"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="177"/>
         <source>Luminalium 2 的另一个实例已经在后台运行。你可以在系统托盘区域点击图标打开「设置」进行配置。</source>
         <translation>Luminalium 2의 다른 인스턴스가 백그라운드에서 실행 중입니다. 시스템 트레이에서 아이콘을 클릭하여 설정을 열 수 있습니다.</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="210"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="184"/>
         <source>如果程序没有故障或设置错误，Luminalium 2 的主界面只会在放映时显示。
 
 如果仍然找不到旧实例，可能是出现了问题，可以尝试重新启动实例，或仍然启动新实例。</source>
@@ -1207,38 +1368,38 @@
 그래도 이전 인스턴스를 찾을 수 없다면 문제가 발생했을 수 있습니다. 인스턴스를 다시 시작하거나 새 인스턴스를 그대로 시작해 보세요.</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="230"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="204"/>
         <source>重新启动实例</source>
         <translation>인스턴스 다시 시작</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="231"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="205"/>
         <source>结束旧实例并启动此新实例</source>
         <translation>이전 인스턴스를 종료하고 이 새 인스턴스를 시작합니다</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="246"/>
-        <location filename="../ui/MultiInstanceDialog.qml" line="356"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="222"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="317"/>
         <source>仍然启动</source>
         <translation>그래도 시작</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="247"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="223"/>
         <source>保留旧实例并强制启动新实例</source>
         <translation>이전 인스턴스를 유지하고 새 인스턴스를 강제로 시작합니다</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="277"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="275"/>
         <source>取消</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="325"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="292"/>
         <source>不建议多开实例</source>
         <translation>여러 인스턴스 실행은 권장되지 않습니다</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="340"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="299"/>
         <source>同时运行多个实例，可能会导致：资源占用翻倍、数据冲突或丢失、功能异常或崩溃等。
 
 因此，开发者不推荐多开实例。若你在生产环境中强行使用此类功能，开发者不对该行为产生的后果承担任何责任。</source>
@@ -1247,9 +1408,17 @@
 따라서 개발자는 여러 인스턴스 실행을 권장하지 않습니다. 프로덕션 환경에서 이 기능을 억지로 사용하는 경우, 개발자는 그 결과에 대해 어떠한 책임도 지지 않습니다.</translation>
     </message>
     <message>
-        <location filename="../ui/MultiInstanceDialog.qml" line="351"/>
+        <location filename="../ui/MultiInstanceDialog.qml" line="308"/>
         <source>返回</source>
         <translation>뒤로</translation>
+    </message>
+</context>
+<context>
+    <name>OverflowPanel</name>
+    <message>
+        <location filename="../ui/presentation/OverflowPanel.qml" line="51"/>
+        <source>已收折的项目</source>
+        <translation>접힌 항목</translation>
     </message>
 </context>
 <context>
@@ -1496,73 +1665,73 @@
 <context>
     <name>PresentationDock</name>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="262"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="286"/>
         <source>更多操作</source>
         <translation>추가 동작</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="279"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="303"/>
         <source>退出放映</source>
         <translation>프레젠테이션 끝내기</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="287"/>
-        <location filename="../ui/presentation/PresentationDock.qml" line="289"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="311"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="313"/>
         <source>放大镜</source>
         <translation>돋보기</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1072"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1186"/>
         <source>上一页</source>
         <translation>이전 페이지</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1142"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1256"/>
         <source>下一页</source>
         <translation>다음 페이지</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1296"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1410"/>
         <source>缩放</source>
         <translation>확대/축소</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1298"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1412"/>
         <source>移位</source>
         <translation>이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1314"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1428"/>
         <source>放大</source>
         <translation>확대</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1316"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1430"/>
         <source>缩小</source>
         <translation>축소</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1318"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1432"/>
         <source>恢复原始大小</source>
         <translation>원래 크기로</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1320"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1434"/>
         <source>向上移位</source>
         <translation>위로 이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1322"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1436"/>
         <source>向下移位</source>
         <translation>아래로 이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1324"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1438"/>
         <source>向左移位</source>
         <translation>왼쪽으로 이동</translation>
     </message>
     <message>
-        <location filename="../ui/presentation/PresentationDock.qml" line="1326"/>
+        <location filename="../ui/presentation/PresentationDock.qml" line="1440"/>
         <source>向右移位</source>
         <translation>오른쪽으로 이동</translation>
     </message>
@@ -1680,28 +1849,28 @@
         <translation>설정</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="431"/>
-        <location filename="../ui/Settings.qml" line="483"/>
+        <location filename="../ui/Settings.qml" line="432"/>
+        <location filename="../ui/Settings.qml" line="484"/>
         <source>需要重启</source>
         <translation>다시 시작 필요</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="436"/>
+        <location filename="../ui/Settings.qml" line="437"/>
         <source>部分设置需要重启才能生效，点击以重启应用。</source>
         <translation>일부 설정은 적용하려면 다시 시작해야 합니다. 눌러서 앱을 다시 시작하세요.</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="491"/>
+        <location filename="../ui/Settings.qml" line="492"/>
         <source>部分设置需要重启以应用</source>
         <translation>일부 설정은 적용하려면 다시 시작해야 합니다</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="501"/>
+        <location filename="../ui/Settings.qml" line="502"/>
         <source>取消</source>
         <translation>취소</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="510"/>
+        <location filename="../ui/Settings.qml" line="511"/>
         <source>重启</source>
         <translation>다시 시작</translation>
     </message>
@@ -1731,12 +1900,12 @@
         <translation>유지 관리 모드로 다시 시작</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="341"/>
+        <location filename="../ui/Settings.qml" line="342"/>
         <source>打开日志目录</source>
         <translation>로그 폴더 열기</translation>
     </message>
     <message>
-        <location filename="../ui/Settings.qml" line="347"/>
+        <location filename="../ui/Settings.qml" line="348"/>
         <source>打开应用目录</source>
         <translation>앱 폴더 열기</translation>
     </message>

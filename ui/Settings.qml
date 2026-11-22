@@ -225,8 +225,8 @@ Rin.FluentWindow {
         ``subtleSecondary``，正是标题栏图标按钮该有的样子。高度 24 与「需要
         重启」按钮对齐（32 会把标题栏撑满，见那一段注释）。
 
-        菜单项文案里的「维护模式」那一项**故意是禁用态**：用户 2026-11-21 说
-        实现方案稍后再给，先把入口占住，别让它看起来像已经能用。 */
+        菜单项文案里的「维护模式」那一项 2026-11-21 先是占位禁用态，2026-11-22
+        随 ``ui/MaintenanceWindow.qml`` 落地改成真入口（见下面该项的注释）。 */
     Rin.Button {
         id: settingsMoreButton
 
@@ -330,8 +330,9 @@ Rin.FluentWindow {
             objectName: "settingsMoreMaintenanceItem"
             text: qsTr("重新启动并进入维护模式")
             icon.name: "ic_fluent_wrench_20_regular"
-            // 维护模式还没实现（用户 2026-11-21 说方案稍后给），入口先占位。
-            enabled: false
+            // 2026-11-22：维护模式落地（ui/MaintenanceWindow.qml +
+            // app/maintenance.py），这项从占位禁用态改成真入口。
+            onTriggered: Backend.enterMaintenanceMode()
         }
 
         Rin.MenuSeparator {}

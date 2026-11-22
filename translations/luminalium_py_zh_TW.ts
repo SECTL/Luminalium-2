@@ -268,4 +268,31 @@
         <translation>未知的捷徑類型</translation>
     </message>
 </context>
+<context>
+    <name>Maintenance</name>
+    <message>
+        <source>有 {n} 个文件没能删除，详情见日志。</source>
+        <translation>有 {n} 個檔案沒能刪除，詳情見日誌。</translation>
+    </message>
+    <message>
+        <source>已清除临时文件。</source>
+        <translation>已清除暫存檔案。</translation>
+    </message>
+    <message>
+        <source>重置应用设置失败，详情见日志。</source>
+        <translation>重設應用程式設定失敗，詳情見日誌。</translation>
+    </message>
+    <message>
+        <source>已重置应用设置，重新启动后生效。</source>
+        <translation>已重設應用程式設定，重新啟動後生效。</translation>
+    </message>
+    <message>
+        <source>有 {n} 项没能清除，详情见日志。</source>
+        <translation>有 {n} 項沒能清除，詳情見日誌。</translation>
+    </message>
+    <message>
+        <source>已重置全部信息，重新启动后生效。</source>
+        <translation>已重設全部資訊，重新啟動後生效。</translation>
+    </message>
+</context>
 </TS>

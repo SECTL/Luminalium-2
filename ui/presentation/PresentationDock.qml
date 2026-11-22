@@ -119,6 +119,27 @@ Item {
     readonly property var exitCfg: cfg.exit !== undefined ? cfg.exit : ({})
     readonly property var toolsCfg: cfg.tools !== undefined ? cfg.tools : []
     readonly property var actionsCfg: cfg.actions !== undefined ? cfg.actions : []
+    /*! 平铺在条上的动作（``_collapsed !== true``）。
+        2026-11-22 用户指令：非内建动作可以收进「更多」的网格，收折状态由后端
+        读取侧标记（``bridge.py::_get_presentation_config``）—— QML 只负责分流，
+        不自己算配置。 */
+    readonly property var expandedActionsCfg: {
+        var result = []
+        for (var i = 0; i < actionsCfg.length; i++) {
+            if (actionsCfg[i]._collapsed !== true)
+                result.push(actionsCfg[i])
+        }
+        return result
+    }
+    /*! 收进「更多」网格的动作。只有插件动作会出现在这里（内建动作永不收折）。 */
+    readonly property var collapsedActionsCfg: {
+        var result = []
+        for (var i = 0; i < actionsCfg.length; i++) {
+            if (actionsCfg[i]._collapsed === true)
+                result.push(actionsCfg[i])
+        }
+        return result
+    }
     readonly property var penCfg: cfg.pen !== undefined ? cfg.pen : ({})
     readonly property var inkCfg: cfg.ink !== undefined ? cfg.ink : ({})
     /*! 墨迹引擎是不是 COM 画笔（``presentation.ink.engine``）。
@@ -254,6 +275,9 @@ Item {
         ? shadowCfg.offset_y : 6
     readonly property bool overflowEnabled: overflowCfg.enabled !== undefined
         ? overflowCfg.enabled : true
+    /*! 「更多」网格的列数（``presentation.overflow.columns``）。 */
+    readonly property int overflowColumns: overflowCfg.columns !== undefined
+        ? Math.max(1, Number(overflowCfg.columns)) : 4
 
     // ---- 图标 ----
     readonly property string overflowIcon: overflowCfg.icon !== undefined
@@ -454,10 +478,41 @@ Item {
     /*! 放大镜选单展开着没有（``interactiveRect`` / 区域塑形用）。
 
         ⚠️ 它**不参与** Python 侧那个「光标移出控制条就收面板」
-        （``windows.py::_dismiss_jump_panels`` 只认 ``jumpPanelOpened``）：
+        （``windows.py::_dismiss_popup_panels`` 只认 ``jumpPanelOpened`` /
+        ``overflowPanelOpened``）：
         那是**工具自己的选项**，与笔的色板同一类 —— 用户要按好几下缩放 / 移位，
         中途光标飘出去就收起来会很难用。退路是「再点一下放大镜」或切工具。 */
     readonly property bool zoomPanelOpened: zoomPanel.opened
+
+    /*! 「更多」收折网格展开着没有（``interactiveRect`` / 区域塑形用）。
+
+        与 ``jumpPanelOpened`` 一样参与 Python 侧的「光标移出控制条就收起」
+        （``windows.py::_dismiss_popup_panels``）：它是一个菜单式浮层，点外部
+        就该收，不像放大镜那样要连续按好几下。 */
+    readonly property bool overflowPanelOpened: overflowPanel.opened
+
+    /*! 开 / 关「更多」网格。没有收折项时不动 —— 按钮本身此时也隐藏。 */
+    function toggleOverflowPanel() {
+        if (!overflowEnabled || collapsedActionsCfg.length === 0) {
+            return
+        }
+        var willOpen = !overflowPanel.opened
+        if (willOpen) {
+            // 打开前强制刷一次锚点：``Component.onCompleted`` 可能早于
+            // FlyoutSurface 的内部内容就绪，而 ``Connections`` 只在尺寸变化
+            // 时才补 —— 冷启动第一下打开会拿不到「更多」按钮的中心，
+            // 网格被钳到左边缘（2026-11-22 探针实测）。
+            _refreshFlyoutAnchors()
+        }
+        closeFlyouts()
+        overflowPanel.opened = willOpen
+    }
+
+    /*! 收起「更多」网格。给 Python 侧的「点外部收起」调（见
+        ``windows.py::_dismiss_popup_panels``）。 */
+    function closeOverflowPanel() {
+        overflowPanel.opened = false
+    }
 
     // ---- 续播提示卡片（2026-11-08 用户指令，见 app/page_memory.py）----
     // ⚠️ 卡片**不挂在本组件里**：2026-11-08 用户指令「让那个卡片显示在右下角」，
@@ -534,17 +589,61 @@ Item {
         （``bar.width/height``，含 ``showLabels`` 切换与工具数变化）。 */
     property Item zoomPanelAnchor: null
 
-    function _refreshZoomPanelAnchor() {
+    /*! 「更多」网格要对齐的**动作 Flow** 与**溢出圆钮**（缓存实例）。
+
+        溢出按钮在 ``Flow`` 里，不是 ``inner`` 的直接子项，``contentItemByName``
+        查不到它，于是用一次性的递归查表把两个实例缓存下来（``_refreshFlyoutAnchors``）；
+        之后的绑定只读它们的 ``x`` / ``width`` —— 与 ``zoomPanelAnchor`` 同一条
+        「不把 non-bindable 的 ``data`` 读进绑定」的约定。 */
+    property Item overflowActionsFlow: null
+    property Item overflowButton: null
+
+    /*! 溢出圆钮中心的**根 Item 坐标**（屏幕像素）；按钮不可见时为 -1。
+
+        算式在**设计单位**里做完再乘一次 ``scaleFactor`` —— 与 ``flyoutX`` 同一条
+        缩放账（面板自己带 ``scale`` 变换）。 */
+    readonly property real overflowButtonCenterX: {
+        if (!overflowButton || !overflowActionsFlow
+                || !overflowButton.visible || overflowButton.width <= 0)
+            return -1
+        var flowX = overflowActionsFlow.x !== undefined
+                ? overflowActionsFlow.x : 0
+        return (bar.margin + bar.paddingX + flowX
+                + overflowButton.x + overflowButton.width / 2) * dock.scaleFactor
+    }
+
+    /*! 在 ``root`` 的子树里按 ``objectName`` 找第一项（只用于缓存实例，
+        不要在绑定里调用 —— ``children`` 同样是 non-bindable）。 */
+    function _findChildByName(rootItem, name) {
+        if (!rootItem || !rootItem.children)
+            return null
+        var kids = rootItem.children
+        for (var i = 0; i < kids.length; i++) {
+            var child = kids[i]
+            if (!child)
+                continue
+            if (child.objectName === name)
+                return child
+            var found = _findChildByName(child, name)
+            if (found)
+                return found
+        }
+        return null
+    }
+
+    function _refreshFlyoutAnchors() {
         zoomPanelAnchor = bar.contentItemByName("dockZoomButton")
+        overflowActionsFlow = bar.contentItemByName("dockActionsFlow")
+        overflowButton = _findChildByName(bar, "dockOverflowButton")
     }
 
     Connections {
         target: bar
-        function onWidthChanged() { dock._refreshZoomPanelAnchor() }
-        function onHeightChanged() { dock._refreshZoomPanelAnchor() }
+        function onWidthChanged() { dock._refreshFlyoutAnchors() }
+        function onHeightChanged() { dock._refreshFlyoutAnchors() }
     }
 
-    Component.onCompleted: _refreshZoomPanelAnchor()
+    Component.onCompleted: _refreshFlyoutAnchors()
 
     /*! 浮出卡片（笔选单 / 放大镜选单）的横向落点。
 
@@ -617,6 +716,7 @@ Item {
         eraserPalette.opened = false
         zoomPanel.opened = false
         jumpPanel.opened = false
+        overflowPanel.opened = false
     }
 
     /*! 分段里点了一页。
@@ -745,6 +845,14 @@ Item {
             left = Math.min(left, zoomPanel.x)
             right = Math.max(right, zoomPanel.x + zoomPanel.width * s)
             top = Math.min(top, zoomPanel.y)
+        }
+        // 「更多」网格同源（2026-11-22）：也浮在条上方，尺寸随收折项数变，
+        // 不包进来就既画不出也点不动（点击会穿透到放映画面）。
+        if (overflowPanelOpened && overflowPanel.visible) {
+            left = Math.min(left, overflowPanel.x)
+            right = Math.max(right, overflowPanel.x + overflowPanel.width * s)
+            top = Math.min(top, overflowPanel.y)
+            bottom = Math.max(bottom, overflowPanel.y + overflowPanel.height * s)
         }
         // 续播提示卡片**不在这里**并入（2026-11-08）：它固定贴窗口右下角、
         // 离控制条很远，硬并进来会把这条交互矩形撑满半个屏幕 —— 区域塑形之后
@@ -1014,13 +1122,15 @@ Item {
 
         // ==================================== 2. 动作按钮 + 溢出「⋯」
         Flow {
+            objectName: "dockActionsFlow"
             visible: dock.present("actions")
             spacing: dock.buttonSpacing
             // 竖版合并布局：内容自上而下一列排（与底板的 ``vertical`` 同源）
             flow: dock.isVertical ? Flow.TopToBottom : Flow.LeftToRight
 
             Repeater {
-                model: dock.actionsCfg
+                // 2026-11-22：只平铺未收折的动作；收折的进「更多」网格。
+                model: dock.expandedActionsCfg
 
                 delegate: IconButton {
                     iconName: modelData.icon !== undefined ? modelData.icon : ""
@@ -1036,14 +1146,18 @@ Item {
             }
 
             IconButton {
+                objectName: "dockOverflowButton"
+                // 没有收折项就不出现：点开一张空网格没有意义，而「点了一下
+                // 冒出一块空白」比「没有这枚按钮」更像坏了。
                 visible: dock.overflowEnabled
+                         && dock.collapsedActionsCfg.length > 0
                 iconName: dock.overflowIcon
                 tooltip: dock.overflowTooltip
                 label: dock.overflowTooltip
                 showLabel: dock.showLabels
                 hitSize: dock.hitSize
                 glyphSize: dock.iconSize
-                onClicked: Backend.triggerAction("overflow")
+                onClicked: dock.toggleOverflowPanel()
             }
         }
 
@@ -1343,6 +1457,55 @@ Item {
 
         onZoomRequested: function (op) {
             Backend.zoomSlide(op)
+        }
+    }
+
+    // ============================================ 「更多」收折网格（2026-11-22）
+    // 声明在 ``bar`` 之后 → 绘制、命中都在控制条之上。
+    //
+    // ⚠️ 与笔选单 / 放大镜选单同一条约定：**不进** dock 的
+    //    ``implicitWidth/Height``（会引发重摆闪帧）；尺寸靠 ``interactiveRect``
+    //    并进窗口区域。
+    OverflowPanel {
+        id: overflowPanel
+        objectName: "overflowPanel"
+
+        actions: dock.collapsedActionsCfg
+        columns: dock.overflowColumns
+        glyphSize: dock.iconSize
+
+        // 与底板同倍率缩放；``transformOrigin: TopLeft`` 让下面按根 Item
+        // 坐标算的 x/y 不跟着缩放漂移（与 ZoomPanel 同一条账）。
+        scale: dock.scaleFactor
+        transformOrigin: Item.TopLeft
+
+        // 贴着工具栏底板上沿往上摆（与笔选单 / 放大镜选单同一条算式）。
+        y: (bar.y + bar.margin - Lumi.dockPaletteGap
+            - overflowPanel.shadowMargin - overflowPanel.cardHeight) * dock.scaleFactor
+
+        /*! 横向中心对准溢出圆钮；按钮不可见时退回贴底板左沿。
+            ``overflowButtonCenterX`` 已经是**屏幕像素**并含缩放，所以这里只
+            再扣掉「投影余量 + 半张卡」的缩放值。 */
+        x: {
+            var s = dock.scaleFactor
+            var want
+            if (dock.overflowButtonCenterX >= 0) {
+                want = dock.overflowButtonCenterX
+                    - (overflowPanel.shadowMargin
+                       + overflowPanel.cardWidth / 2) * s
+            } else {
+                want = (bar.margin - overflowPanel.shadowMargin) * s
+            }
+            var limit = dock.parent ? dock.parent.width - dock.x : 0
+            if (limit > 0 && want + overflowPanel.width * s > limit)
+                want = limit - overflowPanel.width * s
+            return want
+        }
+
+        /*! 点一格：触发动作并收起网格 —— 它是一次选择，不是常驻工具面板。 */
+        onActionTriggered: function (actionId) {
+            Backend.triggerAction(actionId)
+            overflowPanel.opened = false
         }
     }
 

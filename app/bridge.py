@@ -66,6 +66,7 @@ import copy
 import logging
 import os
 import re
+import shutil
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -85,7 +86,15 @@ from . import narration
 from . import system_actions
 from . import update_checker
 from .config import Config
-from .paths import LOG_DIR, RESOURCES_DIR, UI_DIR, data_dir
+from .paths import (
+    LOG_DIR,
+    RESOURCES_DIR,
+    UI_DIR,
+    USER_CONFIG_FILE,
+    cache_dir,
+    data_dir,
+    page_memory_file,
+)
 from .plugins import external, loader, registry
 from .ppt_controller import PresentationState
 
@@ -138,6 +147,10 @@ SETTING_PATHS: Dict[str, str] = {
     # （滑块按整数百分比走，写回时再除 100）—— 见 default_config.json 的 ``presentation.scale``。
     "presentation_scale": "presentation.scale",
     "presentation_buttons_show_labels": "presentation.buttons.show_labels",
+    # 「更多」里收折哪些动作（主界面编辑器 → 选中工具栏 →「已收折的项目」，
+    # 2026-11-22 用户指令）。值是动作 id 列表；配置里的 null = 自动把**所有
+    # 插件动作**收折（内建动作永远不收折，见 ``_get_presentation_config``）。
+    "presentation_overflow_collapsed": "presentation.overflow.collapsed",
     "presentation_pager_position": "presentation.pager.position",
     # 工具栏的组数与位置（主界面编辑器 → 选中工具栏 → 「组数」「位置」，
     # 2026-10-07 用户指令）。与 ``presentation_pager_position`` 同一个套路：
@@ -474,6 +487,16 @@ class Backend(QObject):
     #: 启用 / 停用的角落集合变了（翻页组件位置切换）：控制条**换了一组组件**，
     #: 光挪位置不够，得按新的角落重建（``windows.py::rebuild_docks``）。
     docksRebuildRequested = Signal()
+
+    # ---- 维护模式（2026-11-22）----
+    #: 设置标题栏「更多」→「重新启动并进入维护模式」。由应用层拉起一个新进程
+    #: （带 ``--maintenance``）后退出本进程 —— 桥不碰 subprocess。
+    maintenanceModeRequested = Signal()
+    #: 维护窗口「继续使用」的三个变体：``(安全模式?, 诊断模式?)``。同样是
+    #: 请求类信号 —— 参数只描述新进程要怎么起，怎么起归应用层。
+    maintenanceRestartRequested = Signal(bool, bool)
+    #: 维护窗口被关掉 / 点了「退出」：维护模式装配直接退出进程。
+    maintenanceQuitRequested = Signal()
 
     def __init__(self, config: Config, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
@@ -1230,8 +1253,24 @@ class Backend(QObject):
         * 先 ``deepcopy`` 再合并 —— ``Config.get`` 返回的是内部引用，直接
           append 会污染配置内存态（铁律：插件贡献不落盘也不进 config
           内存态）；每次读取重新合并，天然不会重复追加。
+
+        2026-11-22 用户指令（控制条「更多」改为收折网格）：动作条目在合并后
+        额外挂两个**只存在于读取结果里**的标记，QML 据此分流：
+
+        * ``_builtin`` —— 来自 ``config.json`` 的 ``presentation.actions``；
+          插件贡献的一律为 false；
+        * ``_collapsed`` —— 是否收进「更多」。``overflow.collapsed`` 为 null
+          （缺省）时自动收折**全部插件动作**；显式列表则只收折列出的 id。
+          内建动作**永远不收折**（请求原文：「非自带放映控制按钮之外的内容」），
+          列表里误写了内建 id 也不会生效。
+
+        两个标记只在深拷贝上，不会进配置内存态，也不会被任何写入路径带回去。
         """
         merged = copy.deepcopy(self._config.get("presentation", {}) or {})
+        # 先把配置里的动作标成内建 —— 必须在合并插件条目之前，否则分不清来源。
+        for item in merged.get("actions", []) or []:
+            if isinstance(item, dict):
+                item["_builtin"] = True
         for key, extra in (
             ("tools", registry.dock_tools()),
             ("actions", registry.dock_actions()),
@@ -1243,8 +1282,30 @@ class Backend(QObject):
                 if entry_id in builtin_ids:
                     log.warning("插件控制条贡献 id 与内建冲突，内建胜出: %s", entry_id)
                     continue
-                entries.append(dict(entry))
+                copied = dict(entry)
+                if key == "actions":
+                    copied["_builtin"] = False
+                entries.append(copied)
             merged[key] = entries
+
+        actions = merged.get("actions", []) or []
+        overflow = merged.get("overflow")
+        collapsed_raw = overflow.get("collapsed") if isinstance(overflow, dict) else None
+        if isinstance(collapsed_raw, list):
+            collapsed_ids = {str(value) for value in collapsed_raw}
+        else:
+            # null / 缺失 / 类型写坏：按「全部插件动作都收折」处理。
+            collapsed_ids = {
+                str(item.get("id")) for item in actions
+                if isinstance(item, dict) and not item.get("_builtin", False)
+            }
+        for item in actions:
+            if not isinstance(item, dict):
+                continue
+            item["_collapsed"] = (
+                not item.get("_builtin", False)
+                and str(item.get("id")) in collapsed_ids
+            )
         return merged
 
     presentationConfig = Property(
@@ -2218,6 +2279,159 @@ class Backend(QObject):
             kind, str(self._config.get("app.name", "Luminalium 2"))
         )
         self.shortcutCreateResult.emit(ok, message)
+
+    # ------------------------------------------------------ 维护模式（2026-11-22）
+    # 入口：设置标题栏「更多」→「重新启动并进入维护模式」。窗口本体在
+    # ``ui/MaintenanceWindow.qml``，装配在 ``app/maintenance.py``。
+    #
+    # 这一节只做两件事：
+    #
+    # * 三个**转发信号**（进入 / 继续 / 退出）—— 怎么拉起进程属于应用层，
+    #   桥不碰 ``subprocess``；
+    # * 三个**真正落盘**的动作（清缓存 / 重置设置 / 重置全部），同步执行、
+    #   同步返回 ``{ok, message}``：维护模式是排障通道，一次点击里做完并当场
+    #   告诉用户结果就够了，没有进度条的必要。
+    #
+    # ⚠️ 只做本程序**真有**的那几层数据。ClassIsland 那张窗里的「恢复备份 /
+    # 回滚版本 / 重置档案与组件」在这里一律没有对应物，别补空壳按钮
+    # （理由见 ``app/maintenance.py`` 头注释）。
+
+    @Slot()
+    def enterMaintenanceMode(self) -> None:
+        self.maintenanceModeRequested.emit()
+
+    @Slot(bool, bool)
+    def maintenanceRestart(self, safe: bool, diagnostic: bool) -> None:
+        """维护窗口的「继续使用」：``safe`` = 不加载插件，``diagnostic`` = DEBUG。"""
+        self.maintenanceRestartRequested.emit(bool(safe), bool(diagnostic))
+
+    @Slot()
+    def quitMaintenance(self) -> None:
+        self.maintenanceQuitRequested.emit()
+
+    @staticmethod
+    def _maintenance_outcome(ok: bool, message: str) -> dict:
+        return {"ok": bool(ok), "message": message}
+
+    @Slot(result="QVariantMap")
+    def maintenanceClearTemp(self) -> dict:
+        """清除运行期缓存（``cache_dir()`` 下的内容，目录本身保留）。
+
+        对应 ClassIsland「清除临时文件」。本程序的缓存只有缩略图一类「下次放映
+        会重新生成」的东西，删了不影响任何配置。
+        """
+        failed = self._clear_cache_contents()
+        if failed:
+            return self._maintenance_outcome(
+                False,
+                i18n.tr("Maintenance", "有 {n} 个文件没能删除，详情见日志。")
+                .replace("{n}", str(failed)),
+            )
+        return self._maintenance_outcome(
+            True, i18n.tr("Maintenance", "已清除临时文件。")
+        )
+
+    @Slot(result="QVariantMap")
+    def maintenanceResetSettings(self) -> dict:
+        """把用户设置恢复成默认值（删 ``config/config.json``）。
+
+        默认值在 ``config/default_config.json``（随包分发，删不到），用户层
+        只有那一份差分文件 —— 删掉它就是「恢复默认」，重启后生效。
+
+        ⚠️ 插件装在哪、续播记忆讲到第几页都不动：这一档的语义是「设置被改坏了」，
+        不是「一切重来」（与 ClassIsland「重置应用设置不影响档案」同一档）。
+        """
+        if not self._remove_user_config():
+            return self._maintenance_outcome(
+                False, i18n.tr("Maintenance", "重置应用设置失败，详情见日志。")
+            )
+        log.info("维护模式：已重置应用设置")
+        return self._maintenance_outcome(
+            True, i18n.tr("Maintenance", "已重置应用设置，重新启动后生效。")
+        )
+
+    @Slot(result="QVariantMap")
+    def maintenanceResetAll(self) -> dict:
+        """重置本程序**全部**用户数据：设置 + 续播记忆 + 外部插件 + 缓存。
+
+        与 ClassIsland「重置全部信息」对齐（它删设置 / 档案 / 插件），但只清
+        本程序真实存在的那几层（见 ``app/maintenance.py`` 头注释）。日志**不删**
+        —— 那正是来排障的人接下来要看的东西。
+        """
+        problems = 0
+        if not self._remove_user_config():
+            problems += 1
+        if not self._remove_page_memory():
+            problems += 1
+        problems += self._clear_external_plugins()
+        problems += self._clear_cache_contents()
+        if problems:
+            # 具体是哪一项失败已经逐条 log.warning 过了（含路径与异常栈），
+            # 这里只报个数 —— 维护窗口是给「不知道哪坏了」的人看的，
+            # 往那句话里塞四个目录名的拼接反而更难读。
+            return self._maintenance_outcome(
+                False,
+                i18n.tr("Maintenance", "有 {n} 项没能清除，详情见日志。")
+                .replace("{n}", str(problems)),
+            )
+        log.info("维护模式：已重置全部用户数据")
+        return self._maintenance_outcome(
+            True, i18n.tr("Maintenance", "已重置全部信息，重新启动后生效。")
+        )
+
+    def _remove_user_config(self) -> bool:
+        """删用户配置差分文件；不存在也算成功（幂等）。"""
+        try:
+            if USER_CONFIG_FILE.is_file():
+                USER_CONFIG_FILE.unlink()
+        except OSError:
+            log.exception("维护模式：删除用户配置失败 %s", USER_CONFIG_FILE)
+            return False
+        return True
+
+    def _remove_page_memory(self) -> bool:
+        """删续播记忆（``page_memory.json``）。同 :meth:`_remove_user_config`。"""
+        path = page_memory_file()
+        try:
+            if path.is_file():
+                path.unlink()
+        except OSError:
+            log.exception("维护模式：删除续播记忆失败 %s", path)
+            return False
+        return True
+
+    def _clear_cache_contents(self) -> int:
+        """清空 ``cache_dir()`` 的内容，返回没删掉的项数（目录本身保留）。"""
+        return self._clear_directory(cache_dir(), "缓存")
+
+    def _clear_external_plugins(self) -> int:
+        """清空外部插件目录的内容，返回没删掉的项数（目录本身保留）。
+
+        内建插件在 ``app/plugins/``（随包），这里够不着也不该够着。
+        """
+        return self._clear_directory(external.user_plugins_dir(), "外部插件")
+
+    @staticmethod
+    def _clear_directory(root: Path, label: str) -> int:
+        """删 ``root`` 下的所有子项，返回失败项数。
+
+        ⚠️ 只删**子项**、不删 ``root`` 本身：``cache_dir()`` 每次用时按需建，
+        ``plugins/`` 则被 ``external`` 当作命名空间包路径（目录不存在时它的
+        导入钩子会先建目录，但留着更省事，也避免「重置完看起来像卸载了什么」）。
+        """
+        if not root.is_dir():
+            return 0
+        failed = 0
+        for child in root.iterdir():
+            try:
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
+            except OSError:
+                failed += 1
+                log.warning("维护模式：清除%s失败 %s", label, child, exc_info=True)
+        return failed
 
     @Slot()
     def openMainEditor(self) -> None:

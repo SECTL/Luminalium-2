@@ -244,7 +244,18 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
     "actions": {
         "display_name": "动作",
         "icon": "ic_fluent_slide_eraser_20_filled",
-        "inspector_items": [],
+        "inspector_items": [
+            {
+                # 2026-11-22 用户指令：控制条「更多」改为「已收折的项目」网格，
+                # 收折哪些按钮由主界面编辑器决定。只列**插件动作**——内建动作
+                # （清屏等）永远平铺，勾选项里也不会出现（见 bridge.py::
+                # _get_presentation_config 的 _builtin / _collapsed 标记）。
+                "key": "presentation_overflow_collapsed",
+                "kind": "collapsed_actions",
+                "title": "已收折的项目",
+                "description": "勾选的插件按钮会收进控制条的「更多」网格；内建按钮始终平铺。",
+            },
+        ],
         "traits": {
             "toolbar": True,
             "section_order": 1,
@@ -336,8 +347,10 @@ _BUILTIN_DOCK_GROUPS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-#: 检查器描述符支持的控件类型（能力上限 = 内建三项既有设置，刻意不加新类型）。
-_INSPECTOR_KINDS = ("switch", "combo", "radio")
+#: 检查器描述符支持的控件类型。``collapsed_actions`` 是 2026-11-22 用户指令
+#: 新增的专用控件（「更多」收折列表：按动作 id 勾选），其余三项仍是内建设置
+#: 的既有类型；不打算把它扩展成插件自定义渲染的入口。
+_INSPECTOR_KINDS = ("switch", "combo", "radio", "collapsed_actions")
 
 
 def validate_inspector_items(group_name: str, items: Any) -> None:
@@ -1590,7 +1603,10 @@ class WindowManager(QObject):
         #: ``RinUIWindow`` 实例 —— 用于把 Python 侧另建的窗口补登记进 RinUI
         #: 的 WinEventFilter / ThemeManager / WinEventManager（见 ``_attach_to_rinui``）
         self._rinui = rinui
-        self._rinui_windows: List[Any] = list(rinui.windows) if rinui is not None else []
+        # ⚠️ ``rinui.windows`` 在 ``RinUIWindow.load()`` 之后才有值，维护模式
+        # （``app/maintenance.py``）**不 load** 任何面板，那里它一直是 ``None``
+        # —— ``list(None)`` 会直接 TypeError。
+        self._rinui_windows: List[Any] = list(rinui.windows or []) if rinui is not None else []
         self._rinui_hooked: List[Any] = []
 
         self.panel: Optional[QQuickWindow] = None
@@ -3610,10 +3626,10 @@ class WindowManager(QObject):
                 self._sync_input_mode()
                 # 墨迹窗口与遮罩共用 _overlay_rect，放映窗口一动就跟着走
                 self._apply_ink_geometry()
-        # 快速切页面板的「点外部收起」—— 见 _dismiss_jump_panels。
+        # 快速切页面板 / 「更多」收折网格的「点外部收起」—— 见 _dismiss_popup_panels。
         # ⚠️ 必须放在下面 ``_manual_shown`` 的提前 return **之前**：手动显示
         #    （托盘菜单叫出控制条）时这条路径会被跳过，面板就再也收不掉了。
-        self._dismiss_jump_panels()
+        self._dismiss_popup_panels()
         # 工具卡（笔色板 / 橡皮卡）的穿透态收起同理（2026-10-08 自建批注）——
         # self 引擎笔/橡皮态下它自己跳过，那一路由 InkLayer 起笔钩子负责
         self._dismiss_tool_cards_on_leave()
@@ -3624,8 +3640,8 @@ class WindowManager(QObject):
         if self._config.get("presentation.follow_foreground", True):
             self._set_overlay_suppressed(not self._slideshow_in_foreground())
 
-    def _dismiss_jump_panels(self) -> None:
-        """光标移出控制条 → 收起「快速切页面板」（= 点外部收起）。
+    def _dismiss_popup_panels(self) -> None:
+        """光标移出控制条 → 收起「快速切页面板」与「更多」收折网格。
 
         QML 侧**收不到**「面板以外」的点击：区域塑形模式下那些地方是系统级穿透的
         （``WS_EX_TRANSPARENT``），事件根本进不了这个进程 —— 挂多少个 MouseArea
@@ -3636,7 +3652,11 @@ class WindowManager(QObject):
         （见 ``PresentationDock.interactiveRect`` / ``SidePager.interactiveRect``），
         所以光标落在面板上时仍算「里面」，不会自己把自己关掉。四边各放
         ``_JUMP_DISMISS_SLACK`` 的余量：面板贴边时，光标压在边缘上抖一帧就收
-        会很烦。"""
+        会很烦。
+
+        2026-11-22 起「更多」不再是原生菜单，而是同一个窗口里的 QML 网格浮层，
+        因此共用这条看护（QML 侧同样收不到外部点击）。
+        """
         if self._suppressed:
             # 临时隐去期间内容本来就看不见（容器淡成 0），不必管；
             # 恢复显示时会重新判一次
@@ -3646,16 +3666,21 @@ class WindowManager(QObject):
         cursor = QCursor.pos()
         for dock in self._docks.values():
             try:
-                opened = bool(dock.property("jumpPanelOpened"))
+                jump_opened = bool(dock.property("jumpPanelOpened"))
+                overflow_opened = bool(dock.property("overflowPanelOpened"))
             except (RuntimeError, TypeError):  # pragma: no cover - 组件已释放 / 没这个属性
                 continue
-            if not opened:
+            if not (jump_opened or overflow_opened):
                 continue
             rect = self._dock_global_rect(dock).adjusted(
                 -JUMP_DISMISS_SLACK, -JUMP_DISMISS_SLACK,
                 JUMP_DISMISS_SLACK, JUMP_DISMISS_SLACK)
-            if not rect.contains(cursor):
+            if rect.contains(cursor):
+                continue
+            if jump_opened:
                 self._close_jump_panel(dock)
+            if overflow_opened:
+                self._close_overflow_panel(dock)
 
     def _close_jump_panel(self, dock: QQuickItem) -> None:
         """调 QML 侧 ``closeJumpPanel()`` 收起面板。
@@ -3666,6 +3691,15 @@ class WindowManager(QObject):
             QMetaObject.invokeMethod(dock, "closeJumpPanel")
         except Exception:  # pragma: no cover - QML 侧没实现 / 对象已销毁
             log.debug("控制条缺 closeJumpPanel()", exc_info=True)
+
+    def _close_overflow_panel(self, dock: QQuickItem) -> None:
+        """调 QML 侧 ``closeOverflowPanel()`` 收起「更多」收折网格。
+
+        与 :meth:`_close_jump_panel` 同样包 try：调用点在看护定时器里。"""
+        try:
+            QMetaObject.invokeMethod(dock, "closeOverflowPanel")
+        except Exception:  # pragma: no cover - QML 侧没实现 / 对象已销毁
+            log.debug("控制条缺 closeOverflowPanel()", exc_info=True)
 
     def _dismiss_tool_cards(self) -> bool:
         """收起所有开着的工具卡（笔色板卡 / 橡皮子模式卡）；有卡被收返回 True。

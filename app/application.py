@@ -46,102 +46,34 @@ InkLayer.eraserWidth，com 引擎忽略（橡皮交给演示软件自己）。
 from __future__ import annotations
 
 import logging
-import logging.handlers
-import os
-import subprocess
 import sys
 import traceback
-from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer, Qt, QUrl
-from PySide6.QtGui import QColor, QCursor
+from PySide6.QtGui import QColor
 from PySide6.QtQml import QQmlComponent
-from PySide6.QtWidgets import QApplication, QMenu
-from RinUI import BackdropEffect, RinUIWindow, Theme
-from RinUI.core.config import is_win10, is_win11
+from PySide6.QtWidgets import QApplication
+from RinUI import RinUIWindow, Theme
 
 from . import __version__
 from . import echo_cave
 from . import i18n
+from . import launch
 from . import multi_instance
 from . import rinui_patch
 from .bridge import Backend
 from .config import Config
 from .error_handler import ErrorHandler
-from .paths import APP_NAME, LOG_DIR, UI_DIR, ensure_runtime_dirs
+from .paths import APP_NAME, UI_DIR
 from .ppt_controller import COM_PROG_IDS, PptController
 from .page_memory import PageMemory
 from .slide_thumbs import SlideThumbCache
+from .startup import apply_backdrop_effect, configure_rinui, setup_logging
 from .tray import TrayIcon, build_app_icon
 from .windows import WindowManager
 
 log = logging.getLogger("luminalium")
-
-#: 「⋯」溢出菜单的样式（``QMenu`` 是原生窗口，不进 QML 调色板，只能给一份
-#: 自己的样式表）。深浅两套的取值**故意跟着 RinUI 的主题常量走**，不手写颜色 ——
-#: 见 :func:`_overflow_menu_qss`。
-#:
-#: ⚠️ 2026-10-07 补上。此前 ``_show_overflow_menu`` 里引用的 ``OVERFLOW_MENU_QSS``
-#: **从来没有被定义过**（翻遍 68 个提交都没有）—— 也就是说点一下工具条上的
-#: 「⋯」就是一次 ``NameError`` 崩溃。一直没被发现的原因是这条路径平时没人走
-#: （翻页 / 退出都有别的入口），而崩溃又被错误处理链路接住、弹了一张报告窗，
-#: 看上去像「另一个问题」。这也解释了历史日志里那几次
-#: ``捕获崩溃：NameError: name 'OVERFLOW_MENU_QSS' is not defined`` ——
-#: 复现方式是：放映中，点控制条右侧的「⋯」。
-_OVERFLOW_MENU_QSS_DARK = """
-QMenu {
-    background-color: #2B2B2B;
-    color: #FFFFFF;
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    border-radius: 8px;
-    padding: 4px;
-}
-QMenu::item {
-    padding: 6px 20px 6px 12px;
-    border-radius: 5px;
-}
-QMenu::item:selected {
-    background-color: rgba(255, 255, 255, 0.08);
-}
-QMenu::separator {
-    height: 1px;
-    margin: 4px 8px;
-    background: rgba(255, 255, 255, 0.10);
-}
-"""
-_OVERFLOW_MENU_QSS_LIGHT = """
-QMenu {
-    background-color: #F3F3F3;
-    color: #1A1A1A;
-    border: 1px solid rgba(0, 0, 0, 0.10);
-    border-radius: 8px;
-    padding: 4px;
-}
-QMenu::item {
-    padding: 6px 20px 6px 12px;
-    border-radius: 5px;
-}
-QMenu::item:selected {
-    background-color: rgba(0, 0, 0, 0.06);
-}
-QMenu::separator {
-    height: 1px;
-    margin: 4px 8px;
-    background: rgba(0, 0, 0, 0.10);
-}
-"""
-
-
-def _overflow_menu_qss(dark: bool) -> str:
-    """按当前主题取「⋯」菜单的样式。
-
-    ⚠️ 主题是**运行时可切**的，所以样式表不能算一次就存起来 —— 每次弹菜单现算
-    （它只是一份几十行的字符串，代价可以忽略）。判据由调用方给：它已经从
-    ``RinUIWindow.theme_manager`` 拿到了 ``is_dark_theme()``，别在这里再去找
-    一遍主题管理器（那是 RinUI 的实例属性，没有模块级单例）。
-    """
-    return _OVERFLOW_MENU_QSS_DARK if dark else _OVERFLOW_MENU_QSS_LIGHT
 
 
 def _match_verb_handler(action: str) -> Optional[Callable[[str], Any]]:
@@ -223,88 +155,16 @@ SPLASH_STEP_MS = 420
 SPLASH_HOLD_MS = 520
 
 
-def _overflow_menu_qss(dark: bool) -> str:
-    """「⋯」溢出菜单的原生 QSS（按深浅主题取色）。
-
-    ⚠️ 这个名字曾以**常量**形态被 ``_show_overflow_menu`` 引用却从未被
-    定义（2026-10-05 控制条原型 4f22f90 起的潜伏 bug）：此前控制条动作
-    少、「⋯」按钮从未出现过，直到 2026-10-06 三个正式插件把动作区挤出
-    可视容量，第一次点「⋯」就 NameError 崩溃（错误报告窗接住）。改成
-    **函数**是为了让配色跟随主题 —— Python 侧读不到 RinUI 的 QML 单例，
-    深浅两套色值照抄 ``ui/Luminalium/Lumi.qml`` 的菜单语境令牌手工对齐。
-    """
-    if dark:
-        bg, border, text, text_dim = "#2B2B2B", "rgba(255,255,255,0.08)", "#FFFFFF", "rgba(255,255,255,0.36)"
-        hover, separator = "rgba(255,255,255,0.08)", "rgba(255,255,255,0.08)"
-    else:
-        bg, border, text, text_dim = "#F6F6F6", "rgba(0,0,0,0.06)", "#1A1A1A", "rgba(0,0,0,0.36)"
-        hover, separator = "rgba(0,0,0,0.05)", "rgba(0,0,0,0.08)"
-    return f"""
-QMenu {{
-    background-color: {bg};
-    border: 1px solid {border};
-    border-radius: 8px;
-    padding: 4px;
-}}
-QMenu::item {{
-    color: {text};
-    background: transparent;
-    padding: 7px 26px 7px 12px;
-    border-radius: 5px;
-}}
-QMenu::item:selected {{ background: {hover}; }}
-QMenu::item:disabled {{ color: {text_dim}; }}
-QMenu::separator {{
-    height: 1px;
-    background: {separator};
-    margin: 4px 8px;
-}}
-QMenu::right-arrow {{
-    width: 12px; height: 12px;
-    background: {text_dim};
-}}
-"""
-
-
-def setup_logging(level: str = "INFO") -> None:
-    ensure_runtime_dirs()
-    root = logging.getLogger()
-    if root.handlers:
-        return
-    root.setLevel(getattr(logging, level.upper(), logging.INFO))
-
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)-7s] %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
-    )
-
-    file_handler = logging.handlers.RotatingFileHandler(
-        LOG_DIR / "luminalium.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
-    )
-    file_handler.setFormatter(formatter)
-    root.addHandler(file_handler)
-
-    # 只在**真终端**上再挂一份 stdout 日志。
-    #
-    # 为什么必须判断：Windows 管道的缓冲区写满（一般 64KB）时，写入方会被**阻塞**，
-    # 而不是丢弃。从 VS Code 的「调试控制台」这类没有人持续读取的管道启动时，
-    # 后台探测线程只要在 log 调用上撞到满缓冲区，就会被永远按在那里 ——
-    # 现象是「线程 isRunning=True 但一个探测周期都不完成、日志静默、控制条不出现」。
-    # 日志文件本身不受影响（先写文件再写 stdout），所以这里直接跳过最安全。
-    if sys.stdout is not None and sys.stdout.isatty():
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setFormatter(formatter)
-        root.addHandler(stream_handler)
-    else:
-        log.info(
-            "标准输出不是终端（管道 / 调试控制台），已跳过控制台日志以免写满管道"
-            "阻塞后台探测线程；日志见 %s", LOG_DIR / "luminalium.log",
-        )
-
-
 class LuminaliumApplication:
     """把各模块拼装成一个可运行的应用。"""
 
     def __init__(self, argv: list[str]) -> None:
+        # 启动开关（2026-11-22，维护模式窗口的「安全模式 / 诊断模式」落在
+        # 这两处，别处不再各读一份 argv）：
+        # * 安全模式 = **不加载任何插件**（插件炸了导致起不来的唯一自救路）；
+        # * 诊断模式 = 日志级别拉到 DEBUG（写文件，不假装有控制台）。
+        self._safe_mode = launch.safe_mode_requested(argv)
+        self._diagnostic_mode = launch.diagnostic_requested(argv)
         # 多实例询问窗里点了「取消」时置位：装配段提前收尾，``run()`` 空跑一圈
         # 事件循环后退出（直接 return 会在解释器收尾时崩 0xC0000409）。
         self._startup_cancelled = False
@@ -320,7 +180,15 @@ class LuminaliumApplication:
             self.config = Config(extra_defaults=loader.collect_defaults())
         except ImportError:
             self.config = Config()
-        setup_logging(str(self.config.get("app.log_level", "INFO")))
+        setup_logging(
+            "DEBUG"
+            if self._diagnostic_mode
+            else str(self.config.get("app.log_level", "INFO"))
+        )
+        if self._diagnostic_mode:
+            log.info("诊断模式：日志级别已提升到 DEBUG")
+        if self._safe_mode:
+            log.info("安全模式：本次启动不加载插件")
         log.info("Luminalium 2 v%s 启动", __version__)
 
         # 自建墨迹的输入前提：关高频指针事件合并（为什么前后各调一次见 configure_input_attributes
@@ -384,8 +252,6 @@ class LuminaliumApplication:
         # 与 ``slide_thumbs`` 同一条（那个的 parent 是 Backend）。
         self.page_memory = PageMemory(self.config, self.ppt)
         self.backend.attach_page_memory(self.page_memory)
-        # 「⋯」溢出菜单。必须持有引用，否则局部变量回收后菜单立即消失。
-        self._overflow_menu: Optional[QMenu] = None
         # 墨迹引擎改道的两份运行期状态（引擎本身**不**缓存，每次现读 config，
         # 见 ``_ink_engine``）：
         # * ``_current_tool``：最近一次选中的工具。放映中切换引擎时要把它重新
@@ -401,46 +267,19 @@ class LuminaliumApplication:
         self._presentation_active = False
 
         # ---- RinUI 引擎（共享一个 engine，所有窗口共用主题）----
+        # 主题 / 强调色 / 背景材质的装配抽在 :func:`configure_rinui`（维护模式
+        # 那套精简装配要开自己的引擎，外观必须与这里逐字一致）。
         self.rinui = RinUIWindow()
-        self.rinui.engine.addImportPath(str(UI_DIR))
-        self.rinui.theme_manager.set_theme_color(str(self.config.get("app.accent", "#4CC2FF")))
-
-        theme_name = str(self.config.get("app.theme", "dark")).lower()
-        self.rinui.setTheme({"dark": Theme.Dark, "light": Theme.Light}.get(theme_name, Theme.Auto))
+        configure_rinui(self.rinui, self.config)
 
         self.rinui.engine.rootContext().setContextProperty("Backend", self.backend)
         self.rinui.engine.rootContext().setContextProperty(
             "ErrorHandler", self.error_handler
         )
         self.rinui.load(UI_DIR / "QuickPanel.qml")
-        # 背景材质按配置。默认 "auto" = **按平台选**，与 RinUI 自带策略一致：
-        # Win11 → Mica / Win10 → Acrylic / 其余 → none。
-        #
-        # ⚠️ 这里以前默认 "none"，并且**无条件**调用 setBackdropEffect() ——
-        # 等于把 RinUI 自己的平台判断整个覆盖掉。后果是 Win11 上永远铺实色
-        # 主题背景（colors.backgroundColor = #202020），窗口一次都不会透明，
-        # 看起来就像「RinUI 的 Mica 没生效」。实测（build 26300）只要把值放成
-        # mica，DWMWA_SYSTEMBACKDROP_TYPE 立刻变 2、客户区 alpha 从 255 掉到 77，
-        # DWM 确实在合成 —— 所以问题从来不在 RinUI 那侧，而在这行覆盖。
-        #
-        # 显式写 none 仍然完全可用（窗口退回实色主题背景）。
-        backdrop = str(self.config.get("app.backdrop", "auto")).lower()
-        if backdrop == "auto":
-            effect = (
-                BackdropEffect.Mica
-                if is_win11()
-                else BackdropEffect.Acrylic
-                if is_win10()
-                else BackdropEffect.None_
-            )
-        else:
-            effect = {
-                "mica": BackdropEffect.Mica,
-                "acrylic": BackdropEffect.Acrylic,
-                "tabbed": BackdropEffect.Tabbed,
-            }.get(backdrop, BackdropEffect.None_)
-        self.rinui.setBackdropEffect(effect)
-        log.info("背景材质: %s（配置 app.backdrop=%s）", effect.value, backdrop)
+        # 背景材质必须排在 load **之后**：load 才把 root_window 交出去，
+        # 早一步设材质的话窗口名单还是空的，一次都落不到面板上。
+        apply_backdrop_effect(self.rinui, self.config)
 
         # ---- 窗口 ----
         # 托盘提示文字 = 应用名（2026-10-01 第二轮用户指令：原来的「托盘提示文字」
@@ -491,18 +330,25 @@ class LuminaliumApplication:
         # include_debug 门控用 app.debug 配置键：不注入默认值（缺失即
         # False），开调试插件得手改 config.json 写 "app": {"debug": true}
         # 或由 smoke 临时写入。
-        if self._plugin_loader is not None:
+        #
+        # 2026-11-22：安全模式（``--safe``）整段跳过 —— 插件是「应用起不来」
+        # 最常见的元凶，维护模式里那条「以安全模式继续使用」就是为它准备的。
+        if self._safe_mode:
+            log.info("安全模式：跳过插件加载（含内建调试插件）")
+        elif self._plugin_loader is not None:
             self._plugin_loader.load_plugins(
                 self.backend,
                 self.windows,
                 include_debug=bool(self.config.get("app.debug")),
             )
-            # 导航 / 磁贴都是「读取侧拼接」（注册表加载后才有插件贡献），
-            # 而 QML 侧绑的是 ``settingsNavItems`` 这个 Property —— 不发通知
-            # 的话，加载前就已打开的面板会停在「只有内建项」的状态。
-            # 设置窗口虽是懒创建（正常路径赶得上），快捷面板不是；
-            # 顺带也让 `setPluginEnabled` 之后的未来刷新有处可挂。
-            self.backend.settingsNavItemsChanged.emit()
+        # 导航 / 磁贴都是「读取侧拼接」（注册表加载后才有插件贡献），
+        # 而 QML 侧绑的是 ``settingsNavItems`` 这个 Property —— 不发通知
+        # 的话，加载前就已打开的面板会停在「只有内建项」的状态。
+        # 设置窗口虽是懒创建（正常路径赶得上），快捷面板不是；
+        # 顺带也让 `setPluginEnabled` 之后的未来刷新有处可挂。
+        # ⚠️ 它必须留在 ``if`` **外面**（安全模式 / loader 缺席时也要发）：
+        # 面板在装配段就已加载完毕，这一条是它唯一一次取导航清单的机会。
+        self.backend.settingsNavItemsChanged.emit()
 
         self.windows.load_windows()
 
@@ -624,6 +470,9 @@ class LuminaliumApplication:
         self.backend.actionTriggered.connect(self._on_action)
         self.backend.settingsRequested.connect(self._open_settings)
         self.backend.restartRequested.connect(self._restart)
+        # 设置标题栏「更多」→「重新启动并进入维护模式」（2026-11-22）。
+        # 与上面的「重启」共用同一条拉起通道，只多带一个 --maintenance。
+        self.backend.maintenanceModeRequested.connect(self._enter_maintenance)
         self.backend.quitRequested.connect(self.quit)
         self.backend.themeChangeRequested.connect(self._apply_theme)
         self.backend.accentChangeRequested.connect(self._apply_accent)
@@ -809,8 +658,9 @@ class LuminaliumApplication:
         self.rinui.theme_manager.set_theme_color(color)
         log.info("切换强调色: %s", color)
 
-    def _restart(self) -> None:
-        """重启整个程序（快捷面板底栏按钮）。
+    def _restart(self, maintenance: bool = False, safe: bool = False,
+                 diagnostic: bool = False) -> None:
+        """重启整个程序（快捷面板底栏按钮 / 维护模式入口 / 报告窗）。
 
         2026-10-02 用户指令「快捷面板的重新加载按钮实则应当是重新启动程序
         按钮 点了之后需要重启程序」—— 原来这个按钮只重读配置，用户点了
@@ -818,45 +668,32 @@ class LuminaliumApplication:
         一个**分离的**新进程（与当前控制台 / 父进程解绑，本进程退出不会
         连带杀掉它），最后走正常退出流程（停探测 / 收窗口 / 存托盘）。
 
-        命令行怎么拼：
+        2026-11-22：命令行拼装搬到 ``app/launch.py``（维护模式要从另一套
+        装配里做同一件事），这里只决定带哪几个开关：
 
-        * 打包后（``sys.frozen``）：直接再跑 ``sys.executable``；
-        * 源码运行：``sys.executable + 脚本绝对路径``。工程入口是根目录的
-          ``main.py``（文档化用法 ``python main.py``），``sys.argv[0]`` 就是
-          它；解析成绝对路径保证与启动时的工作目录无关。
+        * ``maintenance`` —— ``--maintenance``：新进程走维护模式装配
+          （设置标题栏「更多」→「重新启动并进入维护模式」）；
+        * ``safe`` / ``diagnostic`` —— 维护模式窗口里「以安全 / 诊断模式
+          继续使用」的两个开关，落到新进程的插件加载与日志级别上。
         """
-        log.info("重启应用")
+        extra = []
+        if maintenance:
+            extra.append(launch.MAINTENANCE_FLAG)
+        if safe:
+            extra.append(launch.SAFE_FLAG)
+        if diagnostic:
+            extra.append(launch.DIAGNOSTIC_FLAG)
+        log.info("重启应用%s", f"（{' '.join(extra)}）" if extra else "")
+        # 先落盘再拉起：新进程读的是磁盘上的配置。
         self.config.save()
-        if getattr(sys, "frozen", False):
-            cmd = [sys.executable]
-            cwd = str(Path(sys.executable).parent)
-        else:
-            script = Path(sys.argv[0] if sys.argv else "main.py").resolve()
-            cmd = [sys.executable, str(script)]
-            cwd = str(script.parent)
-        # DETACHED_PROCESS：脱离控制台（GUI 程序本来也没有）；窗口控制在
-        # DWM/Win32 侧，不需要继承任何句柄。close_fds 兜底防句柄泄漏。
-        creationflags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
-            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
-        )
-        # 告诉新进程「你是重启拉起来的」：多实例检测看到这两个环境变量就只做
-        # 交接等待，不弹「你多开了」的询问框（见 app/multi_instance.py）。
-        env = os.environ.copy()
-        env[multi_instance.RESTART_ENV] = "1"
-        env[multi_instance.RESTART_PID_ENV] = str(os.getpid())
-        try:
-            subprocess.Popen(
-                cmd,
-                cwd=cwd,
-                close_fds=True,
-                creationflags=creationflags,
-                env=env,
-            )
-        except OSError:
-            # 拉不起来就别退了 —— 退了用户手里就什么都不剩了。
-            log.exception("重启失败：无法拉起新进程 %r，保持当前实例运行", cmd)
+        # 拉不起来就别退了 —— 退了用户手里就什么都不剩了。
+        if not launch.relaunch(extra):
             return
         self.quit()
+
+    def _enter_maintenance(self) -> None:
+        """设置标题栏「更多」→「重新启动并进入维护模式」。"""
+        self._restart(maintenance=True)
 
     # ======================================================== 错误 / 崩溃报告
 
@@ -1058,7 +895,7 @@ class LuminaliumApplication:
             log.info("跳转到第 %s 页", page)
         else:
             # 内建动作分发表（2026-10-05 任务 6 由硬编码 if/elif 改表驱动，
-            # 行为逐字不变）。统一成无参 callable：ppt 方法都要 hwnd，溢出菜单不要。
+            # 行为逐字不变）。统一成无参 callable：ppt 方法都要 hwnd。
             handlers: Dict[str, Callable[[], Any]] = {
                 "exit_presentation": lambda: self.ppt.exit_slideshow(hwnd),
                 "pager:next": lambda: self.ppt.next_slide(hwnd),
@@ -1069,7 +906,6 @@ class LuminaliumApplication:
                     if self._ink_engine() == "self"
                     else lambda: self.ppt.clear_screen(hwnd)
                 ),
-                "overflow": self._show_overflow_menu,
             }
             handler = handlers.get(action)
             if handler is None:
@@ -1161,48 +997,6 @@ class LuminaliumApplication:
             self._apply_tool_to_self_ink(self._current_tool, hwnd)
         log.info("墨迹引擎切换为: %s", self._ink_engine())
 
-    def _show_overflow_menu(self) -> None:
-        """控制条上「⋯」溢出菜单。
-
-        用原生 ``QMenu`` 而不是 QML 的 ``Popup``：控制条窗口带了
-        ``Qt.WindowDoesNotAcceptFocus``，而 QML Popup 会另开一个真窗口并
-        抢走聚焦；原生菜单是临时的，用户点击时弹出、关闭后焦点立刻回到
-        放映窗口，不会把放映打断。
-
-        样式现取（见 :func:`_overflow_menu_qss`）：主题运行时可切，算一次存起来
-        会一直停在启动那一刻的那套颜色。
-        """
-        if self._overflow_menu is not None:
-            self._overflow_menu.close()
-
-        menu = QMenu()
-        # 半透明底 + 圆角 QSS：不设这个属性的话 QSS 的 border-radius 外面
-        # 会露出一圈方角黑底
-        menu.setAttribute(Qt.WA_TranslucentBackground, True)
-        # 主题明暗走 ``windows._dark_theme()``：内部已带 try/except（RinUI 未就绪
-        # 按深色兜底），与早先这里的内联 try/except 同语义，别写第二份。
-        menu.setStyleSheet(_overflow_menu_qss(self.windows._dark_theme()))
-        menu.addAction(i18n.tr("Overflow", "上一页"), self.backend.previousSlide)
-        menu.addAction(i18n.tr("Overflow", "下一页"), self.backend.nextSlide)
-        menu.addSeparator()
-        # 动作列表镜像控制条本体：读 ``presentationConfig``（config 内建 ∪
-        # 插件 dock 动作，读取侧合并），**不能**只读 config 的
-        # ``presentation.actions`` —— 那样插件动作在条上、菜单里却缺席，
-        # 「⋯」恰恰是被插件动作挤出来的，不一致一眼可见。
-        for item in self.backend.presentationConfig.get("actions", []) or []:
-            action_id = str(item.get("id", ""))
-            label = str(item.get("label", action_id))
-            menu.addAction(
-                label,
-                lambda aid=action_id: self.backend.triggerAction(aid),
-            )
-        menu.addSeparator()
-        menu.addAction(i18n.tr("Overflow", "退出放映"), self.backend.exitPresentation)
-
-        # 必须持有引用：menu 是局部变量，回收后菜单会立刻消失
-        self._overflow_menu = menu
-        menu.popup(QCursor.pos())
-
     # ================================================================ 退出
 
     def quit(self) -> None:
@@ -1240,5 +1034,13 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
 
     sys.excepthook = _hook
+    # 维护模式（2026-11-22）：与正常启动**完全分开**的一条装配 —— 不建托盘 /
+    # 不放映探测 / 不加载插件，只开一张维护窗口（见 app/maintenance.py）。
+    # 分叉放在这里而不是 LuminaliumApplication 内部：那套装配从头到尾都假定
+    # 自己要管理放映控制条，前半段建完再回头拆不干净。
+    if launch.maintenance_requested(arguments):
+        from .maintenance import run_maintenance
+
+        return run_maintenance(arguments)
     app = LuminaliumApplication(arguments)
     return app.run()
